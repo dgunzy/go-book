@@ -10,11 +10,23 @@ import (
 )
 
 func main() {
-	app := routes.SetupRoutes()
-	dao.StartDB()
-	fmt.Println("Server running on 8080")
+	db, userDAO, err := dao.StartDB()
+	if err != nil {
+		log.Fatal("Failed to start database:", err)
+	}
+	defer db.Close()
 
-	if err := http.ListenAndServe(":8080", app); err != nil {
+	userHandler := routes.NewUserHandler(db, userDAO)
+
+	mux := http.NewServeMux()
+	fs := http.FileServer(http.Dir("routing/static"))
+	mux.Handle("/static/", http.StripPrefix("/static/", fs))
+	mux.HandleFunc("/", routes.HomeHandler)
+	mux.HandleFunc("/home", userHandler.LoginHandler)
+	mux.HandleFunc("/user", userHandler.GetUser)
+
+	fmt.Println("Server running on 8080")
+	if err := http.ListenAndServe(":8080", mux); err != nil {
 		log.Fatal(err)
 	}
 }

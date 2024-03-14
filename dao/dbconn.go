@@ -11,7 +11,7 @@ import (
 	"github.com/tursodatabase/go-libsql"
 )
 
-func StartDB() {
+func StartDB() (*sql.DB, *UserDAO, error) {
 
 	err := godotenv.Load()
 
@@ -44,12 +44,13 @@ func StartDB() {
 	defer connector.Close()
 
 	db := sql.OpenDB(connector)
-
 	userDAO := NewUserDAO(db)
-	bungus := userDAO.TestDatabaseConnection()
-	if bungus != nil {
-		fmt.Println(bungus)
-	}
 
-	defer db.Close()
+	// userDAO := NewUserDAO(db)
+	// bungus := userDAO.TestDatabaseConnection()
+	// if bungus != nil {
+	// 	fmt.Println(bungus)
+	// }
+
+	return db, userDAO, nil
 }
