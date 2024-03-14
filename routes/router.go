@@ -14,7 +14,7 @@ func SetupRoutes() *http.ServeMux {
 	// mux.HandleFunc("/uploadtext", Texthandler)
 	// mux.HandleFunc("/uploadfile", Filehandler)
 	// mux.HandleFunc("/summarizefile", UploadHandler)
-	// mux.HandleFunc("/about", AboutHandler)
+
 	// mux.HandleFunc("/contact", ContactHandler)
 	return mux
 }
