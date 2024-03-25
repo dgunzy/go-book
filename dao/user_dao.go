@@ -83,3 +83,19 @@ func (dao *UserDAO) CreateUser(user *models.User) error {
 	_, err := dao.db.Exec(query, user.Username, user.Email, user.Password, user.Role, user.Balance, user.Token)
 	return err
 }
+func (dao *UserDAO) GetUserByEmail(email string) (*models.User, error) {
+	query := "SELECT UserID, Username, Email, Role, Balance FROM Users WHERE Email = ?"
+	row := dao.db.QueryRow(query, email)
+
+	var user models.User
+	// Notice we're not fetching Password or Token as they're not used
+	err := row.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.New("user not found")
+		}
+		return nil, err
+	}
+
+	return &user, nil
+}

@@ -3,30 +3,16 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
 
-	"github.com/dgunzy/go-book/dao"
-	"github.com/dgunzy/go-book/routes"
+	"github.com/dgunzy/go-book/auth"
+	"github.com/dgunzy/go-book/server"
 )
 
 func main() {
-	db, userDAO, err := dao.StartDB()
-	if err != nil {
-		log.Fatal("Failed to start database:", err)
-	}
-	defer db.Close()
-
-	userHandler := routes.NewUserHandler(db, userDAO)
-
-	mux := http.NewServeMux()
-	fs := http.FileServer(http.Dir("routing/static"))
-	mux.Handle("/static/", http.StripPrefix("/static/", fs))
-	mux.HandleFunc("/", routes.HomeHandler)
-	mux.HandleFunc("/home", userHandler.LoginHandler)
-	mux.HandleFunc("/user", userHandler.GetUser)
-
+	auth.NewAuth()
+	server := server.NewServer()
 	fmt.Println("Server running on 8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
