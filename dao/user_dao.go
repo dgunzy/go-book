@@ -17,11 +17,11 @@ func NewUserDAO(db *sql.DB) *UserDAO {
 }
 
 func (dao *UserDAO) GetUserByID(userID int) (*models.User, error) {
-	query := "SELECT UserID, Username, Email, Password, Role, Balance, Token FROM Users WHERE UserID = ?"
+	query := "SELECT UserID, Username, Email, Role, Balance FROM Users WHERE UserID = ?"
 	row := dao.db.QueryRow(query, userID)
 
 	var user models.User
-	err := row.Scan(&user.UserID, &user.Username, &user.Email, &user.Password, &user.Role, &user.Balance, &user.Token)
+	err := row.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("user not found")
@@ -31,6 +31,7 @@ func (dao *UserDAO) GetUserByID(userID int) (*models.User, error) {
 
 	return &user, nil
 }
+
 func (dao *UserDAO) TestDatabaseConnection() error {
 	// Create the "test" table if it doesn't exist
 	createTableQuery := `
@@ -79,16 +80,16 @@ func (dao *UserDAO) UpdateUserToken(userID int, token string) error {
 }
 
 func (dao *UserDAO) CreateUser(user *models.User) error {
-	query := "INSERT INTO Users (Username, Email, Password, Role, Balance, Token) VALUES (?, ?, ?, ?, ?, ?)"
-	_, err := dao.db.Exec(query, user.Username, user.Email, user.Password, user.Role, user.Balance, user.Token)
+	query := "INSERT INTO Users (Username, Email, Role, Balance) VALUES (?, ?, ?, ?)"
+	_, err := dao.db.Exec(query, user.Username, user.Email, user.Role, user.Balance)
 	return err
 }
+
 func (dao *UserDAO) GetUserByEmail(email string) (*models.User, error) {
 	query := "SELECT UserID, Username, Email, Role, Balance FROM Users WHERE Email = ?"
 	row := dao.db.QueryRow(query, email)
 
 	var user models.User
-	// Notice we're not fetching Password or Token as they're not used
 	err := row.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance)
 	if err != nil {
 		if err == sql.ErrNoRows {

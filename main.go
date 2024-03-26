@@ -10,9 +10,11 @@ import (
 
 func main() {
 	auth.NewAuth()
-	server := server.NewServer()
+	server, cleanup := server.NewServer()
+
 	fmt.Println("Server running on 8080")
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
+	defer cleanup()
 }

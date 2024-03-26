@@ -15,16 +15,15 @@ type Server struct {
 	db   *sql.DB
 }
 
-func NewServer() *http.Server {
+func NewServer() (*http.Server, func()) {
 	port := 8080
-	db, _ := dao.StartDB()
+	db, cleanup, _ := dao.StartDB()
 
 	NewServer := &Server{
 		port: port,
 
 		db: db,
 	}
-	defer db.Close()
 
 	// Declare Server config
 	server := &http.Server{
@@ -35,5 +34,8 @@ func NewServer() *http.Server {
 		WriteTimeout: 30 * time.Second,
 	}
 
-	return server
+	return server, func() {
+		db.Close()
+		cleanup()
+	}
 }

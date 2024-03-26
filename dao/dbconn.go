@@ -11,7 +11,7 @@ import (
 	"github.com/tursodatabase/go-libsql"
 )
 
-func StartDB() (*sql.DB, error) {
+func StartDB() (*sql.DB, func(), error) {
 
 	err := godotenv.Load()
 
@@ -28,7 +28,6 @@ func StartDB() (*sql.DB, error) {
 		fmt.Println("Error creating temporary directory:", err)
 		os.Exit(1)
 	}
-	defer os.RemoveAll(dir)
 
 	dbPath := filepath.Join(dir, dbName)
 
@@ -41,16 +40,18 @@ func StartDB() (*sql.DB, error) {
 		fmt.Println("Error creating connector:", err)
 		os.Exit(1)
 	}
-	defer connector.Close()
 
 	db := sql.OpenDB(connector)
 	// userDAO := NewUserDAO(db)
 
-	// userDAO := NewUserDAO(db)
 	// bungus := userDAO.TestDatabaseConnection()
 	// if bungus != nil {
 	// 	fmt.Println(bungus)
 	// }
+	cleanup := func() {
 
-	return db, nil
+		os.RemoveAll(dir)
+	}
+
+	return db, cleanup, nil
 }
