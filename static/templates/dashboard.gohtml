@@ -1,6 +1,40 @@
 <!DOCTYPE html>
-<p><a href="/logout/{{.Provider}}">logout</a></p>
-<p>Name: {{.Name}} [{{.LastName}}, {{.FirstName}}]</p>
-<p>Email: {{.Email}}</p>
-<p>Role: {{.Role}}</p>
-<p>Balance: {{.Balance}}</p>
+<html>
+<head>
+    <title>User Information</title>
+</head>
+<body>
+    <h1>User Details</h1>
+    <table>
+        <tr>
+            <th>User ID</th>
+            <td>{{.UserID}}</td>
+        </tr>
+        <tr>
+            <th>Username</th>
+            <td>{{ .Username }}</td>
+        </tr>
+        <tr>
+            <th>Email</th>
+            <td>{{ .Email }}</td>
+        </tr>
+        <tr>
+            <th>Role</th>
+            <td>{{ .Role }}</td>
+        </tr>
+        <tr>
+            <th>Balance</th>
+            <td>{{ .Balance }}</td>
+        </tr>
+    </table>
+    <p><a href="/logout/{{.Provider}}">Logout</a></p>
+
+    {{ if eq .Role "admin" }}
+    <p><a href="/admindashboard">Admin Dashboard</a></p>
+    {{ end }}
+
+    {{ if eq .Role "root" }}
+    <p><a href="/rootdashboard">Root Dashboard</a></p>
+    {{ end }}
+</body>
+</html>

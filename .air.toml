@@ -1,0 +1,20 @@
+# Working directory
+root = "."
+
+# Watch these directories for changes
+watch_dirs = ["./"]
+
+# Ignore these files or directories
+exclude_dirs = ["assets", "tmp", "vendor"]
+
+# Build command
+build_cmd = "go build -o main ."
+
+# Binary file to run
+bin_file = "main"
+
+# Custom start command (optional)
+# start_cmd = "./main"
+
+# Use log file (optional)
+# log = "air.log"

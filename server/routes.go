@@ -34,11 +34,18 @@ func (handler *Handler) HandleAuthCallbackFunction(w http.ResponseWriter, r *htt
 	err = handler.auth.StoreUserSession(w, r, user)
 	if err != nil {
 		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
 		return
 	}
 
-	tmpl := template.Must(template.ParseFiles("static/templates/dashboard.gohtml"))
-	tmpl.Execute(w, user)
+	if err != nil {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
 
 func (handler *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
@@ -56,32 +63,69 @@ func (handler *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func (h *Handler) HandleHome(w http.ResponseWriter, r *http.Request) {
-	user, err := h.auth.GetSessionUser(r)
+func (handler *Handler) HandleHome(w http.ResponseWriter, r *http.Request) {
+	user, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	if err != nil {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
 	tmpl := template.Must(template.ParseFiles("static/templates/dashboard.gohtml"))
-	tmpl.Execute(w, user)
+	tmpl.Execute(w, dbUser)
 }
 
-func (h *Handler) Test(w http.ResponseWriter, r *http.Request) {
-	user, err := h.auth.GetSessionUser(r)
+// Root routes
+func (handler *Handler) RootAdminDashboard(w http.ResponseWriter, r *http.Request) {
+	user, err := handler.auth.GetSessionUser(r)
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	dbUser, err := h.dao.GetUserByEmail(user.Email)
+
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
 
 	if err != nil {
 		log.Println(err)
 		return
 	}
-	fmt.Println(dbUser)
 
-	template := template.Must(template.ParseFiles("static/templates/test.gohtml"))
+	if dbUser.Role != "root" {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	template := template.Must(template.ParseFiles("static/templates/rootdashboard.gohtml"))
 	template.Execute(w, dbUser)
-
 }
+
+// func (h *Handler) Test(w http.ResponseWriter, r *http.Request) {
+// 	user, err := h.auth.GetSessionUser(r)
+// 	if err != nil {
+// 		log.Println(err)
+// 		return
+// 	}
+// 	dbUser, err := h.dao.GetUserByEmail(user.Email)
+
+// 	if err != nil {
+// 		log.Println(err)
+// 		return
+// 	}
+
+// 	template := template.Must(template.ParseFiles("static/templates/test.gohtml"))
+// 	template.Execute(w, dbUser)
+
+// }

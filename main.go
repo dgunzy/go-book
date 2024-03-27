@@ -44,7 +44,13 @@ func main() {
 
 	// User protected routes
 	router.HandleFunc("/dashboard", auth.RequireAuth(handler.HandleHome, authService)).Methods("GET")
-	router.HandleFunc("/test", auth.RequireAuth(handler.Test, authService)).Methods("GET")
+	// router.HandleFunc("/test", auth.RequireAuth(handler.Test, authService)).Methods("GET")
+
+	// Admin protected routes
+	// router.HandleFunc("/admindashboard", auth.RequireAuth(handler.RootAdminDashboard, authService)).Methods("GET")
+
+	// Root protected routes
+	router.HandleFunc("/rootdashboard", auth.RequireAuth(handler.RootAdminDashboard, authService)).Methods("GET")
 
 	//Auth Routes
 	router.HandleFunc("/auth/{provider}", handler.HandleProviderLogin).Methods("GET")

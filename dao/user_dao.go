@@ -93,10 +93,41 @@ func (dao *UserDAO) GetUserByEmail(email string) (*models.User, error) {
 	err := row.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, errors.New("user not found")
+			// Create a new user if not found
+			user = models.User{
+				Username: email,
+				Email:    email,
+				Role:     "user",
+				Balance:  0,
+			}
+			err = dao.CreateUser(&user)
+			if err != nil {
+				return nil, err
+			}
+			return &user, nil
 		}
 		return nil, err
 	}
 
 	return &user, nil
+}
+func (dao *UserDAO) GetAllUsers() ([]*models.User, error) {
+	query := "SELECT UserID, Username, Email, Role, Balance FROM Users"
+	rows, err := dao.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []*models.User
+	for rows.Next() {
+		var user models.User
+		err := rows.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, &user)
+	}
+
+	return users, nil
 }
