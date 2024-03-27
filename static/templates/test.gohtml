@@ -1,1 +1,35 @@
-It might have worked
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User Information</title>
+</head>
+<body>
+    <h1>User Details</h1>
+    <table>
+        <tr>
+            <th>User ID</th>
+            <td>{{.UserID}}</td>
+        </tr>
+        <tr>
+            <th>Username</th>
+            <td>{{ .Username }}</td>
+        </tr>
+        <tr>
+            <th>Email</th>
+            <td>{{ .Email }}</td>
+        </tr>
+        <tr>
+            <th>Role</th>
+            <td>{{ .Role }}</td>
+        </tr>
+        <tr>
+            <th>Balance</th>
+            <td>{{ .Balance }}</td>
+        </tr>
+        <tr>
+            <th>Token</th>
+            <td>{{ .Token }}</td>
+        </tr>
+    </table>
+</body>
+</html>
