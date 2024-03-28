@@ -92,22 +92,28 @@ func (handler *Handler) AdminDashboard(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Println(err)
 		return
-
 	}
+
 	dbUser, err := handler.dao.GetUserByEmail(user.Email)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 
-	if dbUser.Role != "admin" || dbUser.Role != "root" {
-		log.Println(err)
-		w.Header().Set("Location", "/")
-		w.WriteHeader(http.StatusTemporaryRedirect)
+	if dbUser.Role != "root" {
+		log.Println("User does not have root access!")
+		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 		return
 	}
+	allUsers, err := handler.dao.GetAllUsers()
+	if err != nil {
+		log.Println(err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
 	template := template.Must(template.ParseFiles("static/templates/admindashboard.gohtml"))
-	template.Execute(w, dbUser)
+	template.Execute(w, allUsers)
 }
 
 // Root routes
@@ -258,4 +264,29 @@ func (handler *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+func (handler *Handler) createBetHandler(w http.ResponseWriter, r *http.Request) {
+	// Call dao.CreateBet here
+	// email := strings.TrimPrefix(r.URL.Path, "/bets/")
+
+}
+
+func (handler *Handler) readBetHandler(w http.ResponseWriter, r *http.Request) {
+	// Call dao.ReadBet here
+}
+
+func (handler *Handler) updateBetHandler(w http.ResponseWriter, r *http.Request) {
+	// Call dao.UpdateBet here
+}
+
+func (handler *Handler) deleteBetHandler(w http.ResponseWriter, r *http.Request) {
+	// Call dao.DeleteBet here
+}
+
+func (handler *Handler) createTransactionHandler(w http.ResponseWriter, r *http.Request) {
+	// Call dao.CreateTransaction here
+}
+
+func (handler *Handler) readTransactionHandler(w http.ResponseWriter, r *http.Request) {
+	// Call dao.ReadTransaction here
 }

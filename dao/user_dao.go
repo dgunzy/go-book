@@ -129,3 +129,240 @@ func (dao *UserDAO) UpdateUserByEmail(email string, updates map[string]interface
 
 	return nil
 }
+func (dao *UserDAO) CreateBet(bet *models.Bet, outcomes []*models.BetOutcome) error {
+	tx, err := dao.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	query := `INSERT INTO Bets (Title, Description, OddsMultiplier, Status, CreatedBy) VALUES (?, ?, ?, ?, ?)`
+	res, err := tx.Exec(query, bet.Title, bet.Description, bet.OddsMultiplier, bet.Status, bet.CreatedBy)
+	if err != nil {
+		return err
+	}
+
+	betID, err := res.LastInsertId()
+	if err != nil {
+		return err
+	}
+
+	for _, outcome := range outcomes {
+		query := `INSERT INTO BetOutcomes (BetID, Description, Odds) VALUES (?, ?, ?)`
+		_, err = tx.Exec(query, betID, outcome.Description, outcome.Odds)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+func (dao *UserDAO) ReadBet(betID int) (*models.Bet, []*models.BetOutcome, error) {
+	bet := new(models.Bet)
+	query := `SELECT * FROM Bets WHERE BetID = ?`
+	err := dao.db.QueryRow(query, betID).Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.CreatedBy, &bet.CreatedAt)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var outcomes []*models.BetOutcome
+	query = `SELECT OutcomeID, Description, Odds FROM BetOutcomes WHERE BetID = ?`
+	rows, err := dao.db.Query(query, betID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		outcome := new(models.BetOutcome)
+		err = rows.Scan(&outcome.OutcomeID, &outcome.Description, &outcome.Odds)
+		if err != nil {
+			return nil, nil, err
+		}
+		outcomes = append(outcomes, outcome)
+	}
+
+	return bet, outcomes, nil
+}
+
+// UpdateBet updates a bet with the given ID and the provided updates
+func (dao *UserDAO) UpdateBet(betID int, updates map[string]interface{}, outcomes []*models.BetOutcome) error {
+	tx, err := dao.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Update Bets table
+	var queryParts []string
+	var values []interface{}
+	queryParts = append(queryParts, "UPDATE Bets SET")
+	count := 0
+	for key, value := range updates {
+		if key != "bet_id" {
+			if count > 0 {
+				queryParts = append(queryParts, ",")
+			}
+			queryParts = append(queryParts, fmt.Sprintf("%s = ?", key))
+			values = append(values, value)
+			count++
+		}
+	}
+	queryParts = append(queryParts, "WHERE BetID = ?")
+	values = append(values, betID)
+	query := strings.Join(queryParts, " ")
+	_, err = tx.Exec(query, values...)
+	if err != nil {
+		return err
+	}
+
+	// Update BetOutcomes table
+	_, err = tx.Exec("DELETE FROM BetOutcomes WHERE BetID = ?", betID)
+	if err != nil {
+		return err
+	}
+
+	for _, outcome := range outcomes {
+		query := `INSERT INTO BetOutcomes (BetID, Description, Odds) VALUES (?, ?, ?)`
+		_, err = tx.Exec(query, betID, outcome.Description, outcome.Odds)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+func (dao *UserDAO) DeleteBet(betID int) error {
+	query := `DELETE FROM Bets WHERE BetID = ?`
+	_, err := dao.db.Exec(query, betID)
+	return err
+}
+
+// Transaction Create/Read operations
+func (dao *UserDAO) CreateTransaction(transaction *models.Transaction) error {
+	query := `INSERT INTO Transactions (UserID, Amount, Type, Description) VALUES (?, ?, ?, ?)`
+	_, err := dao.db.Exec(query, transaction.UserID, transaction.Amount, transaction.Type, transaction.Description)
+	return err
+}
+
+func (dao *UserDAO) ReadTransaction(transactionID int) (*models.Transaction, error) {
+	transaction := new(models.Transaction)
+	query := `SELECT * FROM Transactions WHERE TransactionID = ?`
+	err := dao.db.QueryRow(query, transactionID).Scan(&transaction.TransactionID, &transaction.UserID, &transaction.Amount, &transaction.Type, &transaction.Description, &transaction.TransactionDate)
+	return transaction, err
+}
+func (dao *UserDAO) GetAllBets() ([]*models.Bet, error) {
+	query := "SELECT BetID, Title, Description, OddsMultiplier, Status, CreatedBy, CreatedAt FROM Bets"
+	rows, err := dao.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bets []*models.Bet
+	for rows.Next() {
+		bet := new(models.Bet)
+		err := rows.Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.CreatedBy, &bet.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		bets = append(bets, bet)
+	}
+
+	return bets, nil
+}
+func (dao *UserDAO) GetUserBets(userID int) ([]*models.UserBet, error) {
+	query := "SELECT UserBetID, UserID, BetID, OutcomeID, Amount, PlacedAt, Result FROM UserBets WHERE UserID = ?"
+	rows, err := dao.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var userBets []*models.UserBet
+	for rows.Next() {
+		userBet := new(models.UserBet)
+		err := rows.Scan(&userBet.UserBetID, &userBet.UserID, &userBet.BetID, &userBet.OutcomeID, &userBet.Amount, &userBet.PlacedAt, &userBet.Result)
+		if err != nil {
+			return nil, err
+		}
+		userBets = append(userBets, userBet)
+	}
+
+	return userBets, nil
+}
+func (dao *UserDAO) PlaceBet(userBet *models.UserBet) error {
+	tx, err := dao.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Deduct the bet amount from the user's balance
+	query := "UPDATE Users SET Balance = Balance - ? WHERE UserID = ?"
+	_, err = tx.Exec(query, userBet.Amount, userBet.UserID)
+	if err != nil {
+		return err
+	}
+
+	// Insert the user bet
+	query = "INSERT INTO UserBets (UserID, BetID, OutcomeID, Amount) VALUES (?, ?, ?, ?)"
+	_, err = tx.Exec(query, userBet.UserID, userBet.BetID, userBet.OutcomeID, userBet.Amount)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (dao *UserDAO) GradeBet(betID int, winningOutcomeID int) error {
+	tx, err := dao.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// Update the Bets table to mark the bet as graded
+	query := "UPDATE Bets SET Status = 'graded' WHERE BetID = ?"
+	_, err = tx.Exec(query, betID)
+	if err != nil {
+		return err
+	}
+
+	// Update the UserBets table with the result
+	query = "UPDATE UserBets SET Result = CASE WHEN OutcomeID = ? THEN 'win' ELSE 'loss' END WHERE BetID = ?"
+	_, err = tx.Exec(query, winningOutcomeID, betID)
+	if err != nil {
+		return err
+	}
+
+	// Get the bet details and outcomes
+	bet, outcomes, err := dao.ReadBet(betID)
+	if err != nil {
+		return err
+	}
+
+	// Find the winning outcome odds
+	var winningOutcomeOdds float64
+	for _, outcome := range outcomes {
+		if outcome.OutcomeID == winningOutcomeID {
+			winningOutcomeOdds = outcome.Odds
+			break
+		}
+	}
+
+	// Update the user balances for winning bets
+	query = `
+        UPDATE Users
+        SET Balance = Balance + (UserBets.Amount * ?)
+        FROM UserBets
+        WHERE UserBets.BetID = ? AND UserBets.OutcomeID = ? AND UserBets.Result = 'win'
+    `
+	_, err = tx.Exec(query, bet.OddsMultiplier*winningOutcomeOdds, betID, winningOutcomeID)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}

@@ -18,20 +18,7 @@
             background-color: #f5f5f5;
         }
     </style>
-    <script>
-        function validateForm(event) {
-            const validRoles = ['user', 'admin', 'root'];
-            const roleInput = event.target.querySelector('input[name="role"]');
-            const role = roleInput.value.trim().toLowerCase();
     
-            if (!validRoles.includes(role)) {
-                event.preventDefault(); // Prevent form submission
-                alert('Invalid role. Please enter "user", "admin", or "root".');
-                roleInput.value = ''; // Clear the invalid value
-                roleInput.focus(); // Focus on the role input field
-            }
-        }
-    </script>
 
     <script src="https://unpkg.com/htmx.org@1.8.4"></script>
 </head>

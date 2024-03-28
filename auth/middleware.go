@@ -24,13 +24,13 @@ func RequireAdmin(handlerFunc http.HandlerFunc, auth *AuthService, dao *dao.User
 			return
 		}
 
-		if dbUser.Role != "admin" || dbUser.Role != "root" {
+		if dbUser.Role == "admin" || dbUser.Role == "root" {
+			handlerFunc(w, r)
+		} else {
 			log.Println("User does not have admin access!")
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
-
-		handlerFunc(w, r)
 
 	}
 }
