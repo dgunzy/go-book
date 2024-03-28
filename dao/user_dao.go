@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/dgunzy/go-book/models"
 )
@@ -17,11 +18,12 @@ func NewUserDAO(db *sql.DB) *UserDAO {
 }
 
 func (dao *UserDAO) GetUserByID(userID int) (*models.User, error) {
-	query := "SELECT UserID, Username, Email, Role, Balance FROM Users WHERE UserID = ?"
+	query := "SELECT UserID, Username, Email, Role, Balance, FreePlayBalance, AutoApproveLimit FROM Users WHERE UserID = ?"
 	row := dao.db.QueryRow(query, userID)
 
 	var user models.User
-	err := row.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance)
+	err := row.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance, &user.FreePlayBalance, &user.AutoApproveLimit)
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, errors.New("user not found")
@@ -32,47 +34,6 @@ func (dao *UserDAO) GetUserByID(userID int) (*models.User, error) {
 	return &user, nil
 }
 
-func (dao *UserDAO) TestDatabaseConnection() error {
-	// Create the "test" table if it doesn't exist
-	createTableQuery := `
-        CREATE TABLE IF NOT EXISTS test (
-            ID INTEGER PRIMARY KEY,
-            NAME TEXT
-        )
-    `
-	_, err := dao.db.Exec(createTableQuery)
-	if err != nil {
-		return err
-	}
-
-	// Insert a sample row into the "test" table
-	insertQuery := "INSERT INTO test (ID, NAME) VALUES (?, ?)"
-	_, err = dao.db.Exec(insertQuery, 2, "John Doe")
-	if err != nil {
-		return err
-	}
-
-	// Query the "test" table and print the result
-	selectQuery := "SELECT ID, NAME FROM test"
-	rows, err := dao.db.Query(selectQuery)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var id int
-		var name string
-		err := rows.Scan(&id, &name)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("ID: %d, Name: %s\n", id, name)
-	}
-
-	return nil
-}
-
 func (dao *UserDAO) UpdateUserToken(userID int, token string) error {
 	query := "UPDATE Users SET Token = ? WHERE UserID = ?"
 	_, err := dao.db.Exec(query, token, userID)
@@ -80,25 +41,28 @@ func (dao *UserDAO) UpdateUserToken(userID int, token string) error {
 }
 
 func (dao *UserDAO) CreateUser(user *models.User) error {
-	query := "INSERT INTO Users (Username, Email, Role, Balance) VALUES (?, ?, ?, ?)"
-	_, err := dao.db.Exec(query, user.Username, user.Email, user.Role, user.Balance)
+	query := "INSERT INTO Users (Username, Email, Role, Balance, FreePlayBalance, AutoApproveLimit) VALUES (?, ?, ?, ?, ?, ?)"
+	_, err := dao.db.Exec(query, user.Username, user.Email, user.Role, user.Balance, user.FreePlayBalance, user.AutoApproveLimit)
 	return err
 }
 
 func (dao *UserDAO) GetUserByEmail(email string) (*models.User, error) {
-	query := "SELECT UserID, Username, Email, Role, Balance FROM Users WHERE Email = ?"
+	query := "SELECT UserID, Username, Email, Role, Balance, FreePlayBalance, AutoApproveLimit FROM Users WHERE Email = ?"
 	row := dao.db.QueryRow(query, email)
 
 	var user models.User
-	err := row.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance)
+	err := row.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance, &user.FreePlayBalance, &user.AutoApproveLimit)
+
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// Create a new user if not found
 			user = models.User{
-				Username: email,
-				Email:    email,
-				Role:     "user",
-				Balance:  0,
+				Username:         email,
+				Email:            email,
+				Role:             "user",
+				Balance:          0,
+				FreePlayBalance:  0,
+				AutoApproveLimit: 200, // Set the default value
 			}
 			err = dao.CreateUser(&user)
 			if err != nil {
@@ -111,8 +75,9 @@ func (dao *UserDAO) GetUserByEmail(email string) (*models.User, error) {
 
 	return &user, nil
 }
+
 func (dao *UserDAO) GetAllUsers() ([]*models.User, error) {
-	query := "SELECT UserID, Username, Email, Role, Balance FROM Users"
+	query := "SELECT UserID, Username, Email, Role, Balance, FreePlayBalance, AutoApproveLimit FROM Users"
 	rows, err := dao.db.Query(query)
 	if err != nil {
 		return nil, err
@@ -122,7 +87,7 @@ func (dao *UserDAO) GetAllUsers() ([]*models.User, error) {
 	var users []*models.User
 	for rows.Next() {
 		var user models.User
-		err := rows.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance)
+		err := rows.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance, &user.FreePlayBalance, &user.AutoApproveLimit)
 		if err != nil {
 			return nil, err
 		}
@@ -130,4 +95,37 @@ func (dao *UserDAO) GetAllUsers() ([]*models.User, error) {
 	}
 
 	return users, nil
+}
+func (dao *UserDAO) UpdateUserByEmail(email string, updates map[string]interface{}) error {
+	// Prepare the query
+	var queryParts []string
+	var values []interface{}
+	queryParts = append(queryParts, "UPDATE Users SET")
+
+	count := 0
+	for key, value := range updates {
+		if key != "email" && key != "user_id" {
+			if count > 0 {
+				queryParts = append(queryParts, ",")
+			}
+			queryParts = append(queryParts, fmt.Sprintf("%s = ?", key))
+			values = append(values, value)
+			count++
+		}
+	}
+
+	queryParts = append(queryParts, "WHERE Email = ?")
+	values = append(values, email)
+
+	query := strings.Join(queryParts, " ")
+
+	// Execute the query
+	_, err := dao.db.Exec(query, values...)
+	if err != nil {
+		fmt.Println(err)
+		return err
+
+	}
+
+	return nil
 }

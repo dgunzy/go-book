@@ -1,0 +1,23 @@
+<form hx-post="/user/{{ .Email }}" hx-target="this" hx-swap="outerHTML">
+    <td>
+        <input type="text" id="username-{{ .Email }}" value="{{ .Username }}" name="username" hx-trigger="input" />
+    </td>
+    <td>{{ .Email }}</td>
+    <td>
+        <input type="text" id="role-{{ .Email }}" value="{{ .Role }}" name="role" hx-trigger="input" />
+    </td>
+    <td>
+        <input type="text" id="balance-{{ .Email }}" value="{{ .Balance }}" name="balance" hx-trigger="input" />
+    </td>
+    <td>
+        <input type="text" id="freeplaybalance-{{ .Email }}" value="{{ .FreePlayBalance }}" name="freeplaybalance" hx-trigger="input" />
+    </td>
+    <td>
+        <input type="text" id="autoapprovelimit-{{ .Email }}" value="{{ .AutoApproveLimit }}" name="autoapprovelimit" hx-trigger="input" />
+    </td>
+    <td>
+        <button type="submit">
+            Submit Changes
+        </button>
+    </td>
+</form>

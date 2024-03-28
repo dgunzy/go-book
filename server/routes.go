@@ -5,6 +5,8 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/markbates/goth/gothic"
 )
@@ -152,6 +154,9 @@ func (handler *Handler) RootUserEditingDashboard(w http.ResponseWriter, r *http.
 	}
 
 	allUsers, err := handler.dao.GetAllUsers()
+	// for _, user := range allUsers {
+	// 	fmt.Println(user)
+	// }
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -160,6 +165,77 @@ func (handler *Handler) RootUserEditingDashboard(w http.ResponseWriter, r *http.
 
 	template := template.Must(template.ParseFiles("static/templates/useredit.gohtml"))
 	err = template.Execute(w, allUsers)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+	// Extract the email from the URL
+	email := strings.TrimPrefix(r.URL.Path, "/user/")
+	// fmt.Println(email)
+
+	// Parse the form values
+	err := r.ParseForm()
+	if err != nil {
+		http.Error(w, "Invalid form data", http.StatusBadRequest)
+		return
+	}
+
+	// Create a map to store the updates
+	updates := make(map[string]interface{})
+
+	// Check for each possible field to update
+	if username, ok := r.PostForm["username"]; ok {
+		updates["username"] = username[0]
+	}
+	if role, ok := r.PostForm["role"]; ok {
+		updates["role"] = role[0]
+	}
+	if balance, ok := r.PostForm["balance"]; ok {
+		balanceFloat, err := strconv.ParseFloat(balance[0], 64)
+		if err != nil {
+			http.Error(w, "Invalid balance value", http.StatusBadRequest)
+			return
+		}
+		updates["balance"] = balanceFloat
+	}
+	if freePlayBalance, ok := r.PostForm["free_play_balance"]; ok {
+		freePlayBalanceFloat, err := strconv.ParseFloat(freePlayBalance[0], 64)
+		if err != nil {
+			http.Error(w, "Invalid free play balance value", http.StatusBadRequest)
+			return
+		}
+		updates["free_play_balance"] = freePlayBalanceFloat
+	}
+	if autoApproveLimit, ok := r.PostForm["auto_approve_limit"]; ok {
+		autoApproveLimitInt, err := strconv.Atoi(autoApproveLimit[0])
+		if err != nil {
+			http.Error(w, "Invalid auto approve limit value", http.StatusBadRequest)
+			return
+		}
+		updates["auto_approve_limit"] = autoApproveLimitInt
+	}
+
+	// Print the received form values
+	// fmt.Println(updates)
+
+	// Update the user in the database
+	err = h.dao.UpdateUserByEmail(email, updates)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	dbUser, err := h.dao.GetUserByEmail(email)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/usertemplate.gohtml"))
+	err = tmpl.Execute(w, dbUser)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
