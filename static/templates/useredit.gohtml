@@ -26,7 +26,6 @@
             <th>Email</th>
             <th>Role</th>
             <th>Balance</th>
-            <th>Token</th>
         </tr>
         {{ range . }}
         <tr>
@@ -35,7 +34,6 @@
             <td>{{ .Email }}</td>
             <td>{{ .Role }}</td>
             <td>{{ .Balance }}</td>
-            <td>{{ .Token }}</td>
         </tr>
         {{ end }}
     </table>

@@ -1,50 +1,64 @@
 package auth
 
 import (
-	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/dgunzy/go-book/dao"
-	"github.com/dgunzy/go-book/models"
-	"github.com/markbates/goth/gothic"
 )
 
-func AuthMiddleware(next http.Handler, userDao *dao.UserDAO) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, err := gothic.CompleteUserAuth(w, r)
+func RequireAdmin(handlerFunc http.HandlerFunc, auth *AuthService, dao *dao.UserDAO) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		session, err := auth.GetSessionUser(r)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Println("User is not authenticated!")
+			http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
 			return
 		}
-		// Check if the user exists in the database
-		dbUser, err := userDao.GetUserByEmail(user.Email)
+		log.Printf("user is authenticated! user: %v!", session.Email)
+
+		dbUser, err := dao.GetUserByEmail(session.Email)
 		if err != nil {
-			if err.Error() == "user not found" {
-				// User doesn't exist, create a new user with the email and default values
-				newUser := &models.User{
-					Email: user.Email,
-					Role:  "user",
-				}
-				err = userDao.CreateUser(newUser)
-				if err != nil {
-					http.Error(w, err.Error(), http.StatusInternalServerError)
-					return
-				}
-				dbUser = newUser
-			} else {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		}
-		fmt.Println(dbUser)
-		// Store the user information in the session
-		session, _ := gothic.Store.Get(r, "_gothic_session")
-		session.Values["user"] = dbUser
-		err = session.Save(r, w)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			log.Println("Error retrieving user from database:", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-		next.ServeHTTP(w, r)
-	})
+
+		if dbUser.Role != "admin" || dbUser.Role != "root" {
+			log.Println("User does not have admin access!")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		handlerFunc(w, r)
+
+	}
+}
+
+func RequireRoot(handlerFunc http.HandlerFunc, auth *AuthService, dao *dao.UserDAO) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		session, err := auth.GetSessionUser(r)
+		if err != nil {
+			log.Println("User is not authenticated!")
+			http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
+			return
+		}
+		log.Printf("user is authenticated! user: %v!", session.Email)
+
+		dbUser, err := dao.GetUserByEmail(session.Email)
+		if err != nil {
+			log.Println("Error retrieving user from database:", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+
+		if dbUser.Role != "root" {
+			log.Println("User does not have root access!")
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		handlerFunc(w, r)
+
+	}
 }

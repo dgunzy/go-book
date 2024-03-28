@@ -6,10 +6,7 @@
 <body>
     <h1>User Details</h1>
     <table>
-        <tr>
-            <th>User ID</th>
-            <td>{{.UserID}}</td>
-        </tr>
+
         <tr>
             <th>Username</th>
             <td>{{ .Username }}</td>
@@ -27,7 +24,6 @@
             <td>{{ .Balance }}</td>
         </tr>
     </table>
-    <p><a href="/logout/{{.Provider}}">Logout</a></p>
 
     {{ if eq .Role "admin" }}
     <p><a href="/admindashboard">Admin Dashboard</a></p>
@@ -36,5 +32,6 @@
     {{ if eq .Role "root" }}
     <p><a href="/rootdashboard">Root Dashboard</a></p>
     {{ end }}
+    <p><a href="/logout/google">logout</a></p>
 </body>
 </html>
