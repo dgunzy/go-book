@@ -171,10 +171,11 @@ func (handler *Handler) RootUserEditingDashboard(w http.ResponseWriter, r *http.
 	}
 }
 
-func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
+func (handler *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	// Extract the email from the URL
 	email := strings.TrimPrefix(r.URL.Path, "/user/")
-	// fmt.Println(email)
+	w.Header().Set("Cache-Control", "no-store")
+	fmt.Println(email)
 
 	// Parse the form values
 	err := r.ParseForm()
@@ -191,6 +192,26 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		updates["username"] = username[0]
 	}
 	if role, ok := r.PostForm["role"]; ok {
+		// Check if the role is valid
+		validRoles := []string{"user", "admin", "root"}
+		isValidRole := false
+		for _, validRole := range validRoles {
+			if role[0] == validRole {
+				isValidRole = true
+				break
+			}
+		}
+		if !isValidRole {
+			allUsers, err := handler.dao.GetAllUsers()
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			tmpl := template.Must(template.ParseFiles("static/templates/useredit.gohtml"))
+			tmpl.Execute(w, allUsers)
+			return
+		}
+
 		updates["role"] = role[0]
 	}
 	if balance, ok := r.PostForm["balance"]; ok {
@@ -218,44 +239,23 @@ func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		updates["auto_approve_limit"] = autoApproveLimitInt
 	}
 
-	// Print the received form values
-	// fmt.Println(updates)
-
 	// Update the user in the database
-	err = h.dao.UpdateUserByEmail(email, updates)
+	err = handler.dao.UpdateUserByEmail(email, updates)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	dbUser, err := h.dao.GetUserByEmail(email)
+	allUsers, err := handler.dao.GetAllUsers()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	tmpl := template.Must(template.ParseFiles("static/templates/usertemplate.gohtml"))
-	err = tmpl.Execute(w, dbUser)
+	tmpl := template.Must(template.ParseFiles("static/templates/useredit.gohtml"))
+	err = tmpl.Execute(w, allUsers)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
-
-// func (h *Handler) Test(w http.ResponseWriter, r *http.Request) {
-// 	user, err := h.auth.GetSessionUser(r)
-// 	if err != nil {
-// 		log.Println(err)
-// 		return
-// 	}
-// 	dbUser, err := h.dao.GetUserByEmail(user.Email)
-
-// 	if err != nil {
-// 		log.Println(err)
-// 		return
-// 	}
-
-// 	template := template.Must(template.ParseFiles("static/templates/test.gohtml"))
-// 	template.Execute(w, dbUser)
-
-// }
