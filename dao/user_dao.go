@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dgunzy/go-book/models"
 )
@@ -26,23 +27,20 @@ func (dao *UserDAO) GetUserByID(userID int) (*models.User, error) {
 
 	if err != nil {
 		if err == sql.ErrNoRows {
+			fmt.Println(err)
 			return nil, errors.New("user not found")
 		}
+		fmt.Println(err)
 		return nil, err
 	}
 
 	return &user, nil
 }
 
-func (dao *UserDAO) UpdateUserToken(userID int, token string) error {
-	query := "UPDATE Users SET Token = ? WHERE UserID = ?"
-	_, err := dao.db.Exec(query, token, userID)
-	return err
-}
-
 func (dao *UserDAO) CreateUser(user *models.User) error {
 	query := "INSERT INTO Users (Username, Email, Role, Balance, FreePlayBalance, AutoApproveLimit) VALUES (?, ?, ?, ?, ?, ?)"
 	_, err := dao.db.Exec(query, user.Username, user.Email, user.Role, user.Balance, user.FreePlayBalance, user.AutoApproveLimit)
+	fmt.Println(err)
 	return err
 }
 
@@ -129,33 +127,36 @@ func (dao *UserDAO) UpdateUserByEmail(email string, updates map[string]interface
 
 	return nil
 }
-func (dao *UserDAO) CreateBet(bet *models.Bet, outcomes []*models.BetOutcome) error {
-	tx, err := dao.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
+func (dao *UserDAO) CreateBet(bet *models.Bet, outcomes []*models.BetOutcome) (int64, error) {
+	// Get the current time
+	currentTime := time.Now()
 
-	query := `INSERT INTO Bets (Title, Description, OddsMultiplier, Status, CreatedBy) VALUES (?, ?, ?, ?, ?)`
-	res, err := tx.Exec(query, bet.Title, bet.Description, bet.OddsMultiplier, bet.Status, bet.CreatedBy)
+	// Insert the bet into the database
+	result, err := dao.db.Exec("INSERT INTO bets (title, description, OddsMultiplier, status, createdBy, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
+		bet.Title, bet.Description, bet.OddsMultiplier, bet.Status, bet.CreatedBy, currentTime.String())
 	if err != nil {
-		return err
-	}
-
-	betID, err := res.LastInsertId()
-	if err != nil {
-		return err
+		fmt.Println(err)
+		return 0, err
 	}
 
+	// Get the last inserted ID
+	betID, err := result.LastInsertId()
+	if err != nil {
+		fmt.Println(err)
+		return 0, err
+	}
+
+	// Insert the bet outcomes into the database
 	for _, outcome := range outcomes {
-		query := `INSERT INTO BetOutcomes (BetID, Description, Odds) VALUES (?, ?, ?)`
-		_, err = tx.Exec(query, betID, outcome.Description, outcome.Odds)
+		_, err := dao.db.Exec("INSERT INTO betOutcomes (betId, description, odds) VALUES (?, ?, ?)",
+			betID, outcome.Description, outcome.Odds)
 		if err != nil {
-			return err
+			fmt.Println(err)
+			return 0, err
 		}
 	}
 
-	return tx.Commit()
+	return betID, nil
 }
 
 func (dao *UserDAO) ReadBet(betID int) (*models.Bet, []*models.BetOutcome, error) {
@@ -163,6 +164,7 @@ func (dao *UserDAO) ReadBet(betID int) (*models.Bet, []*models.BetOutcome, error
 	query := `SELECT * FROM Bets WHERE BetID = ?`
 	err := dao.db.QueryRow(query, betID).Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.CreatedBy, &bet.CreatedAt)
 	if err != nil {
+		fmt.Println(err)
 		return nil, nil, err
 	}
 
@@ -170,6 +172,7 @@ func (dao *UserDAO) ReadBet(betID int) (*models.Bet, []*models.BetOutcome, error
 	query = `SELECT OutcomeID, Description, Odds FROM BetOutcomes WHERE BetID = ?`
 	rows, err := dao.db.Query(query, betID)
 	if err != nil {
+		fmt.Println(err)
 		return nil, nil, err
 	}
 	defer rows.Close()
@@ -178,6 +181,7 @@ func (dao *UserDAO) ReadBet(betID int) (*models.Bet, []*models.BetOutcome, error
 		outcome := new(models.BetOutcome)
 		err = rows.Scan(&outcome.OutcomeID, &outcome.Description, &outcome.Odds)
 		if err != nil {
+			fmt.Println(err)
 			return nil, nil, err
 		}
 		outcomes = append(outcomes, outcome)
@@ -272,10 +276,71 @@ func (dao *UserDAO) GetAllBets() ([]*models.Bet, error) {
 
 	return bets, nil
 }
-func (dao *UserDAO) GetUserBets(userID int) ([]*models.UserBet, error) {
-	query := "SELECT UserBetID, UserID, BetID, OutcomeID, Amount, PlacedAt, Result FROM UserBets WHERE UserID = ?"
-	rows, err := dao.db.Query(query, userID)
+
+// func (dao *UserDAO) GetUserBets(userEmail string) ([]*models.UserBet, error) {
+// 	id, err := dao.GetUserByEmail(userEmail)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	query := "SELECT UserBetID, UserID, BetID, OutcomeID, Amount, PlacedAt, CAST(Result AS TEXT) AS Result FROM UserBets WHERE UserID = ?"
+// 	rows, err := dao.db.Query(query, id.UserID)
+// 	if err != nil {
+// 		fmt.Println(err)
+// 		return nil, err
+// 	}
+// 	defer rows.Close()
+
+// 	// Print the result of the SQL query
+// 	columns, err := rows.Columns()
+// 	if err != nil {
+// 		fmt.Println(err)
+// 		return nil, err
+// 	}
+// 	values := make([]interface{}, len(columns))
+// 	valuePtrs := make([]interface{}, len(columns))
+// 	for i := range columns {
+// 		valuePtrs[i] = &values[i]
+// 	}
+// 	for rows.Next() {
+// 		err := rows.Scan(valuePtrs...)
+// 		if err != nil {
+// 			fmt.Println(err)
+// 			return nil, err
+// 		}
+// 		fmt.Printf("Query Result: %v\n", values)
+// 	}
+
+// 	// Reset the rows pointer to the beginning
+// 	rows.Close()
+// 	rows, err = dao.db.Query(query, id.UserID)
+// 	if err != nil {
+// 		fmt.Println(err)
+// 		return nil, err
+// 	}
+// 	defer rows.Close()
+
+//		var userBets []*models.UserBet
+//		for rows.Next() {
+//			userBet := new(models.UserBet)
+//			err := rows.Scan(&userBet.UserBetID, &userBet.UserID, &userBet.BetID, &userBet.OutcomeID, &userBet.Amount, &userBet.PlacedAt, &userBet.Result)
+//			if err != nil {
+//				fmt.Println(err)
+//				return nil, err
+//			}
+//			userBets = append(userBets, userBet)
+//		}
+//		return userBets, nil
+//	}
+func (dao *UserDAO) GetUserBets(userEmail string) ([]*models.UserBet, error) {
+	query := `
+        SELECT ub.UserBetID, ub.UserID, ub.BetID, ub.OutcomeID, ub.Amount, ub.PlacedAt, ub.Result
+        FROM UserBets ub
+        INNER JOIN Users u ON ub.UserID = u.UserID
+        WHERE u.Email = ?
+    `
+	rows, err := dao.db.Query(query, userEmail)
 	if err != nil {
+		fmt.Println(err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -283,18 +348,32 @@ func (dao *UserDAO) GetUserBets(userID int) ([]*models.UserBet, error) {
 	var userBets []*models.UserBet
 	for rows.Next() {
 		userBet := new(models.UserBet)
-		err := rows.Scan(&userBet.UserBetID, &userBet.UserID, &userBet.BetID, &userBet.OutcomeID, &userBet.Amount, &userBet.PlacedAt, &userBet.Result)
+		var result sql.NullString
+		err := rows.Scan(&userBet.UserBetID, &userBet.UserID, &userBet.BetID, &userBet.OutcomeID, &userBet.Amount, &userBet.PlacedAt, &result)
 		if err != nil {
+			fmt.Println(err)
 			return nil, err
+		}
+
+		//REmove this line
+		fmt.Printf("Scanned values: UserBetID=%d, UserID=%d, BetID=%d, OutcomeID=%d, Amount=%.2f, PlacedAt=%v, Result=%v\n",
+			userBet.UserBetID, userBet.UserID, userBet.BetID, userBet.OutcomeID, userBet.Amount, userBet.PlacedAt, result)
+
+		if result.Valid {
+			userBet.Result = result.String
+		} else {
+			userBet.Result = "ungraded" // Set a default value for Result if it's NULL
 		}
 		userBets = append(userBets, userBet)
 	}
 
 	return userBets, nil
 }
+
 func (dao *UserDAO) PlaceBet(userBet *models.UserBet) error {
 	tx, err := dao.db.Begin()
 	if err != nil {
+		fmt.Println(err)
 		return err
 	}
 	defer tx.Rollback()
@@ -303,13 +382,15 @@ func (dao *UserDAO) PlaceBet(userBet *models.UserBet) error {
 	query := "UPDATE Users SET Balance = Balance - ? WHERE UserID = ?"
 	_, err = tx.Exec(query, userBet.Amount, userBet.UserID)
 	if err != nil {
+		fmt.Println(err)
 		return err
 	}
 
-	// Insert the user bet
-	query = "INSERT INTO UserBets (UserID, BetID, OutcomeID, Amount) VALUES (?, ?, ?, ?)"
-	_, err = tx.Exec(query, userBet.UserID, userBet.BetID, userBet.OutcomeID, userBet.Amount)
+	// Insert the user bet with the Result set to "ungraded"
+	query = "INSERT INTO UserBets (UserID, BetID, OutcomeID, Amount, Result) VALUES (?, ?, ?, ?, ?)"
+	_, err = tx.Exec(query, userBet.UserID, userBet.BetID, userBet.OutcomeID, userBet.Amount, "ungraded")
 	if err != nil {
+		fmt.Println(err)
 		return err
 	}
 
