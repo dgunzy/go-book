@@ -244,10 +244,15 @@ func (dao *UserDAO) DeleteBet(betID int) error {
 }
 
 // Transaction Create/Read operations
-func (dao *UserDAO) CreateTransaction(transaction *models.Transaction) error {
+func (dao *UserDAO) CreateTransaction(transaction *models.Transaction) (int64, error) {
 	query := `INSERT INTO Transactions (UserID, Amount, Type, Description) VALUES (?, ?, ?, ?)`
-	_, err := dao.db.Exec(query, transaction.UserID, transaction.Amount, transaction.Type, transaction.Description)
-	return err
+	result, err := dao.db.Exec(query, transaction.UserID, transaction.Amount, transaction.Type, transaction.Description)
+	if err != nil {
+		fmt.Println(err)
+		return 0, err
+	}
+	lastId, err := result.LastInsertId()
+	return lastId, err
 }
 
 func (dao *UserDAO) ReadTransaction(transactionID int) (*models.Transaction, error) {
@@ -277,68 +282,42 @@ func (dao *UserDAO) GetAllBets() ([]*models.Bet, error) {
 	return bets, nil
 }
 
-// func (dao *UserDAO) GetUserBets(userEmail string) ([]*models.UserBet, error) {
-// 	id, err := dao.GetUserByEmail(userEmail)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	query := "SELECT UserBetID, UserID, BetID, OutcomeID, Amount, PlacedAt, CAST(Result AS TEXT) AS Result FROM UserBets WHERE UserID = ?"
-// 	rows, err := dao.db.Query(query, id.UserID)
-// 	if err != nil {
-// 		fmt.Println(err)
-// 		return nil, err
-// 	}
-// 	defer rows.Close()
-
-// 	// Print the result of the SQL query
-// 	columns, err := rows.Columns()
-// 	if err != nil {
-// 		fmt.Println(err)
-// 		return nil, err
-// 	}
-// 	values := make([]interface{}, len(columns))
-// 	valuePtrs := make([]interface{}, len(columns))
-// 	for i := range columns {
-// 		valuePtrs[i] = &values[i]
-// 	}
-// 	for rows.Next() {
-// 		err := rows.Scan(valuePtrs...)
-// 		if err != nil {
-// 			fmt.Println(err)
-// 			return nil, err
-// 		}
-// 		fmt.Printf("Query Result: %v\n", values)
-// 	}
-
-// 	// Reset the rows pointer to the beginning
-// 	rows.Close()
-// 	rows, err = dao.db.Query(query, id.UserID)
-// 	if err != nil {
-// 		fmt.Println(err)
-// 		return nil, err
-// 	}
-// 	defer rows.Close()
-
-//		var userBets []*models.UserBet
-//		for rows.Next() {
-//			userBet := new(models.UserBet)
-//			err := rows.Scan(&userBet.UserBetID, &userBet.UserID, &userBet.BetID, &userBet.OutcomeID, &userBet.Amount, &userBet.PlacedAt, &userBet.Result)
-//			if err != nil {
-//				fmt.Println(err)
-//				return nil, err
-//			}
-//			userBets = append(userBets, userBet)
-//		}
-//		return userBets, nil
-//	}
 func (dao *UserDAO) GetUserBets(userEmail string) ([]*models.UserBet, error) {
-	query := `
-        SELECT ub.UserBetID, ub.UserID, ub.BetID, ub.OutcomeID, ub.Amount, ub.PlacedAt, ub.Result
-        FROM UserBets ub
-        INNER JOIN Users u ON ub.UserID = u.UserID
-        WHERE u.Email = ?
-    `
-	rows, err := dao.db.Query(query, userEmail)
+	id, err := dao.GetUserByEmail(userEmail)
+	if err != nil {
+		return nil, err
+	}
+	query := "SELECT UserBetID, UserID, BetID, OutcomeID, Amount, PlacedAt, CAST(Result AS TEXT) AS Result FROM UserBets WHERE UserID = ?"
+	rows, err := dao.db.Query(query, id.UserID)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Print the result of the SQL query
+	columns, err := rows.Columns()
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	values := make([]interface{}, len(columns))
+	valuePtrs := make([]interface{}, len(columns))
+	for i := range columns {
+		valuePtrs[i] = &values[i]
+	}
+	for rows.Next() {
+		err := rows.Scan(valuePtrs...)
+		if err != nil {
+			fmt.Println(err)
+			return nil, err
+		}
+		fmt.Printf("Query Result: %v\n", values)
+	}
+
+	// Reset the rows pointer to the beginning
+	rows.Close()
+	rows, err = dao.db.Query(query, id.UserID)
 	if err != nil {
 		fmt.Println(err)
 		return nil, err
@@ -348,27 +327,54 @@ func (dao *UserDAO) GetUserBets(userEmail string) ([]*models.UserBet, error) {
 	var userBets []*models.UserBet
 	for rows.Next() {
 		userBet := new(models.UserBet)
-		var result sql.NullString
-		err := rows.Scan(&userBet.UserBetID, &userBet.UserID, &userBet.BetID, &userBet.OutcomeID, &userBet.Amount, &userBet.PlacedAt, &result)
+		err := rows.Scan(&userBet.UserBetID, &userBet.UserID, &userBet.BetID, &userBet.OutcomeID, &userBet.Amount, &userBet.PlacedAt, &userBet.Result)
 		if err != nil {
 			fmt.Println(err)
 			return nil, err
 		}
-
-		//REmove this line
-		fmt.Printf("Scanned values: UserBetID=%d, UserID=%d, BetID=%d, OutcomeID=%d, Amount=%.2f, PlacedAt=%v, Result=%v\n",
-			userBet.UserBetID, userBet.UserID, userBet.BetID, userBet.OutcomeID, userBet.Amount, userBet.PlacedAt, result)
-
-		if result.Valid {
-			userBet.Result = result.String
-		} else {
-			userBet.Result = "ungraded" // Set a default value for Result if it's NULL
-		}
 		userBets = append(userBets, userBet)
 	}
-
 	return userBets, nil
 }
+
+// func (dao *UserDAO) GetUserBets(userEmail string) ([]*models.UserBet, error) {
+// 	query := `
+//         SELECT ub.UserBetID, ub.UserID, ub.BetID, ub.OutcomeID, ub.Amount, ub.PlacedAt, ub.Result
+//         FROM UserBets ub
+//         INNER JOIN Users u ON ub.UserID = u.UserID
+//         WHERE u.Email = ?
+//     `
+// 	rows, err := dao.db.Query(query, userEmail)
+// 	if err != nil {
+// 		fmt.Println(err)
+// 		return nil, err
+// 	}
+// 	defer rows.Close()
+
+// 	var userBets []*models.UserBet
+// 	for rows.Next() {
+// 		userBet := new(models.UserBet)
+// 		var result sql.NullString
+// 		err := rows.Scan(&userBet.UserBetID, &userBet.UserID, &userBet.BetID, &userBet.OutcomeID, &userBet.Amount, &userBet.PlacedAt, &result)
+// 		if err != nil {
+// 			fmt.Println(err)
+// 			return nil, err
+// 		}
+
+// 		//REmove this line
+// 		// fmt.Printf("Scanned values: UserBetID=%d, UserID=%d, BetID=%d, OutcomeID=%d, Amount=%.2f, PlacedAt=%v, Result=%v\n",
+// 		// 	userBet.UserBetID, userBet.UserID, userBet.BetID, userBet.OutcomeID, userBet.Amount, userBet.PlacedAt, result)
+
+// 		// if result.Valid {
+// 		// 	userBet.Result = result.String
+// 		// } else {
+// 		// 	userBet.Result = "ungraded" // Set a default value for Result if it's NULL
+// 		// }
+// 		userBets = append(userBets, userBet)
+// 	}
+
+// 	return userBets, nil
+// }
 
 func (dao *UserDAO) PlaceBet(userBet *models.UserBet) error {
 	tx, err := dao.db.Begin()

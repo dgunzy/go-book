@@ -55,6 +55,8 @@ func main() {
 	router.HandleFunc("/useredit", auth.RequireRoot(handler.RootUserEditingDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/user/{email}", auth.RequireRoot(handler.UpdateUser, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/rununittests", auth.RequireRoot(handler.RunUnitTests, authService, dao.NewUserDAO(db))).Methods("GET")
+	router.HandleFunc("/runusergetbettest", auth.RequireRoot(handler.RunGetUserBetTest, authService, dao.NewUserDAO(db))).Methods("GET")
+
 	//Auth Routes
 	router.HandleFunc("/auth/{provider}", handler.HandleProviderLogin).Methods("GET")
 	router.HandleFunc("/home", handler.HandleAuthCallbackFunction).Methods("GET")
