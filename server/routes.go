@@ -686,6 +686,119 @@ func (handler *Handler) GetAllBets(w http.ResponseWriter, r *http.Request) {
 		Bets: bets,
 	}
 
+	tmpl := template.Must(template.ParseFiles("static/templates/parlay.gohtml"))
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (handler *Handler) GetMatchBets(w http.ResponseWriter, r *http.Request) {
+	// Get all bets from the database
+	user, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	bets, err := handler.dao.GetBetsByCategory("matchup")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type TemplateData struct {
+		User *models.User
+		Bets map[*models.Bet][]*models.BetOutcome
+	}
+	data := TemplateData{
+		User: dbUser,
+		Bets: bets,
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/matchbets.gohtml"))
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (handler *Handler) GetFutureBets(w http.ResponseWriter, r *http.Request) {
+	// Get all bets from the database
+	user, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	bets, err := handler.dao.GetBetsByCategory("future")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type TemplateData struct {
+		User *models.User
+		Bets map[*models.Bet][]*models.BetOutcome
+	}
+	data := TemplateData{
+		User: dbUser,
+		Bets: bets,
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/futurebets.gohtml"))
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+func (handler *Handler) GetPropBets(w http.ResponseWriter, r *http.Request) {
+	// Get all bets from the database
+	user, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	bets, err := handler.dao.GetBetsByCategory("prop")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type TemplateData struct {
+		User *models.User
+		Bets map[*models.Bet][]*models.BetOutcome
+	}
+	data := TemplateData{
+		User: dbUser,
+		Bets: bets,
+	}
+
 	tmpl := template.Must(template.ParseFiles("static/templates/matchbets.gohtml"))
 	err = tmpl.Execute(w, data)
 	if err != nil {

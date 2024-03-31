@@ -50,7 +50,11 @@ func main() {
 			fmt.Println("Error syncing database:", err)
 		}
 	}, authService)).Methods("GET")
-	router.HandleFunc("/matchbets", auth.RequireAuth(handler.GetAllBets, authService)).Methods("GET")
+	router.HandleFunc("/matchbets", auth.RequireAuth(handler.GetMatchBets, authService)).Methods("GET")
+	router.HandleFunc("/futurebets", auth.RequireAuth(handler.GetFutureBets, authService)).Methods("GET")
+	router.HandleFunc("/props", auth.RequireAuth(handler.GetPropBets, authService)).Methods("GET")
+	router.HandleFunc("/parlay", auth.RequireAuth(handler.GetAllBets, authService)).Methods("GET")
+
 	// router.HandleFunc("/test", auth.RequireAuth(handler.Test, authService)).Methods("GET")
 
 	// Admin protected routes

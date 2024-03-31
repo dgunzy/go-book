@@ -280,6 +280,36 @@ func (dao *UserDAO) GetAllBets() (map[*models.Bet][]*models.BetOutcome, error) {
 	}
 	return betMap, nil
 }
+func (dao *UserDAO) GetBetsByCategory(category string) (map[*models.Bet][]*models.BetOutcome, error) {
+	query := "SELECT b.BetID, b.Title, b.Description, b.OddsMultiplier, b.Status, b.Category, b.CreatedBy, b.CreatedAt, bo.OutcomeID, bo.Description, bo.Odds FROM Bets b LEFT JOIN BetOutcomes bo ON b.BetID = bo.BetID WHERE b.Category = ?"
+	rows, err := dao.db.Query(query, category)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+	defer rows.Close()
+	betMap := make(map[*models.Bet][]*models.BetOutcome)
+	for rows.Next() {
+		var bet models.Bet
+		var outcome models.BetOutcome
+		err := rows.Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.Category, &bet.CreatedBy, &bet.CreatedAt, &outcome.OutcomeID, &outcome.Description, &outcome.Odds)
+		if err != nil {
+			fmt.Println(err)
+			return nil, err
+		}
+		// Check if the bet already exists in the map
+		existingBet, ok := findBetInMap(betMap, bet.BetID)
+		if !ok {
+			// If the bet doesn't exist, add it to the map
+			betMap[&bet] = []*models.BetOutcome{}
+			existingBet = &bet
+		}
+		// Append the outcome to the bet's outcomes
+		betMap[existingBet] = append(betMap[existingBet], &outcome)
+	}
+	return betMap, nil
+}
+
 func findBetInMap(betMap map[*models.Bet][]*models.BetOutcome, betID int) (*models.Bet, bool) {
 	for bet := range betMap {
 		if bet.BetID == betID {
