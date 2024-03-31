@@ -261,25 +261,48 @@ func (dao *UserDAO) ReadTransaction(transactionID int) (*models.Transaction, err
 	err := dao.db.QueryRow(query, transactionID).Scan(&transaction.TransactionID, &transaction.UserID, &transaction.Amount, &transaction.Type, &transaction.Description, &transaction.TransactionDate)
 	return transaction, err
 }
-func (dao *UserDAO) GetAllBets() ([]*models.Bet, error) {
-	query := "SELECT BetID, Title, Description, OddsMultiplier, Status, CreatedBy, CreatedAt FROM Bets"
+func (dao *UserDAO) GetAllBets() (map[*models.Bet][]*models.BetOutcome, error) {
+	query := "SELECT b.BetID, b.Title, b.Description, b.OddsMultiplier, b.Status, b.CreatedBy, b.CreatedAt, bo.OutcomeID, bo.Description, bo.Odds FROM Bets b LEFT JOIN BetOutcomes bo ON b.BetID = bo.BetID"
 	rows, err := dao.db.Query(query)
 	if err != nil {
+		fmt.Println(err)
 		return nil, err
 	}
 	defer rows.Close()
 
-	var bets []*models.Bet
+	betMap := make(map[*models.Bet][]*models.BetOutcome)
+
 	for rows.Next() {
-		bet := new(models.Bet)
-		err := rows.Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.CreatedBy, &bet.CreatedAt)
+		var bet models.Bet
+		var outcome models.BetOutcome
+
+		err := rows.Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.CreatedBy, &bet.CreatedAt, &outcome.OutcomeID, &outcome.Description, &outcome.Odds)
 		if err != nil {
+			fmt.Println(err)
 			return nil, err
 		}
-		bets = append(bets, bet)
+
+		// Check if the bet already exists in the map
+		existingBet, ok := findBetInMap(betMap, bet.BetID)
+		if !ok {
+			// If the bet doesn't exist, add it to the map
+			betMap[&bet] = []*models.BetOutcome{}
+			existingBet = &bet
+		}
+
+		// Append the outcome to the bet's outcomes
+		betMap[existingBet] = append(betMap[existingBet], &outcome)
 	}
 
-	return bets, nil
+	return betMap, nil
+}
+func findBetInMap(betMap map[*models.Bet][]*models.BetOutcome, betID int) (*models.Bet, bool) {
+	for bet := range betMap {
+		if bet.BetID == betID {
+			return bet, true
+		}
+	}
+	return nil, false
 }
 
 func (dao *UserDAO) GetUserBets(userEmail string) ([]*models.UserBet, error) {

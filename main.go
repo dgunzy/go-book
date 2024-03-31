@@ -45,6 +45,7 @@ func main() {
 
 	// User protected routes
 	router.HandleFunc("/dashboard", auth.RequireAuth(handler.HandleHome, authService)).Methods("GET")
+	router.HandleFunc("/openbets", auth.RequireAuth(handler.GetAllBets, authService)).Methods("GET")
 	// router.HandleFunc("/test", auth.RequireAuth(handler.Test, authService)).Methods("GET")
 
 	// Admin protected routes

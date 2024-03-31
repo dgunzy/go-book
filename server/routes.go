@@ -459,23 +459,6 @@ func (handler *Handler) ReadTransaction(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func (handler *Handler) GetAllBets(w http.ResponseWriter, r *http.Request) {
-	// Get all bets from the database
-	bets, err := handler.dao.GetAllBets()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Render the bets list template
-	tmpl := template.Must(template.ParseFiles("static/templates/betslist.gohtml"))
-	err = tmpl.Execute(w, bets)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
 func (handler *Handler) GetUserBets(w http.ResponseWriter, r *http.Request) {
 	// Extract the userID from the URL
 	email := strings.TrimPrefix(r.URL.Path, "/user/")
@@ -670,6 +653,44 @@ func (handler *Handler) RunGetUserBetTest(w http.ResponseWriter, r *http.Request
 	// Render the user bets template
 	if err != nil {
 		http.Error(w, "Get user bets failed", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (handler *Handler) GetAllBets(w http.ResponseWriter, r *http.Request) {
+	// Get all bets from the database
+	user, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	bets, err := handler.dao.GetAllBets()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type TemplateData struct {
+		User *models.User
+		Bets map[*models.Bet][]*models.BetOutcome
+	}
+	data := TemplateData{
+		User: dbUser,
+		Bets: bets,
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/openbets.gohtml"))
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 }
