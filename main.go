@@ -65,6 +65,12 @@ func main() {
 
 	router.HandleFunc("/useredit", auth.RequireRoot(handler.RootUserEditingDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/user/{email}", auth.RequireRoot(func(w http.ResponseWriter, r *http.Request) {
+		handler.UpdateUserForm(w, r)
+		if err := syncDatabase(); err != nil {
+			fmt.Println("Error syncing database:", err)
+		}
+	}, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/update-user/{email}", auth.RequireRoot(func(w http.ResponseWriter, r *http.Request) {
 		handler.UpdateUser(w, r)
 		if err := syncDatabase(); err != nil {
 			fmt.Println("Error syncing database:", err)

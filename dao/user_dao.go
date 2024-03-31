@@ -128,6 +128,26 @@ func (dao *UserDAO) UpdateUserByEmail(email string, updates map[string]interface
 
 	return nil
 }
+func (dao *UserDAO) UpdateUser(user *models.User) error {
+	// Prepare the query
+	query := `
+        UPDATE Users
+        SET Username = ?,
+            Role = ?,
+            FreePlayBalance = ?,
+            AutoApproveLimit = ?
+        WHERE UserID = ?
+    `
+
+	// Execute the query
+	_, err := dao.db.Exec(query, user.Username, user.Role, user.FreePlayBalance, user.AutoApproveLimit, user.UserID)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	return nil
+}
 func (dao *UserDAO) CreateBet(bet *models.Bet, outcomes []*models.BetOutcome) (int64, error) {
 	// Get the current time
 	currentTime := time.Now()

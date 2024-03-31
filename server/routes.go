@@ -175,6 +175,10 @@ func (handler *Handler) RootUserEditingDashboard(w http.ResponseWriter, r *http.
 		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 		return
 	}
+	type userEditingStruct struct {
+		User     *models.User
+		AllUsers []*models.User
+	}
 
 	allUsers, err := handler.dao.GetAllUsers()
 	// for _, user := range allUsers {
@@ -185,10 +189,15 @@ func (handler *Handler) RootUserEditingDashboard(w http.ResponseWriter, r *http.
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+	userEditing := userEditingStruct{
+		User:     dbUser,
+		AllUsers: allUsers,
+	}
 
 	template := template.Must(template.ParseFiles("static/templates/useredit.gohtml"))
-	err = template.Execute(w, allUsers)
+	err = template.Execute(w, userEditing)
 	if err != nil {
+		fmt.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -196,9 +205,9 @@ func (handler *Handler) RootUserEditingDashboard(w http.ResponseWriter, r *http.
 
 func (handler *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	// Extract the email from the URL
-	email := strings.TrimPrefix(r.URL.Path, "/user/")
+	email := strings.TrimPrefix(r.URL.Path, "/update-user/")
 	w.Header().Set("Cache-Control", "no-store")
-	fmt.Println(email)
+	// fmt.Println(email)
 
 	// Parse the form values
 	err := r.ParseForm()
@@ -207,76 +216,82 @@ func (handler *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create a map to store the updates
-	updates := make(map[string]interface{})
-
-	// Check for each possible field to update
-	if username, ok := r.PostForm["username"]; ok {
-		updates["username"] = username[0]
+	// Get the user from the database
+	user, err := handler.dao.GetUserByEmail(email)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	if role, ok := r.PostForm["role"]; ok {
+
+	// Update the user fields based on the form values
+	if username := r.FormValue("username"); username != "" {
+		user.Username = username
+	}
+	if role := r.FormValue("role"); role != "" {
 		// Check if the role is valid
 		validRoles := []string{"user", "admin", "root"}
 		isValidRole := false
 		for _, validRole := range validRoles {
-			if role[0] == validRole {
+			if role == validRole {
 				isValidRole = true
 				break
 			}
 		}
 		if !isValidRole {
-			allUsers, err := handler.dao.GetAllUsers()
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-			tmpl := template.Must(template.ParseFiles("static/templates/useredit.gohtml"))
-			tmpl.Execute(w, allUsers)
+			http.Error(w, "Invalid role value", http.StatusBadRequest)
 			return
 		}
-
-		updates["role"] = role[0]
+		user.Role = role
 	}
-	if balance, ok := r.PostForm["balance"]; ok {
-		balanceFloat, err := strconv.ParseFloat(balance[0], 64)
-		if err != nil {
-			http.Error(w, "Invalid balance value", http.StatusBadRequest)
-			return
-		}
-		updates["balance"] = balanceFloat
-	}
-	if freePlayBalance, ok := r.PostForm["free_play_balance"]; ok {
-		freePlayBalanceFloat, err := strconv.ParseFloat(freePlayBalance[0], 64)
+	if freePlayBalance := r.FormValue("free_play_balance"); freePlayBalance != "" {
+		freePlayBalanceFloat, err := strconv.ParseFloat(freePlayBalance, 64)
 		if err != nil {
 			http.Error(w, "Invalid free play balance value", http.StatusBadRequest)
 			return
 		}
-		updates["free_play_balance"] = freePlayBalanceFloat
+		user.FreePlayBalance = freePlayBalanceFloat
 	}
-	if autoApproveLimit, ok := r.PostForm["auto_approve_limit"]; ok {
-		autoApproveLimitInt, err := strconv.Atoi(autoApproveLimit[0])
+	if autoApproveLimit := r.FormValue("auto_approve_limit"); autoApproveLimit != "" {
+		autoApproveLimitInt, err := strconv.Atoi(autoApproveLimit)
 		if err != nil {
 			http.Error(w, "Invalid auto approve limit value", http.StatusBadRequest)
 			return
 		}
-		updates["auto_approve_limit"] = autoApproveLimitInt
+		user.AutoApproveLimit = autoApproveLimitInt
 	}
 
 	// Update the user in the database
-	err = handler.dao.UpdateUserByEmail(email, updates)
+	err = handler.dao.UpdateUser(user)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	allUsers, err := handler.dao.GetAllUsers()
+	// Render the updated user block template
+	tmpl := template.Must(template.ParseFiles("static/templates/editeduser.gohtml"))
+	err = tmpl.Execute(w, user)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+func (handler *Handler) UpdateUserForm(w http.ResponseWriter, r *http.Request) {
+	// Extract the email from the URL
+	email := strings.TrimPrefix(r.URL.Path, "/user/")
+	w.Header().Set("Cache-Control", "no-store")
+	// fmt.Println(email)
+
+	// Get the user from the database
+	user, err := handler.dao.GetUserByEmail(email)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	tmpl := template.Must(template.ParseFiles("static/templates/useredit.gohtml"))
-	err = tmpl.Execute(w, allUsers)
+	// Render the user edit form template
+	tmpl := template.Must(template.ParseFiles("static/templates/usereditform.gohtml"))
+	err = tmpl.Execute(w, user)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -289,6 +304,16 @@ func (handler *Handler) CreateBet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid form data", http.StatusBadRequest)
 		return
 	}
+	user, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+	if err != nil {
+		log.Println(err)
+		return
+	}
 
 	// Create a new Bet struct
 	bet := &models.Bet{
@@ -296,7 +321,8 @@ func (handler *Handler) CreateBet(w http.ResponseWriter, r *http.Request) {
 		Description:    r.FormValue("description"),
 		OddsMultiplier: parseFloat(r.FormValue("odds_multiplier")),
 		Status:         r.FormValue("status"),
-		CreatedBy:      parseInt(r.FormValue("created_by")),
+		Category:       r.FormValue("category"),
+		CreatedBy:      dbUser.UserID,
 		CreatedAt:      time.Now().String(),
 	}
 
