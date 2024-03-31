@@ -16,7 +16,7 @@ import (
 
 func main() {
 
-	db, cleanup, err := dao.StartDB()
+	db, cleanup, syncDatabase, err := dao.StartDB()
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -44,8 +44,13 @@ func main() {
 	// router.HandleFunc("/edituser", handler.HandleLogin).Methods("GET")
 
 	// User protected routes
-	router.HandleFunc("/dashboard", auth.RequireAuth(handler.HandleHome, authService)).Methods("GET")
-	router.HandleFunc("/openbets", auth.RequireAuth(handler.GetAllBets, authService)).Methods("GET")
+	router.HandleFunc("/dashboard", auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		handler.HandleHome(w, r)
+		if err := syncDatabase(); err != nil {
+			fmt.Println("Error syncing database:", err)
+		}
+	}, authService)).Methods("GET")
+	router.HandleFunc("/matchbets", auth.RequireAuth(handler.GetAllBets, authService)).Methods("GET")
 	// router.HandleFunc("/test", auth.RequireAuth(handler.Test, authService)).Methods("GET")
 
 	// Admin protected routes
@@ -53,10 +58,16 @@ func main() {
 
 	// Root protected routes
 	router.HandleFunc("/rootdashboard", auth.RequireRoot(handler.RootAdminDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
+
 	router.HandleFunc("/useredit", auth.RequireRoot(handler.RootUserEditingDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
-	router.HandleFunc("/user/{email}", auth.RequireRoot(handler.UpdateUser, authService, dao.NewUserDAO(db))).Methods("POST")
-	router.HandleFunc("/rununittests", auth.RequireRoot(handler.RunUnitTests, authService, dao.NewUserDAO(db))).Methods("GET")
-	router.HandleFunc("/runusergetbettest", auth.RequireRoot(handler.RunGetUserBetTest, authService, dao.NewUserDAO(db))).Methods("GET")
+	router.HandleFunc("/user/{email}", auth.RequireRoot(func(w http.ResponseWriter, r *http.Request) {
+		handler.UpdateUser(w, r)
+		if err := syncDatabase(); err != nil {
+			fmt.Println("Error syncing database:", err)
+		}
+	}, authService, dao.NewUserDAO(db))).Methods("POST")
+	// router.HandleFunc("/rununittests", auth.RequireRoot(handler.RunUnitTests, authService, dao.NewUserDAO(db))).Methods("GET")
+	// router.HandleFunc("/runusergetbettest", auth.RequireRoot(handler.RunGetUserBetTest, authService, dao.NewUserDAO(db))).Methods("GET")
 
 	//Auth Routes
 	router.HandleFunc("/auth/{provider}", handler.HandleProviderLogin).Methods("GET")

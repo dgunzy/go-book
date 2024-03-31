@@ -686,7 +686,7 @@ func (handler *Handler) GetAllBets(w http.ResponseWriter, r *http.Request) {
 		Bets: bets,
 	}
 
-	tmpl := template.Must(template.ParseFiles("static/templates/openbets.gohtml"))
+	tmpl := template.Must(template.ParseFiles("static/templates/matchbets.gohtml"))
 	err = tmpl.Execute(w, data)
 	if err != nil {
 		fmt.Println(err)

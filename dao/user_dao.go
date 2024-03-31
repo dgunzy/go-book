@@ -41,6 +41,7 @@ func (dao *UserDAO) CreateUser(user *models.User) error {
 	query := "INSERT INTO Users (Username, Email, Role, Balance, FreePlayBalance, AutoApproveLimit) VALUES (?, ?, ?, ?, ?, ?)"
 	_, err := dao.db.Exec(query, user.Username, user.Email, user.Role, user.Balance, user.FreePlayBalance, user.AutoApproveLimit)
 	fmt.Println(err)
+
 	return err
 }
 
@@ -130,22 +131,19 @@ func (dao *UserDAO) UpdateUserByEmail(email string, updates map[string]interface
 func (dao *UserDAO) CreateBet(bet *models.Bet, outcomes []*models.BetOutcome) (int64, error) {
 	// Get the current time
 	currentTime := time.Now()
-
 	// Insert the bet into the database
-	result, err := dao.db.Exec("INSERT INTO bets (title, description, OddsMultiplier, status, createdBy, createdAt) VALUES (?, ?, ?, ?, ?, ?)",
-		bet.Title, bet.Description, bet.OddsMultiplier, bet.Status, bet.CreatedBy, currentTime.String())
+	result, err := dao.db.Exec("INSERT INTO bets (title, description, OddsMultiplier, status, category, createdBy, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)",
+		bet.Title, bet.Description, bet.OddsMultiplier, bet.Status, bet.Category, bet.CreatedBy, currentTime.String())
 	if err != nil {
 		fmt.Println(err)
 		return 0, err
 	}
-
 	// Get the last inserted ID
 	betID, err := result.LastInsertId()
 	if err != nil {
 		fmt.Println(err)
 		return 0, err
 	}
-
 	// Insert the bet outcomes into the database
 	for _, outcome := range outcomes {
 		_, err := dao.db.Exec("INSERT INTO betOutcomes (betId, description, odds) VALUES (?, ?, ?)",
@@ -155,19 +153,17 @@ func (dao *UserDAO) CreateBet(bet *models.Bet, outcomes []*models.BetOutcome) (i
 			return 0, err
 		}
 	}
-
 	return betID, nil
 }
 
 func (dao *UserDAO) ReadBet(betID int) (*models.Bet, []*models.BetOutcome, error) {
 	bet := new(models.Bet)
 	query := `SELECT * FROM Bets WHERE BetID = ?`
-	err := dao.db.QueryRow(query, betID).Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.CreatedBy, &bet.CreatedAt)
+	err := dao.db.QueryRow(query, betID).Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.Category, &bet.CreatedBy, &bet.CreatedAt)
 	if err != nil {
 		fmt.Println(err)
 		return nil, nil, err
 	}
-
 	var outcomes []*models.BetOutcome
 	query = `SELECT OutcomeID, Description, Odds FROM BetOutcomes WHERE BetID = ?`
 	rows, err := dao.db.Query(query, betID)
@@ -176,7 +172,6 @@ func (dao *UserDAO) ReadBet(betID int) (*models.Bet, []*models.BetOutcome, error
 		return nil, nil, err
 	}
 	defer rows.Close()
-
 	for rows.Next() {
 		outcome := new(models.BetOutcome)
 		err = rows.Scan(&outcome.OutcomeID, &outcome.Description, &outcome.Odds)
@@ -186,7 +181,6 @@ func (dao *UserDAO) ReadBet(betID int) (*models.Bet, []*models.BetOutcome, error
 		}
 		outcomes = append(outcomes, outcome)
 	}
-
 	return bet, outcomes, nil
 }
 
@@ -197,7 +191,6 @@ func (dao *UserDAO) UpdateBet(betID int, updates map[string]interface{}, outcome
 		return err
 	}
 	defer tx.Rollback()
-
 	// Update Bets table
 	var queryParts []string
 	var values []interface{}
@@ -220,13 +213,11 @@ func (dao *UserDAO) UpdateBet(betID int, updates map[string]interface{}, outcome
 	if err != nil {
 		return err
 	}
-
 	// Update BetOutcomes table
 	_, err = tx.Exec("DELETE FROM BetOutcomes WHERE BetID = ?", betID)
 	if err != nil {
 		return err
 	}
-
 	for _, outcome := range outcomes {
 		query := `INSERT INTO BetOutcomes (BetID, Description, Odds) VALUES (?, ?, ?)`
 		_, err = tx.Exec(query, betID, outcome.Description, outcome.Odds)
@@ -234,7 +225,6 @@ func (dao *UserDAO) UpdateBet(betID int, updates map[string]interface{}, outcome
 			return err
 		}
 	}
-
 	return tx.Commit()
 }
 func (dao *UserDAO) DeleteBet(betID int) error {
@@ -262,26 +252,22 @@ func (dao *UserDAO) ReadTransaction(transactionID int) (*models.Transaction, err
 	return transaction, err
 }
 func (dao *UserDAO) GetAllBets() (map[*models.Bet][]*models.BetOutcome, error) {
-	query := "SELECT b.BetID, b.Title, b.Description, b.OddsMultiplier, b.Status, b.CreatedBy, b.CreatedAt, bo.OutcomeID, bo.Description, bo.Odds FROM Bets b LEFT JOIN BetOutcomes bo ON b.BetID = bo.BetID"
+	query := "SELECT b.BetID, b.Title, b.Description, b.OddsMultiplier, b.Status, b.Category, b.CreatedBy, b.CreatedAt, bo.OutcomeID, bo.Description, bo.Odds FROM Bets b LEFT JOIN BetOutcomes bo ON b.BetID = bo.BetID"
 	rows, err := dao.db.Query(query)
 	if err != nil {
 		fmt.Println(err)
 		return nil, err
 	}
 	defer rows.Close()
-
 	betMap := make(map[*models.Bet][]*models.BetOutcome)
-
 	for rows.Next() {
 		var bet models.Bet
 		var outcome models.BetOutcome
-
-		err := rows.Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.CreatedBy, &bet.CreatedAt, &outcome.OutcomeID, &outcome.Description, &outcome.Odds)
+		err := rows.Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.Category, &bet.CreatedBy, &bet.CreatedAt, &outcome.OutcomeID, &outcome.Description, &outcome.Odds)
 		if err != nil {
 			fmt.Println(err)
 			return nil, err
 		}
-
 		// Check if the bet already exists in the map
 		existingBet, ok := findBetInMap(betMap, bet.BetID)
 		if !ok {
@@ -289,11 +275,9 @@ func (dao *UserDAO) GetAllBets() (map[*models.Bet][]*models.BetOutcome, error) {
 			betMap[&bet] = []*models.BetOutcome{}
 			existingBet = &bet
 		}
-
 		// Append the outcome to the bet's outcomes
 		betMap[existingBet] = append(betMap[existingBet], &outcome)
 	}
-
 	return betMap, nil
 }
 func findBetInMap(betMap map[*models.Bet][]*models.BetOutcome, betID int) (*models.Bet, bool) {
