@@ -268,7 +268,7 @@ func (handler *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Render the updated user block template
-	tmpl := template.Must(template.ParseFiles("static/templates/editeduser.gohtml"))
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/editeduser.gohtml"))
 	err = tmpl.Execute(w, user)
 	if err != nil {
 		fmt.Println(err)
@@ -290,7 +290,7 @@ func (handler *Handler) UpdateUserForm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Render the user edit form template
-	tmpl := template.Must(template.ParseFiles("static/templates/usereditform.gohtml"))
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/usereditform.gohtml"))
 	err = tmpl.Execute(w, user)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
