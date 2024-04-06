@@ -57,12 +57,6 @@ func (handler *Handler) HandleAuthCallbackFunction(w http.ResponseWriter, r *htt
 		return
 	}
 
-	if err != nil {
-		log.Println(err)
-		w.Header().Set("Location", "/")
-		w.WriteHeader(http.StatusTemporaryRedirect)
-		return
-	}
 	http.Redirect(w, r, "/dashboard", http.StatusFound)
 }
 
@@ -116,46 +110,50 @@ func (handler *Handler) AdminDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if dbUser.Role != "root" {
-		log.Println("User does not have root access!")
-		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
-		return
+	type AdminDashboardStruct struct {
+		User     *models.User
+		AllUsers []*models.User
 	}
+
 	allUsers, err := handler.dao.GetAllUsers()
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+	adminStruct := AdminDashboardStruct{
+		User:     dbUser,
+		AllUsers: allUsers,
+	}
 
 	template := template.Must(template.ParseFiles("static/templates/admindashboard.gohtml"))
-	template.Execute(w, allUsers)
+	template.Execute(w, adminStruct)
 }
 
 // Root routes
-func (handler *Handler) RootAdminDashboard(w http.ResponseWriter, r *http.Request) {
-	user, err := handler.auth.GetSessionUser(r)
-	if err != nil {
-		log.Println(err)
-		return
-	}
+// func (handler *Handler) RootAdminDashboard(w http.ResponseWriter, r *http.Request) {
+// 	user, err := handler.auth.GetSessionUser(r)
+// 	if err != nil {
+// 		log.Println(err)
+// 		return
+// 	}
 
-	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+// 	dbUser, err := handler.dao.GetUserByEmail(user.Email)
 
-	if err != nil {
-		log.Println(err)
-		return
-	}
+// 	if err != nil {
+// 		log.Println(err)
+// 		return
+// 	}
 
-	if dbUser.Role != "root" {
-		log.Println(err)
-		w.Header().Set("Location", "/")
-		w.WriteHeader(http.StatusTemporaryRedirect)
-		return
-	}
-	template := template.Must(template.ParseFiles("static/templates/rootdashboard.gohtml"))
-	template.Execute(w, dbUser)
-}
+//		if dbUser.Role != "root" {
+//			log.Println(err)
+//			w.Header().Set("Location", "/")
+//			w.WriteHeader(http.StatusTemporaryRedirect)
+//			return
+//		}
+//		template := template.Must(template.ParseFiles("static/templates/rootdashboard.gohtml"))
+//		template.Execute(w, dbUser)
+//	}
 func (handler *Handler) RootUserEditingDashboard(w http.ResponseWriter, r *http.Request) {
 	user, err := handler.auth.GetSessionUser(r)
 	if err != nil {
@@ -287,6 +285,13 @@ func (handler *Handler) UpdateUserForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	fmt.Println(user.Email)
+	fmt.Println(email)
+	if user.Role == "admin" {
+		tmpl := template.Must(template.ParseFiles("static/templates/fragments/usereditformadmin.gohtml"))
+		tmpl.Execute(w, user)
+		return
+	}
 
 	// Render the user edit form template
 	tmpl := template.Must(template.ParseFiles("static/templates/fragments/usereditform.gohtml"))
@@ -295,6 +300,22 @@ func (handler *Handler) UpdateUserForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+func (handler *Handler) AdminUserEdit(w http.ResponseWriter, r *http.Request) {
+	users, err := handler.dao.GetAllUsers()
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/adminuseredit.gohtml"))
+	tmpl.Execute(w, users)
+}
+func (handler *Handler) AdminUserEditRemove(w http.ResponseWriter, r *http.Request) {
+
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/adminusereditremove.gohtml"))
+	tmpl.Execute(w, nil)
 }
 
 // TESTS

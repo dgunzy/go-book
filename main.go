@@ -59,23 +59,28 @@ func main() {
 
 	// Admin protected routes
 	router.HandleFunc("/admindashboard", auth.RequireAdmin(handler.AdminDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
-
-	// Root protected routes
-	router.HandleFunc("/rootdashboard", auth.RequireRoot(handler.RootAdminDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
-
-	router.HandleFunc("/useredit", auth.RequireRoot(handler.RootUserEditingDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
-	router.HandleFunc("/user/{email}", auth.RequireRoot(func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/user/{email}", auth.RequireAdmin(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("Hit the right edit route")
 		handler.UpdateUserForm(w, r)
 		if err := syncDatabase(); err != nil {
 			fmt.Println("Error syncing database:", err)
 		}
 	}, authService, dao.NewUserDAO(db))).Methods("POST")
-	router.HandleFunc("/update-user/{email}", auth.RequireRoot(func(w http.ResponseWriter, r *http.Request) {
+
+	router.HandleFunc("/update-user/{email}", auth.RequireAdmin(func(w http.ResponseWriter, r *http.Request) {
 		handler.UpdateUser(w, r)
 		if err := syncDatabase(); err != nil {
 			fmt.Println("Error syncing database:", err)
 		}
 	}, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/adminuseredit", auth.RequireAdmin(handler.AdminUserEdit, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/adminusereditremove", auth.RequireAdmin(handler.AdminUserEditRemove, authService, dao.NewUserDAO(db))).Methods("POST")
+
+	// Root protected routes
+	// router.HandleFunc("/rootdashboard", auth.RequireRoot(handler.RootAdminDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
+
+	router.HandleFunc("/rootdashboard", auth.RequireRoot(handler.RootUserEditingDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
+
 	// router.HandleFunc("/rununittests", auth.RequireRoot(handler.RunUnitTests, authService, dao.NewUserDAO(db))).Methods("GET")
 	// router.HandleFunc("/runusergetbettest", auth.RequireRoot(handler.RunGetUserBetTest, authService, dao.NewUserDAO(db))).Methods("GET")
 

@@ -78,14 +78,14 @@ func (s *AuthService) RemoveUserSession(w http.ResponseWriter, r *http.Request) 
 
 func RequireAuth(handlerFunc http.HandlerFunc, auth *AuthService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		session, err := auth.GetSessionUser(r)
+		_, err := auth.GetSessionUser(r)
 		if err != nil {
 			log.Println("User is not authenticated!")
 			http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
 			return
 		}
 
-		log.Printf("user is authenticated! user: %v!", session.Email)
+		// log.Printf("user is authenticated! user: %v!", session.Email)
 
 		handlerFunc(w, r)
 	}

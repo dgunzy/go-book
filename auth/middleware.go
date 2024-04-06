@@ -43,7 +43,7 @@ func RequireRoot(handlerFunc http.HandlerFunc, auth *AuthService, dao *dao.UserD
 			http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
 			return
 		}
-		log.Printf("user is authenticated! user: %v!", session.Email)
+		// log.Printf("user is authenticated! user: %v!", session.Email)
 
 		dbUser, err := dao.GetUserByEmail(session.Email)
 		if err != nil {
