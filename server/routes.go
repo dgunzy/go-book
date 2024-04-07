@@ -285,8 +285,8 @@ func (handler *Handler) UpdateUserForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	fmt.Println(user.Email)
-	fmt.Println(email)
+	// fmt.Println(user.Email)
+	// fmt.Println(email)
 	if user.Role == "admin" {
 		tmpl := template.Must(template.ParseFiles("static/templates/fragments/usereditformadmin.gohtml"))
 		tmpl.Execute(w, user)
@@ -346,6 +346,18 @@ func (handler *Handler) AdminBetToggle(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpl := template.Must(template.ParseFiles("static/templates/fragments/adminbeteditdelete.gohtml"))
 	tmpl.Execute(w, data)
+
+}
+func (handler *Handler) CancelUserEdit(w http.ResponseWriter, r *http.Request) {
+	email := strings.TrimPrefix(r.URL.Path, "/canceluseredit/")
+
+	user, err := handler.dao.GetUserByEmail(email)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/editeduser.gohtml"))
+	tmpl.Execute(w, user)
 
 }
 

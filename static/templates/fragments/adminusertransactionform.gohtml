@@ -21,8 +21,13 @@
             <input type="text" id="description" name="description" class="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:border-blue-500" required>
         </div>
         
-        <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded">
-            Submit Transaction
-        </button>
+        <div class="flex space-x-4 justify-end">
+            <button type="submit" class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded">
+                Submit Transaction
+            </button>
+            <button  hx-post="/canceluseredit/{{ .Email }} " hx-target="#transactionForm" hx-swap="outerHTML" type="button" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded" >
+                Cancel
+            </button>
+        </div>
     </form>
 </div>
