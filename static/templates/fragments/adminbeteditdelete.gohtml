@@ -1,0 +1,15 @@
+<div id="betedit{{ .betType }}">
+    <div class="flex justify-center py-4">
+        <button hx-post="/adminbetedit/{{ .betType }}" hx-target="#betedit{{ .betType }}" hx-swap="outerHTML" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">
+            {{- if eq .betType "prop" -}}
+            Toggle Prop Bets
+            {{- else if eq .betType "matchup" -}}
+            Toggle Matchup Bets
+            {{- else if eq .betType "future" -}}
+            Toggle Future Bets
+            {{- else -}}
+            Toggle {{ .betType }} Bets
+            {{- end }}
+        </button>
+    </div>
+</div>

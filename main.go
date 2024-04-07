@@ -75,6 +75,8 @@ func main() {
 	}, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/adminuseredit", auth.RequireAdmin(handler.AdminUserEdit, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/adminusereditremove", auth.RequireAdmin(handler.AdminUserEditRemove, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/adminbetedit/{bettype}", auth.RequireAdmin(handler.AdminBetEdit, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/adminbeteditdelete/{bettype}", auth.RequireAdmin(handler.AdminBetToggle, authService, dao.NewUserDAO(db))).Methods("POST")
 
 	// Root protected routes
 	// router.HandleFunc("/rootdashboard", auth.RequireRoot(handler.RootAdminDashboard, authService, dao.NewUserDAO(db))).Methods("GET")

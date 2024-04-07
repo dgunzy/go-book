@@ -317,6 +317,37 @@ func (handler *Handler) AdminUserEditRemove(w http.ResponseWriter, r *http.Reque
 	tmpl := template.Must(template.ParseFiles("static/templates/fragments/adminusereditremove.gohtml"))
 	tmpl.Execute(w, nil)
 }
+func (handler *Handler) AdminBetEdit(w http.ResponseWriter, r *http.Request) {
+	betType := strings.TrimPrefix(r.URL.Path, "/adminbetedit/")
+
+	bets, err := handler.dao.GetBetsByCategory(betType)
+	if err != nil {
+		fmt.Println("Bet by category " + betType + " Not found ")
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	type TemplateData struct {
+		Category string
+		Bets     map[*models.Bet][]*models.BetOutcome
+	}
+	data := TemplateData{
+		Category: betType,
+		Bets:     bets,
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/adminbetform.gohtml"))
+	tmpl.Execute(w, data)
+}
+func (handler *Handler) AdminBetToggle(w http.ResponseWriter, r *http.Request) {
+	betType := strings.TrimPrefix(r.URL.Path, "/adminbeteditdelete/")
+
+	data := map[string]interface{}{
+		"betType": betType,
+	}
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/adminbeteditdelete.gohtml"))
+	tmpl.Execute(w, data)
+
+}
 
 // TESTS
 

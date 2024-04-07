@@ -48,10 +48,26 @@
       <main class="container mx-auto px-6">
     
             <div class="flex justify-center py-4" id="adminuseredit">
-                <button hx-post="/adminuseredit" hx-target="#adminuseredit" hx-swap="outerHTML transition:true" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">
+                <button hx-post="/adminuseredit" hx-target="#adminuseredit" hx-swap="outerHTML" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">
                     Toggle Users
                 </button>
             </div>
+            <div class="flex justify-center py-4" id="beteditmatchup">
+                <button hx-post="/adminbetedit/matchup" hx-target="#beteditmatchup" hx-swap="outerHTML" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">
+                    Toggle Matchup Bets
+                </button>
+            </div>
+            <div class="flex justify-center py-4" id="beteditfuture">
+                <button hx-post="/adminbetedit/future" hx-target="#beteditfuture" hx-swap="outerHTML" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">
+                    Toggle Future Bets
+                </button>
+            </div>
+            <div class="flex justify-center py-4" id="beteditprop">
+                <button hx-post="/adminbetedit/prop" hx-target="#beteditprop" hx-swap="outerHTML" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">
+                    Toggle Prop Bets
+                </button>
+            </div>
+
         
               
         </div>
