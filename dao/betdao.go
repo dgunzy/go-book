@@ -220,11 +220,11 @@ func (dao *UserDAO) GetBetsByCategory(category string) (map[*models.Bet][]*model
 	return betMap, nil
 }
 
-func findBetInMap(betMap map[*models.Bet][]*models.BetOutcome, betID int) (*models.Bet, bool) {
-	for bet := range betMap {
-		if bet.BetID == betID {
-			return bet, true
-		}
-	}
-	return nil, false
-}
+// func findBetInMap(betMap map[*models.Bet][]*models.BetOutcome, betID int) (*models.Bet, bool) {
+// 	for bet := range betMap {
+// 		if bet.BetID == betID {
+// 			return bet, true
+// 		}
+// 	}
+// 	return nil, false
+// }

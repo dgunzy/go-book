@@ -151,8 +151,8 @@ func (handler *Handler) RunGetUserBetTest(w http.ResponseWriter, r *http.Request
 	}
 
 	// Render the user bets template
-	if err != nil {
-		http.Error(w, "Get user bets failed", http.StatusInternalServerError)
-		return
-	}
+	// if err != nil {
+	// 	http.Error(w, "Get user bets failed", http.StatusInternalServerError)
+	// 	return
+	// }
 }

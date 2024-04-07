@@ -147,3 +147,30 @@ func (dao *UserDAO) UpdateUser(user *models.User) error {
 
 	return nil
 }
+func (dao *UserDAO) AdjustUserBalance(userID int, adjustmentAmount float64) error {
+	// First, get the current balance of the user
+	var currentBalance float64
+	query := "SELECT Balance FROM Users WHERE UserID = ?"
+	err := dao.db.QueryRow(query, userID).Scan(&currentBalance)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			fmt.Println(err)
+			return errors.New("user not found")
+		}
+		fmt.Println(err)
+		return err
+	}
+	fmt.Printf("current balance %.2f\n", currentBalance)
+	newBalance := currentBalance + adjustmentAmount
+
+	// Update the user's balance in the database
+	updateQuery := "UPDATE Users SET Balance = ? WHERE UserID = ?"
+	_, err = dao.db.Exec(updateQuery, newBalance, userID)
+	if err != nil {
+		fmt.Println("this was a setting error")
+		fmt.Println(err)
+		return err
+	}
+
+	return nil
+}
