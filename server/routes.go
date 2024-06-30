@@ -186,10 +186,6 @@ func (handler *Handler) RootUserEditingDashboard(w http.ResponseWriter, r *http.
 		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 		return
 	}
-	type userEditingStruct struct {
-		User     *models.User
-		AllUsers []*models.User
-	}
 
 	allUsers, err := handler.dao.GetAllUsers()
 	// for _, user := range allUsers {
@@ -200,13 +196,9 @@ func (handler *Handler) RootUserEditingDashboard(w http.ResponseWriter, r *http.
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	userEditing := userEditingStruct{
-		User:     dbUser,
-		AllUsers: allUsers,
-	}
 
 	template := template.Must(template.ParseFiles("static/templates/useredit.gohtml"))
-	err = template.Execute(w, userEditing)
+	err = template.Execute(w, allUsers)
 	if err != nil {
 		fmt.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
