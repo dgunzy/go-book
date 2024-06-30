@@ -91,8 +91,46 @@ func (handler *Handler) HandleHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tmpl := template.Must(template.ParseFiles("static/templates/dashboard.gohtml"))
-	tmpl.Execute(w, dbUser)
+	tmpl := template.Must(template.ParseFiles("static/templates/mainpage.gohtml"))
+	if err := tmpl.Execute(w, *dbUser); err != nil {
+		log.Println("Error executing template:", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (handler *Handler) Navbar(w http.ResponseWriter, r *http.Request) {
+	user, err := handler.auth.GetSessionUser(r)
+
+	if err != nil {
+		fmt.Println(err)
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+
+	if err != nil {
+		fmt.Println(err)
+		log.Println(err)
+		return
+	}
+
+	var tmpl *template.Template
+	switch dbUser.Role {
+	case "admin":
+		tmpl = template.Must(template.ParseFiles("static/templates/fragments/navbaradmin.gohtml"))
+	case "root":
+		tmpl = template.Must(template.ParseFiles("static/templates/fragments/navbarroot.gohtml"))
+	default:
+		tmpl = template.Must(template.ParseFiles("static/templates/fragments/navbar.gohtml"))
+	}
+	if err := tmpl.Execute(w, nil); err != nil {
+		log.Println("Error executing template:", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+
 }
 
 // Admin routes
@@ -130,30 +168,6 @@ func (handler *Handler) AdminDashboard(w http.ResponseWriter, r *http.Request) {
 	template.Execute(w, adminStruct)
 }
 
-// Root routes
-// func (handler *Handler) RootAdminDashboard(w http.ResponseWriter, r *http.Request) {
-// 	user, err := handler.auth.GetSessionUser(r)
-// 	if err != nil {
-// 		log.Println(err)
-// 		return
-// 	}
-
-// 	dbUser, err := handler.dao.GetUserByEmail(user.Email)
-
-// 	if err != nil {
-// 		log.Println(err)
-// 		return
-// 	}
-
-//		if dbUser.Role != "root" {
-//			log.Println(err)
-//			w.Header().Set("Location", "/")
-//			w.WriteHeader(http.StatusTemporaryRedirect)
-//			return
-//		}
-//		template := template.Must(template.ParseFiles("static/templates/rootdashboard.gohtml"))
-//		template.Execute(w, dbUser)
-//	}
 func (handler *Handler) RootUserEditingDashboard(w http.ResponseWriter, r *http.Request) {
 	user, err := handler.auth.GetSessionUser(r)
 	if err != nil {
@@ -276,9 +290,20 @@ func (handler *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
 func (handler *Handler) UpdateUserForm(w http.ResponseWriter, r *http.Request) {
 	// Extract the email from the URL
 	email := strings.TrimPrefix(r.URL.Path, "/user/")
-	w.Header().Set("Cache-Control", "no-store")
-	// fmt.Println(email)
 
+	editingUser, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	editingUserDb, err := handler.dao.GetUserByEmail(editingUser.Email)
+
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	// Get the user from the database
 	user, err := handler.dao.GetUserByEmail(email)
 	if err != nil {
@@ -287,7 +312,7 @@ func (handler *Handler) UpdateUserForm(w http.ResponseWriter, r *http.Request) {
 	}
 	// fmt.Println(user.Email)
 	// fmt.Println(email)
-	if user.Role == "admin" {
+	if editingUserDb.Role == "admin" {
 		tmpl := template.Must(template.ParseFiles("static/templates/fragments/usereditformadmin.gohtml"))
 		tmpl.Execute(w, user)
 		return

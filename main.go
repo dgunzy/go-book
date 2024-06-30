@@ -50,6 +50,10 @@ func main() {
 			fmt.Println("Error syncing database:", err)
 		}
 	}, authService)).Methods("GET")
+	router.HandleFunc("/navbar", auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("Received request for /navbar")
+		handler.Navbar(w, r)
+	}, authService)).Methods("GET")
 	router.HandleFunc("/matchbets", auth.RequireAuth(handler.GetMatchBets, authService)).Methods("GET")
 	router.HandleFunc("/futurebets", auth.RequireAuth(handler.GetFutureBets, authService)).Methods("GET")
 	router.HandleFunc("/props", auth.RequireAuth(handler.GetPropBets, authService)).Methods("GET")
@@ -60,7 +64,6 @@ func main() {
 	// Admin protected routes
 	router.HandleFunc("/admindashboard", auth.RequireAdmin(handler.AdminDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/user/{email}", auth.RequireAdmin(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("Hit the right edit route")
 		handler.UpdateUserForm(w, r)
 		if err := syncDatabase(); err != nil {
 			fmt.Println("Error syncing database:", err)
@@ -83,7 +86,6 @@ func main() {
 
 	// Root protected routes
 	// router.HandleFunc("/rootdashboard", auth.RequireRoot(handler.RootAdminDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
-
 	router.HandleFunc("/rootdashboard", auth.RequireRoot(handler.RootUserEditingDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
 
 	// router.HandleFunc("/rununittests", auth.RequireRoot(handler.RunUnitTests, authService, dao.NewUserDAO(db))).Methods("GET")
