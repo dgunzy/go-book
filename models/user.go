@@ -8,4 +8,6 @@ type User struct {
 	Balance          float64 `json:"balance"`
 	FreePlayBalance  float64 `json:"free_play_balance"`
 	AutoApproveLimit int     `json:"auto_approve_limit"`
+	Transactions     []Transaction
+	UserBets         []UserBet
 }

@@ -12,4 +12,5 @@ type Bet struct {
 	CreatedBy      int
 	CreatedAt      time.Time
 	ExpiryTime     time.Time
+	BetOutcomes    []BetOutcomes
 }

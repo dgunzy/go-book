@@ -4,30 +4,30 @@
       Future Bets
     </h2>
     <div class="flex flex-wrap justify-center">
-      {{range $bet, $outcomes := .Bets}}
+      {{ range.Bets }}
       <div class="w-full sm:w-1/2 lg:w-1/3 p-4">
         <div class="bg-white rounded-lg shadow-md p-6">
-          <h3 class="text-xl font-semibold mb-2">{{ $bet.Title }}</h3>
-          <p class="text-gray-600 mb-4">{{ $bet.Description }}</p>
+          <h3 class="text-xl font-semibold mb-2">{{ .Title }}</h3>
+          <p class="text-gray-600 mb-4">{{ .Description }}</p>
           <div class="mb-4">
             <p class="text-gray-800 font-semibold">
-              Odds Multiplier: {{ $bet.OddsMultiplier }}
+              Odds Multiplier: {{ .OddsMultiplier }}
             </p>
-            <p class="text-gray-800 font-semibold">Status: {{ $bet.Status }}</p>
+            <p class="text-gray-800 font-semibold">Status: {{ .Status }}</p>
             <p class="text-gray-800 font-semibold">
-              Created At: {{$bet.CreatedAt.Format "January 2, 2006, 15:04"}}
+              Created At: {{.CreatedAt.Format "January 2, 2006, 15:04"}}
             </p>
             <p class="text-gray-800 font-semibold">
               Expiry Time:
-              {{$bet.ExpiryTime.Format "January 2, 2006, 15:04"}}
+              {{.ExpiryTime.Format "January 2, 2006, 15:04"}}
             </p>
           </div>
           <div>
             <h4 class="text-lg font-semibold mb-2">Outcomes:</h4>
-            {{range $outcome := $outcomes}}
+            {{ range.BetOutcomes }}
             <div class="mb-2">
-              <p class="text-gray-800">{{ $outcome.Description }}</p>
-              <p class="text-gray-800">Odds: {{ $outcome.Odds }}</p>
+              <p class="text-gray-800">{{ .Description }}</p>
+              <p class="text-gray-800">Odds: {{ .Odds }}</p>
             </div>
             {{ end }}
           </div>

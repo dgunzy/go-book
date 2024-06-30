@@ -345,11 +345,11 @@ func (handler *Handler) AdminBetEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	type TemplateData struct {
 		Category string
-		Bets     map[*models.Bet][]*models.BetOutcome
+		Bets     []models.Bet
 	}
 	data := TemplateData{
 		Category: betType,
-		Bets:     bets,
+		Bets:     *bets,
 	}
 
 	tmpl := template.Must(template.ParseFiles("static/templates/fragments/adminbetform.gohtml"))
@@ -402,11 +402,11 @@ func (handler *Handler) GetAllBets(w http.ResponseWriter, r *http.Request) {
 
 	type TemplateData struct {
 		User *models.User
-		Bets map[*models.Bet][]*models.BetOutcome
+		Bets []models.Bet
 	}
 	data := TemplateData{
 		User: dbUser,
-		Bets: bets,
+		Bets: *bets,
 	}
 
 	tmpl := template.Must(template.ParseFiles("static/templates/parlay.gohtml"))
@@ -440,11 +440,11 @@ func (handler *Handler) GetMatchBets(w http.ResponseWriter, r *http.Request) {
 
 	type TemplateData struct {
 		User *models.User
-		Bets map[*models.Bet][]*models.BetOutcome
+		Bets []models.Bet
 	}
 	data := TemplateData{
 		User: dbUser,
-		Bets: bets,
+		Bets: *bets,
 	}
 
 	tmpl := template.Must(template.ParseFiles("static/templates/matchbets.gohtml"))
@@ -478,11 +478,11 @@ func (handler *Handler) GetFutureBets(w http.ResponseWriter, r *http.Request) {
 
 	type TemplateData struct {
 		User *models.User
-		Bets map[*models.Bet][]*models.BetOutcome
+		Bets []models.Bet
 	}
 	data := TemplateData{
 		User: dbUser,
-		Bets: bets,
+		Bets: *bets,
 	}
 
 	tmpl := template.Must(template.ParseFiles("static/templates/futurebets.gohtml"))
@@ -515,11 +515,11 @@ func (handler *Handler) GetPropBets(w http.ResponseWriter, r *http.Request) {
 
 	type TemplateData struct {
 		User *models.User
-		Bets map[*models.Bet][]*models.BetOutcome
+		Bets []models.Bet
 	}
 	data := TemplateData{
 		User: dbUser,
-		Bets: bets,
+		Bets: *bets,
 	}
 
 	tmpl := template.Must(template.ParseFiles("static/templates/propbets.gohtml"))

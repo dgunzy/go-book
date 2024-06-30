@@ -23,6 +23,7 @@ func (dao *UserDAO) GetUserByID(userID int) (*models.User, error) {
 
 	var user models.User
 	err := row.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance, &user.FreePlayBalance, &user.AutoApproveLimit)
+	
 
 	if err != nil {
 		if err == sql.ErrNoRows {

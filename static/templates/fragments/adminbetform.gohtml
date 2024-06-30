@@ -1,60 +1,75 @@
 <div id="betedit{{ .Category }}">
-    <div class="flex justify-center py-4">
-        <button hx-post="/adminbeteditdelete/{{ .Category }}" hx-target="#betedit{{ .Category }}" hx-swap="outerHTML" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">
-            {{- if eq .Category "prop" -}}
-            Toggle Prop Bets
-            {{- else if eq .Category "matchup" -}}
-            Toggle Matchup Bets
-            {{- else if eq .Category "future" -}}
-            Toggle Future Bets
-            {{- else -}}
-            Toggle {{ .Category }} Bets
-            {{- end }}
-        </button>
-    </div>
+  <div class="flex justify-center py-4">
+    <button
+      hx-post="/adminbeteditdelete/{{ .Category }}"
+      hx-target="#betedit{{ .Category }}"
+      hx-swap="outerHTML"
+      class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4"
+    >
+      {{- if eq .Category "prop" -}}
+      Toggle Prop Bets
+      {{- else if eq .Category "matchup" -}}
+      Toggle Matchup Bets
+      {{- else if eq .Category "future" -}}
+      Toggle Future Bets
+      {{- else -}}
+      Toggle {{ .Category }} Bets
+      {{ -end }}
+    </button>
+  </div>
 
-    <div class="max-w-7xl mx-auto">
-        <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">{{ .Category }} Bets</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {{ range $bet, $outcomes := .Bets }}
-            <div id="bet-{{ $bet.BetID }}" class="w-full sm:w-1/2 lg:w-1/3 p-4">
-                <div class="bg-white rounded-lg shadow-md p-6">
-                    <h3 class="text-xl font-semibold mb-2">{{ $bet.Title }}</h3>
-                    <p class="text-gray-600 mb-4">{{ $bet.Description }}</p>
-                    <div class="mb-4">
-                        <p class="text-gray-800 font-semibold">Odds Multiplier: {{ $bet.OddsMultiplier }}</p>
-                        <p class="text-gray-800 font-semibold">Status: {{ $bet.Status }}</p>
-                        <p class="text-gray-800 font-semibold">Created At: {{ $bet.CreatedAt.Format "January 2, 2006, 15:04" }}</p>
-                        <p class="text-gray-800 font-semibold">Expiry Time: {{ $bet.ExpiryTime.Format "January 2, 2006, 15:04" }}</p>
-                    </div>
-                    
-                    <div>
-                        <h4 class="text-lg font-semibold mb-2">Outcomes:</h4>
-                        {{ range $outcome := $outcomes }}
-                        <div class="mb-2">
-                            <p class="text-gray-800">{{ $outcome.Description }}</p>
-                            <p class="text-gray-800">Odds: {{ $outcome.Odds }}</p>
-                        </div>
-                        {{ end }}
-                    </div>
-                    <div class="flex justify-between">
-                        <button class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded"
-                                hx-post="/editBet/{{ $bet.BetID }}"
-                                hx-target="#bet-{{ $bet.BetID }}"
-                                hx-swap="outerHTML">
-                            Edit
-                        </button>
-                        <button class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded"
-                                hx-delete="/deleteBet/{{ $bet.BetID }}"
-                                hx-target="#bet-{{ $bet.BetID }}"
-                                hx-swap="outerHTML">
-                            Delete
-                        </button>
-                    </div>
-                </div>
-                
+  <div class="max-w-7xl mx-auto">
+    <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">
+      {{ .Category }} Bets
+    </h2>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {{ range.Bets }}
+      <div id="bet-{{ .BetID }}" class="w-full sm:w-1/2 lg:w-1/3 p-4">
+        <div class="bg-white rounded-lg shadow-md p-6">
+          <h3 class="text-xl font-semibold mb-2">{{ .Title }}</h3>
+          <p class="text-gray-600 mb-4">{{ .Description }}</p>
+          <div class="mb-4">
+            <p class="text-gray-800 font-semibold">
+              Odds Multiplier: {{ .OddsMultiplier }}
+            </p>
+            <p class="text-gray-800 font-semibold">Status: {{ .Status }}</p>
+            <p class="text-gray-800 font-semibold">
+              Created At: {{ .CreatedAt.Format "January 2, 2006, 15:04" }}
+            </p>
+            <p class="text-gray-800 font-semibold">
+              Expiry Time: {{ .ExpiryTime.Format "January 2, 2006, 15:04" }}
+            </p>
+          </div>
+
+          <div>
+            <h4 class="text-lg font-semibold mb-2">Outcomes:</h4>
+            {{ range.BetOutcomes }}
+            <div class="mb-2">
+              <p class="text-gray-800">{{ .Description }}</p>
+              <p class="text-gray-800">Odds: {{ .Odds }}</p>
             </div>
             {{ end }}
+          </div>
+          <div class="flex justify-between">
+            <button
+              class="bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded"
+              hx-post="/editBet/{{ .BetID }}"
+              hx-target="#bet-{{ .BetID }}"
+              hx-swap="outerHTML"
+            >
+              Edit
+            </button>
+            <button
+              class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded"
+              hx-delete="/deleteBet/{{ .BetID }}"
+              hx-swap="outerHTML"
+            >
+              Delete
+            </button>
+          </div>
         </div>
+      </div>
+      {{ end }}
     </div>
+  </div>
 </div>

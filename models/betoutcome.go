@@ -1,8 +1,6 @@
 package models
 
-type BetOutcome struct {
-	OutcomeID   int     `json:"outcome_id"`
-	BetID       int     `json:"bet_id"`
+type BetOutcomes struct {
 	Description string  `json:"description"`
 	Odds        float64 `json:"odds"`
 }
