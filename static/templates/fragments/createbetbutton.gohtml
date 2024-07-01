@@ -1,0 +1,13 @@
+<div class="flex flex-col items-center justify-center py-4" id="admincreatebet">
+  <div class="mb-4 p-4 border border-gray-400 rounded">
+    <p class="text-center text-black">{{.Message}}</p>
+  </div>
+  <button
+    hx-post="/create-new-bet-form"
+    hx-target="#admincreatebet"
+    hx-swap="outerHTML"
+    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+  >
+    Create New Bet
+  </button>
+</div>

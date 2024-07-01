@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"html/template"
 	"net/http"
 	"strconv"
@@ -32,123 +33,95 @@ func (handler *Handler) ReadBet(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// func (handler *Handler) DeleteBet(w http.ResponseWriter, r *http.Request) {
-// 	// Extract the betID from the URL
-// 	betID := strings.TrimPrefix(r.URL.Path, "/bet/")
-// 	betIDInt, err := strconv.Atoi(betID)
-// 	if err != nil {
-// 		http.Error(w, "Invalid bet ID", http.StatusBadRequest)
-// 		return
-// 	}
+func (handler *Handler) CreateNewBet(w http.ResponseWriter, r *http.Request) {
+	// Parse the form data
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
 
-// 	// Delete the bet from the database
-// 	err = handler.dao.DeleteBet(betIDInt)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
+	// Extract and print form fields
+	title := r.FormValue("Title")
+	description := r.FormValue("Description")
+	status := r.FormValue("Status")
+	category := r.FormValue("Category")
+	expiryTime := r.FormValue("ExpiryTime")
+	outcomeDescriptions := r.Form["OutcomeDescription[]"]
+	odds := r.Form["Odds[]"]
+	bannableUsers := r.Form["bannableUsers[]"]
 
-// 	// Redirect to the bets list page or return a success response
-// 	// ...
-// }
+	// Convert odds from []string to []float64
+	var oddsFloat []float64
+	for _, odd := range odds {
+		oddFloat, err := strconv.ParseFloat(odd, 64)
+		if err != nil {
+			// handle error, maybe log it or return an error response
+			fmt.Println("Error converting odds to float:", err)
+			return
+		}
+		oddsFloat = append(oddsFloat, oddFloat)
+	}
 
-// func (handler *Handler) CreateBet(w http.ResponseWriter, r *http.Request) {
-// 	// Parse the form values
-// 	err := r.ParseForm()
-// 	if err != nil {
-// 		http.Error(w, "Invalid form data", http.StatusBadRequest)
-// 		return
-// 	}
-// 	user, err := handler.auth.GetSessionUser(r)
-// 	if err != nil {
-// 		log.Println(err)
-// 		return
-// 	}
-// 	dbUser, err := handler.dao.GetUserByEmail(user.Email)
-// 	if err != nil {
-// 		log.Println(err)
-// 		return
-// 	}
+	// Convert bannableUsers from []string to []int
+	var bannableUsersInt []int
+	for _, user := range bannableUsers {
+		userID, err := strconv.Atoi(user)
+		if err != nil {
+			// handle error, maybe log it or return an error response
+			fmt.Println("Error converting user ID to int:", err)
+			return
+		}
+		bannableUsersInt = append(bannableUsersInt, userID)
+	}
 
-// 	expiryTimeStr := r.FormValue("expiry_time")
-// 	expiryTime, err := utils.UIToGo(expiryTimeStr)
-// 	if err != nil {
-// 		http.Error(w, "Invalid expiry time format", http.StatusBadRequest)
-// 		return
-// 	}
-// 	createdAt := time.Now()
-// 	// Create a new Bet struct
-// 	bet := &models.Bet{
-// 		Title:          r.FormValue("title"),
-// 		Description:    r.FormValue("description"),
-// 		OddsMultiplier: parseFloat(r.FormValue("odds_multiplier")),
-// 		Status:         r.FormValue("status"),
-// 		Category:       r.FormValue("category"),
-// 		CreatedBy:      dbUser.UserID,
-// 		CreatedAt:      createdAt,
-// 		ExpiryTime:     expiryTime,
-// 	}
+	// Now oddsFloat and bannableUsersInt are ready for database operations
 
-// 	// Create a slice of BetOutcome structs
-// 	var outcomes []*models.BetOutcome
-// 	outcomeDescriptions := r.Form["outcome_description"]
-// 	outcomeOdds := r.Form["outcome_odds"]
+	fmt.Println("Title:", title)
+	fmt.Println("Description:", description)
+	fmt.Println("Status:", status)
+	fmt.Println("Category:", category)
+	fmt.Println("ExpiryTime:", expiryTime)
+	fmt.Println("OutcomeDescriptions:", outcomeDescriptions)
+	fmt.Println("Odds after conversion:", oddsFloat)
+	fmt.Println("BannableUsers after conversion:", bannableUsersInt)
 
-// 	// Parse the outcomes from the form data
-// 	for i := range outcomeDescriptions {
-// 		description := outcomeDescriptions[i]
-// 		odds := parseFloat(outcomeOdds[i])
-// 		outcome := &models.BetOutcome{
-// 			Description: description,
-// 			Odds:        odds,
-// 		}
-// 		outcomes = append(outcomes, outcome)
-// 	}
+	// Respond to the client
+	// w.WriteHeader(http.StatusOK)
+	// fmt.Fprintln(w, "Form data received and printed to the console")
+	type StatusMessage struct {
+		Message string
+	}
+	statusMessage := StatusMessage{
+		Message: "Form data received and printed to the console",
+	}
 
-// 	// Create the bet in the database
-// 	_, err = handler.dao.CreateBet(bet, outcomes)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/createbetbutton.gohtml"))
+	_ = tmpl.Execute(w, statusMessage)
+}
 
-// 	// Redirect to a success page or return a success response
-// 	// ...
-// }
+func (handler *Handler) GetBannableUsers(w http.ResponseWriter, r *http.Request) {
+	// Extract the betID from the URL
+	users, err := handler.dao.GetAllUsers()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	type userForm struct {
+		UserID   int
+		Username string
+		Email    string
+	}
 
-// func (handler *Handler) UpdateBet(w http.ResponseWriter, r *http.Request) {
-// 	// Extract the betID from the URL
-// 	betID := strings.TrimPrefix(r.URL.Path, "/bet/")
-// 	betIDInt, err := strconv.Atoi(betID)
-// 	if err != nil {
-// 		http.Error(w, "Invalid bet ID", http.StatusBadRequest)
-// 		return
-// 	}
+	var userForms []userForm
+	for _, user := range users {
+		userForms = append(userForms, userForm{
+			UserID:   user.UserID,
+			Username: user.Username,
+			Email:    user.Email,
+		})
+	}
 
-// 	// Parse the form values
-// 	err = r.ParseForm()
-// 	if err != nil {
-// 		http.Error(w, "Invalid form data", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	// Create a map to store the updates
-// 	updates := make(map[string]interface{})
-// 	// Check for each possible field to update
-// 	// ...
-
-// 	// Create a slice of BetOutcome structs
-// 	var outcomes []*models.BetOutcome
-// 	// Parse the outcomes from the form data
-// 	// ...
-
-// 	// Update the bet in the database
-// 	err = handler.dao.UpdateBet(betIDInt, updates, outcomes)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	// Redirect to the bet details page or return a success response
-// 	// ...
-// }
+	// Render the bet details template
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/bannableusers.gohtml"))
+	_ = tmpl.Execute(w, userForms)
+}

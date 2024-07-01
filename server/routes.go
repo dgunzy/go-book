@@ -343,22 +343,7 @@ func (handler *Handler) AdminBetEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// if bets != nil {
-	// 	for _, bet := range *bets {
-	// 		bet.CreatedAt, err = utils.SQLiteToGo(bet.CreatedAt.String())
-	// 		if err != nil {
-	// 			fmt.Println(err)
-	// 			http.Error(w, err.Error(), http.StatusInternalServerError)
-	// 			return
-	// 		}
-	// 		bet.ExpiryTime, err = utils.SQLiteToGo(bet.ExpiryTime.String())
-	// 		if err != nil {
-	// 			fmt.Println(err)
-	// 			http.Error(w, err.Error(), http.StatusInternalServerError)
-	// 			return
-	// 		}
-	// 	}
-	// }
+
 	type TemplateData struct {
 		Category string
 		Bets     []models.Bet
@@ -569,4 +554,31 @@ func (handler *Handler) UserDashboard(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
+}
+
+func (handler *Handler) GetNewBetPage(w http.ResponseWriter, r *http.Request) {
+	_, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	// dbUser, err := handler.dao.GetUserByEmail(user.Email)
+	// if err != nil {
+	// 	log.Println(err)
+	// 	return
+	// }
+
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/betcreate.gohtml"))
+	if err := tmpl.Execute(w, nil); err != nil {
+		log.Println("Error executing template:", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (handler *Handler) CancelViewBannableUser(w http.ResponseWriter, r *http.Request) {
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/bannableuserbutton.gohtml"))
+	tmpl.Execute(w, nil)
 }

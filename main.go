@@ -82,6 +82,10 @@ func main() {
 	router.HandleFunc("/createUserTransaction/{email}", auth.RequireAdmin(handler.AdminTransactionEdit, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/create-transaction", auth.RequireAdmin(handler.CreateTransaction, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/canceluseredit/{email}", auth.RequireAdmin(handler.CancelUserEdit, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/create-new-bet-form", auth.RequireAdmin(handler.GetNewBetPage, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/view-bannable-users", auth.RequireAdmin(handler.GetBannableUsers, authService, dao.NewUserDAO(db))).Methods("GET")
+	router.HandleFunc("/cancel-view-bannable-users", auth.RequireAdmin(handler.CancelViewBannableUser, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/create-new-bet", auth.RequireAdmin(handler.CreateNewBet, authService, dao.NewUserDAO(db))).Methods("POST")
 
 	// Root protected routes
 	// router.HandleFunc("/rootdashboard", auth.RequireRoot(handler.RootAdminDashboard, authService, dao.NewUserDAO(db))).Methods("GET")

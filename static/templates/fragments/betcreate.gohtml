@@ -1,0 +1,103 @@
+<div id="createBetForm" class="max-w-7xl mx-auto py-4">
+  <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">
+    Create New Bet
+  </h2>
+  <form method="POST" action="/create-new-bet" class="grid grid-cols-1 gap-6">
+    <input
+      type="text"
+      name="Title"
+      placeholder="Bet Title"
+      class="w-full p-4 bg-white rounded-lg shadow-md"
+      required
+    />
+    <textarea
+      name="Description"
+      placeholder="Bet Description"
+      class="w-full p-4 bg-white rounded-lg shadow-md"
+      required
+    ></textarea>
+
+    <input type="hidden" name="Status" value="pending" />
+    <select
+      name="Category"
+      class="w-full p-4 bg-white rounded-lg shadow-md"
+      required
+    >
+      <option value="future">Future</option>
+      <option value="matchup">Matchup</option>
+      <option value="prop">Prop</option>
+    </select>
+    <input
+      type="datetime-local"
+      name="ExpiryTime"
+      placeholder="Expiry Time"
+      class="w-full p-4 bg-white rounded-lg shadow-md"
+      required
+    />
+    <!-- Bet Outcomes Section -->
+    <div class="w-full p-4 bg-white rounded-lg shadow-md">
+      <h3 class="text-xl font-semibold mb-2 text-center">Bet Outcomes</h3>
+      <p class="text-gray-500 text-center">
+        All odds must be in decimal format (e.g. 1.5). American odds of -120:
+        decimal odds = 1.83, American odds of +250: decimal odds = 3.50.
+      </p>
+      <div id="betOutcomesContainer">
+        <div class="flex items-center gap-4 mb-4">
+          <input
+            type="text"
+            name="OutcomeDescription[]"
+            placeholder="Outcome Description"
+            class="p-2 bg-gray-100 rounded"
+            required
+          />
+          <input
+            type="number"
+            step="0.01"
+            name="Odds[]"
+            placeholder="Odds"
+            class="p-2 bg-gray-100 rounded"
+            required
+          />
+          <button
+            type="button"
+            onclick="addOutcome()"
+            class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+          >
+            Add Outcome
+          </button>
+        </div>
+      </div>
+    </div>
+    <button
+      hx-get="/view-bannable-users"
+      hx-swap="outerHTML"
+      id="viewBannableUsers"
+      hx-target="#viewBannableUsers"
+      class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
+    >
+      View Bannable Users
+    </button>
+    <button
+      hx-post="/create-new-bet"
+      hx-swap="outerHTML"
+      hx-target="#createBetForm"
+      type="submit"
+      class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+    >
+      Create Bet
+    </button>
+  </form>
+</div>
+<script>
+  function addOutcome() {
+    const container = document.getElementById("betOutcomesContainer");
+    const outcomeDiv = document.createElement("div");
+    outcomeDiv.classList.add("flex", "items-center", "gap-4", "mb-4");
+    outcomeDiv.innerHTML = `
+            <input type="text" name="OutcomeDescription[]" placeholder="Outcome Description" class="p-2 bg-gray-100 rounded" required>
+            <input type="number" step="0.01" name="Odds[]" placeholder="Odds" class="p-2 bg-gray-100 rounded" required>
+            <button type="button" onclick="this.parentElement.remove()" class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded">Remove</button>
+        `;
+    container.appendChild(outcomeDiv);
+  }
+</script>
