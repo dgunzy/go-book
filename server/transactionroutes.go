@@ -41,10 +41,20 @@ func (handler *Handler) CreateTransaction(w http.ResponseWriter, r *http.Request
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	transactionAmount := parseFloat(r.FormValue("amount"))
+	if transactionAmount < 0 {
+		fmt.Println("error transaction amount is less than 0")
+		http.Error(w, "Transaction amount is less than 0", http.StatusBadRequest)
+		return
+	}
+
+	if r.FormValue("type") == "debit" {
+		// Create a new debit number
+		transactionAmount = transactionAmount * -1
+	}
 	// Create a new Transaction struct
 	transaction := models.Transaction{
-
-		Amount:          parseFloat(r.FormValue("amount")),
+		Amount:          transactionAmount,
 		Type:            r.FormValue("type"),
 		Description:     r.FormValue("description"),
 		TransactionDate: time.Now(),
