@@ -44,13 +44,15 @@ func main() {
 	// router.HandleFunc("/edituser", handler.HandleLogin).Methods("GET")
 
 	// User protected routes
-	router.HandleFunc("/dashboard", auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/cabot-book", auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		handler.HandleHome(w, r)
 		if err := syncDatabase(); err != nil {
 			fmt.Println("Error syncing database:", err)
 		}
 	}, authService)).Methods("GET")
-	router.HandleFunc("/navbar", auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) {handler.Navbar(w, r)}, authService)).Methods("GET")
+
+	router.HandleFunc("/dashboard", auth.RequireAuth(handler.UserDashboard, authService)).Methods("GET")
+	router.HandleFunc("/navbar", auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) { handler.Navbar(w, r) }, authService)).Methods("GET")
 	router.HandleFunc("/matchbets", auth.RequireAuth(handler.GetMatchBets, authService)).Methods("GET")
 	router.HandleFunc("/futurebets", auth.RequireAuth(handler.GetFutureBets, authService)).Methods("GET")
 	router.HandleFunc("/props", auth.RequireAuth(handler.GetPropBets, authService)).Methods("GET")

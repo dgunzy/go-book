@@ -165,3 +165,25 @@ func (dao *UserDAO) GetUserBetsByBetID(betID int) ([]*models.UserBet, error) {
 	}
 	return userBets, nil
 }
+
+// ApproveOrRejectUserBet updates the approved status of a UserBet based on the provided betID and status.
+func (dao *UserDAO) ApproveOrRejectUserBet(betID int, status bool) error {
+	query := `UPDATE UserBets SET Approved = ? WHERE BetId = ?`
+	_, err := dao.db.Exec(query, status, betID)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	return nil
+}
+
+// RemoveUnapprovedBet deletes a UserBet if its approved status is false.
+func (dao *UserDAO) RemoveUnapprovedBet(betID int) error {
+	query := `DELETE FROM UserBets WHERE BetId = ? AND Approved = false`
+	_, err := dao.db.Exec(query, betID)
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+	return nil
+}

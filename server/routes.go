@@ -57,7 +57,7 @@ func (handler *Handler) HandleAuthCallbackFunction(w http.ResponseWriter, r *htt
 		return
 	}
 
-	http.Redirect(w, r, "/dashboard", http.StatusFound)
+	http.Redirect(w, r, "/cabot-book", http.StatusFound)
 }
 
 func (handler *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
@@ -527,6 +527,27 @@ func (handler *Handler) GetPropBets(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		fmt.Println(err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (handler *Handler) UserDashboard(w http.ResponseWriter, r *http.Request) {
+	user, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/dashboard.gohtml"))
+	if err := tmpl.Execute(w, *dbUser); err != nil {
+		log.Println("Error executing template:", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 }
