@@ -5,8 +5,8 @@ import (
 )
 
 const (
-	UIInputFormat = "January 2, 2006, 15:04"
-	SQLiteFormat  = time.RFC3339 // "2006-01-02T15:04:05Z"
+	UIInputFormat = "2006-01-02T15:04" // Updated format to match <input type="datetime-local">
+	SQLiteFormat  = time.RFC3339       // "2006-01-02T15:04:05Z"
 )
 
 // UIToGo converts a UI input time string to a Go time.Time object.

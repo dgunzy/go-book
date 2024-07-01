@@ -6,6 +6,10 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/dgunzy/go-book/models"
+	"github.com/dgunzy/go-book/utils"
 )
 
 func (handler *Handler) ReadBet(w http.ResponseWriter, r *http.Request) {
@@ -74,29 +78,65 @@ func (handler *Handler) CreateNewBet(w http.ResponseWriter, r *http.Request) {
 		bannableUsersInt = append(bannableUsersInt, userID)
 	}
 
+	dbReadyTime, err := utils.UIToGo(expiryTime)
+	if err != nil {
+		fmt.Println("Error converting expiry time to time.Time:", err)
+		return
+	}
 	// Now oddsFloat and bannableUsersInt are ready for database operations
 
 	fmt.Println("Title:", title)
 	fmt.Println("Description:", description)
 	fmt.Println("Status:", status)
 	fmt.Println("Category:", category)
-	fmt.Println("ExpiryTime:", expiryTime)
+	fmt.Println("ExpiryTime:", dbReadyTime)
 	fmt.Println("OutcomeDescriptions:", outcomeDescriptions)
 	fmt.Println("Odds after conversion:", oddsFloat)
 	fmt.Println("BannableUsers after conversion:", bannableUsersInt)
 
-	// Respond to the client
-	// w.WriteHeader(http.StatusOK)
-	// fmt.Fprintln(w, "Form data received and printed to the console")
-	type StatusMessage struct {
+	outcomes := make([]models.BetOutcomes, len(outcomeDescriptions))
+	for i, description := range outcomeDescriptions {
+		outcomes[i] = models.BetOutcomes{
+			Description: description,
+			Odds:        oddsFloat[i],
+		}
+	}
+
+	// Create the bet in the database
+	BetToInsert := models.Bet{
+		Title:          title,
+		Description:    description,
+		OddsMultiplier: 1,
+		Status:         status,
+		Category:       category,
+		CreatedBy:      1,
+		ExpiryTime:     dbReadyTime,
+		CreatedAt:      time.Now(),
+		BetOutcomes:    outcomes,
+	}
+
+	err = nil
+	_, err = handler.dao.CreateBet(&BetToInsert, bannableUsersInt)
+
+	var Message string
+
+	if err != nil {
+		fmt.Println(err)
+		Message = err.Error()
+	} else {
+		Message = "Bet created successfully"
+	}
+	type TemplateData struct {
 		Message string
 	}
-	statusMessage := StatusMessage{
-		Message: "Form data received and printed to the console",
+
+	// Create an instance of the struct with the message
+	data := TemplateData{
+		Message: Message,
 	}
 
 	tmpl := template.Must(template.ParseFiles("static/templates/fragments/createbetbutton.gohtml"))
-	_ = tmpl.Execute(w, statusMessage)
+	_ = tmpl.Execute(w, data)
 }
 
 func (handler *Handler) GetBannableUsers(w http.ResponseWriter, r *http.Request) {

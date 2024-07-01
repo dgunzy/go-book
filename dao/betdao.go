@@ -8,7 +8,7 @@ import (
 	"github.com/dgunzy/go-book/utils"
 )
 
-func (dao *UserDAO) CreateBet(bet *models.Bet, BannedUsers []models.User) (int64, error) {
+func (dao *UserDAO) CreateBet(bet *models.Bet, BannedUsers []int) (betId int64, error error) {
 	// Need to check that the descriptions are unique here
 	// Check if the descriptions are unique
 	betOutcomeMap := make(map[string]bool)
@@ -19,10 +19,12 @@ func (dao *UserDAO) CreateBet(bet *models.Bet, BannedUsers []models.User) (int64
 		}
 		betOutcomeMap[bet.BetOutcomes[i].Description] = true
 	}
+	createdAtSQLite := utils.GoToSQLite(bet.CreatedAt)
+	expiryTimeSQLite := utils.GoToSQLite(bet.ExpiryTime)
 
 	// Insert the bet into the database
 	result, err := dao.db.Exec("INSERT INTO bets (title, description, OddsMultiplier, status, category, createdBy, createdAt, expiryTime) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-		bet.Title, bet.Description, bet.OddsMultiplier, bet.Status, bet.Category, bet.CreatedBy, bet.CreatedAt, bet.ExpiryTime)
+		bet.Title, bet.Description, bet.OddsMultiplier, bet.Status, bet.Category, bet.CreatedBy, createdAtSQLite, expiryTimeSQLite)
 	if err != nil {
 		fmt.Println(err)
 		return 0, err
@@ -46,7 +48,7 @@ func (dao *UserDAO) CreateBet(bet *models.Bet, BannedUsers []models.User) (int64
 	// Insert the banned users into the database if the slice is not empty
 	if len(BannedUsers) > 0 {
 		for _, user := range BannedUsers {
-			_, err := dao.db.Exec("INSERT INTO bannedPlayers (userID, betID) VALUES (?, ?)", user.UserID, betID)
+			_, err := dao.db.Exec("INSERT INTO bannedPlayers (userID, betID) VALUES (?, ?)", user, betID)
 			if err != nil {
 				fmt.Println(err)
 				return betID, err
@@ -191,11 +193,23 @@ func (dao *UserDAO) GetBetsByCategory(category string) (*[]models.Bet, error) {
 	defer rows.Close()
 
 	var bets []models.Bet
+	var ExpiryTime string
+	var CreatedAt string
 
 	for rows.Next() {
 		var bet models.Bet
-		err := rows.Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.Category, &bet.CreatedBy, &bet.CreatedAt, &bet.ExpiryTime)
+		err := rows.Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.Category, &bet.CreatedBy, &CreatedAt, &ExpiryTime)
 		if err != nil {
+			return nil, err
+		}
+		bet.CreatedAt, err = utils.SQLiteToGo(CreatedAt)
+		if err != nil {
+			fmt.Println("Error parsing CreatedAt:", err)
+			return nil, err
+		}
+		bet.ExpiryTime, err = utils.SQLiteToGo(ExpiryTime)
+		if err != nil {
+			fmt.Println("Error parsing ExpiryTime:", err)
 			return nil, err
 		}
 
@@ -215,6 +229,7 @@ func (dao *UserDAO) GetBetsByCategory(category string) (*[]models.Bet, error) {
 			var outcome models.BetOutcomes
 			err := outcomeRows.Scan(&outcome.Description, &outcome.Odds)
 			if err != nil {
+				outcomeRows.Close()
 				return nil, err
 			}
 			outcomes = append(outcomes, outcome)
@@ -254,11 +269,23 @@ func (dao *UserDAO) GetAllLegalBetsByCategory(category *string, userID int) (*[]
 	defer rows.Close()
 
 	var bets []models.Bet
+	var ExpiryTime string
+	var CreatedAt string
 
 	for rows.Next() {
 		var bet models.Bet
-		err := rows.Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.Category, &bet.CreatedBy, &bet.CreatedAt, &bet.ExpiryTime)
+		err := rows.Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.Category, &bet.CreatedBy, &CreatedAt, &ExpiryTime)
 		if err != nil {
+			return nil, err
+		}
+		bet.CreatedAt, err = utils.SQLiteToGo(CreatedAt)
+		if err != nil {
+			fmt.Println("Error parsing CreatedAt:", err)
+			return nil, err
+		}
+		bet.ExpiryTime, err = utils.SQLiteToGo(ExpiryTime)
+		if err != nil {
+			fmt.Println("Error parsing ExpiryTime:", err)
 			return nil, err
 		}
 		// Fetch bet outcomes for each bet

@@ -526,7 +526,7 @@ func (handler *Handler) GetPropBets(w http.ResponseWriter, r *http.Request) {
 		Bets: *bets,
 	}
 
-	tmpl := template.Must(template.ParseFiles("static/templates/propbets.gohtml"))
+	tmpl := template.Must(template.ParseFiles("static/templates/futurebets.gohtml"))
 	err = tmpl.Execute(w, data)
 	if err != nil {
 		fmt.Println(err)
