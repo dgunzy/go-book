@@ -343,6 +343,22 @@ func (handler *Handler) AdminBetEdit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// if bets != nil {
+	// 	for _, bet := range *bets {
+	// 		bet.CreatedAt, err = utils.SQLiteToGo(bet.CreatedAt.String())
+	// 		if err != nil {
+	// 			fmt.Println(err)
+	// 			http.Error(w, err.Error(), http.StatusInternalServerError)
+	// 			return
+	// 		}
+	// 		bet.ExpiryTime, err = utils.SQLiteToGo(bet.ExpiryTime.String())
+	// 		if err != nil {
+	// 			fmt.Println(err)
+	// 			http.Error(w, err.Error(), http.StatusInternalServerError)
+	// 			return
+	// 		}
+	// 	}
+	// }
 	type TemplateData struct {
 		Category string
 		Bets     []models.Bet
@@ -394,7 +410,7 @@ func (handler *Handler) GetAllBets(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	bets, err := handler.dao.GetAllBets()
+	bets, err := handler.dao.GetAllLegalBetsByCategory(nil, dbUser.UserID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -432,7 +448,8 @@ func (handler *Handler) GetMatchBets(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	bets, err := handler.dao.GetBetsByCategory("matchup")
+	betCategory := "matchup"
+	bets, err := handler.dao.GetAllLegalBetsByCategory(&betCategory, dbUser.UserID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -470,7 +487,8 @@ func (handler *Handler) GetFutureBets(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	bets, err := handler.dao.GetBetsByCategory("future")
+	betCategory := "future"
+	bets, err := handler.dao.GetAllLegalBetsByCategory(&betCategory, dbUser.UserID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -507,7 +525,8 @@ func (handler *Handler) GetPropBets(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
-	bets, err := handler.dao.GetBetsByCategory("prop")
+	betCategory := "prop"
+	bets, err := handler.dao.GetAllLegalBetsByCategory(&betCategory, dbUser.UserID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

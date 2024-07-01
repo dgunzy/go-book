@@ -8,8 +8,8 @@ import (
 	"github.com/dgunzy/go-book/utils"
 )
 
-func (dao *UserDAO) CreateBet(bet *models.Bet) (int64, error) {
-	//Need to check that the descriptions are unique here
+func (dao *UserDAO) CreateBet(bet *models.Bet, BannedUsers []models.User) (int64, error) {
+	// Need to check that the descriptions are unique here
 	// Check if the descriptions are unique
 	betOutcomeMap := make(map[string]bool)
 
@@ -42,6 +42,18 @@ func (dao *UserDAO) CreateBet(bet *models.Bet) (int64, error) {
 			return 0, err
 		}
 	}
+
+	// Insert the banned users into the database if the slice is not empty
+	if len(BannedUsers) > 0 {
+		for _, user := range BannedUsers {
+			_, err := dao.db.Exec("INSERT INTO bannedPlayers (userID, betID) VALUES (?, ?)", user.UserID, betID)
+			if err != nil {
+				fmt.Println(err)
+				return betID, err
+			}
+		}
+	}
+
 	return betID, nil
 }
 
@@ -167,19 +179,18 @@ func (dao *UserDAO) GetAllBets() (*[]models.Bet, error) {
 }
 
 func (dao *UserDAO) GetBetsByCategory(category string) (*[]models.Bet, error) {
-	betsQuery := `
-		SELECT BetID, Title, Description, OddsMultiplier, Status, Category, CreatedBy, CreatedAt, ExpiryTime
-		FROM Bets
-		WHERE Category = ?
-	`
-	rows, err := dao.db.Query(betsQuery, category)
+	query := `
+        SELECT b.BetID, b.Title, b.Description, b.OddsMultiplier, b.Status, b.Category, b.CreatedBy, b.CreatedAt, b.ExpiryTime
+        FROM Bets b
+        WHERE b.Category = ?
+    `
+	rows, err := dao.db.Query(query, category)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	// Map to hold bets with their BetID as key
-	betSlice := make([]models.Bet, 0)
+	var bets []models.Bet
 
 	for rows.Next() {
 		var bet models.Bet
@@ -187,32 +198,145 @@ func (dao *UserDAO) GetBetsByCategory(category string) (*[]models.Bet, error) {
 		if err != nil {
 			return nil, err
 		}
-		betSlice = append(betSlice, bet)
-	}
 
-	// Query to fetch all bet outcomes
-	outcomesQuery := `
-		SELECT BetID, Description, Odds
-		FROM BetOutcomes
-	`
-	outcomeRows, err := dao.db.Query(outcomesQuery)
-	if err != nil {
-		return nil, err
-	}
-	defer outcomeRows.Close()
-
-	for outcomeRows.Next() {
-		var outcome models.BetOutcomes
-		var betID int
-		err := outcomeRows.Scan(&betID, &outcome.Description, &outcome.Odds)
+		// Fetch bet outcomes for each bet
+		outcomesQuery := `
+            SELECT Description, Odds
+            FROM BetOutcomes
+            WHERE BetID = ?
+        `
+		outcomeRows, err := dao.db.Query(outcomesQuery, bet.BetID)
 		if err != nil {
 			return nil, err
 		}
-		for i := range betSlice {
-			if betSlice[i].BetID == betID {
-				betSlice[i].BetOutcomes = append(betSlice[i].BetOutcomes, outcome)
+
+		var outcomes []models.BetOutcomes
+		for outcomeRows.Next() {
+			var outcome models.BetOutcomes
+			err := outcomeRows.Scan(&outcome.Description, &outcome.Odds)
+			if err != nil {
+				return nil, err
 			}
+			outcomes = append(outcomes, outcome)
 		}
+		outcomeRows.Close()
+
+		bet.BetOutcomes = outcomes
+		bets = append(bets, bet)
 	}
-	return &betSlice, nil
+
+	return &bets, nil
+}
+
+// GetAllBetsByCategory returns all bets for a given category, excluding bets the user is banned from.
+func (dao *UserDAO) GetAllLegalBetsByCategory(category *string, userID int) (*[]models.Bet, error) {
+	query := `
+		SELECT b.BetID, b.Title, b.Description, b.OddsMultiplier, b.Status, b.Category, b.CreatedBy, b.CreatedAt, b.ExpiryTime
+		FROM Bets b
+		WHERE b.BetID NOT IN (
+			SELECT bp.BetID
+			FROM BannedPlayers bp
+			WHERE bp.UserID = ?
+		)
+		AND b.ExpiryTime > CURRENT_TIMESTAMP
+	`
+	params := []interface{}{userID}
+
+	if category != nil {
+		query += " AND b.Category = ?"
+		params = append(params, *category)
+	}
+
+	rows, err := dao.db.Query(query, params...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var bets []models.Bet
+
+	for rows.Next() {
+		var bet models.Bet
+		err := rows.Scan(&bet.BetID, &bet.Title, &bet.Description, &bet.OddsMultiplier, &bet.Status, &bet.Category, &bet.CreatedBy, &bet.CreatedAt, &bet.ExpiryTime)
+		if err != nil {
+			return nil, err
+		}
+		// Fetch bet outcomes for each bet
+		outcomesQuery := `
+			SELECT Description, Odds
+			FROM BetOutcomes
+			WHERE BetID = ?
+		`
+		outcomeRows, err := dao.db.Query(outcomesQuery, bet.BetID)
+		if err != nil {
+			return nil, err
+		}
+		defer outcomeRows.Close()
+
+		for outcomeRows.Next() {
+			var outcome models.BetOutcomes
+			err := outcomeRows.Scan(&outcome.Description, &outcome.Odds)
+			if err != nil {
+				return nil, err
+			}
+			bet.BetOutcomes = append(bet.BetOutcomes, outcome)
+		}
+
+		bets = append(bets, bet)
+	}
+
+	return &bets, nil
+}
+
+// CreateBannedPlayer adds a new banned player to a bet.
+func (dao *UserDAO) CreateBannedPlayer(userID, betID int) error {
+	insertQuery := `
+        INSERT INTO BannedPlayers (UserID, BetID)
+        VALUES (?, ?)
+    `
+	_, err := dao.db.Exec(insertQuery, userID, betID)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// DeleteBannedPlayer removes a banned player from a bet.
+func (dao *UserDAO) DeleteBannedPlayer(userID, betID int) error {
+	deleteQuery := `
+        DELETE FROM BannedPlayers
+        WHERE UserID = ? AND BetID = ?
+    `
+	_, err := dao.db.Exec(deleteQuery, userID, betID)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (dao *UserDAO) GetBannedPlayers(betID int) (*[]models.User, error) {
+	query := `
+		SELECT u.UserID, u.Username, u.Email, u.Role, u.Balance, u.FreePlayBalance, u.AutoApproveLimit
+		FROM Users u
+		JOIN BannedPlayers bp ON u.UserID = bp.UserID
+		WHERE bp.BetID = ?
+	`
+	rows, err := dao.db.Query(query, betID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	bannedPlayers := make([]models.User, 0)
+
+	for rows.Next() {
+		var user models.User
+		err := rows.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance, &user.FreePlayBalance, &user.AutoApproveLimit)
+		if err != nil {
+			return nil, err
+		}
+		bannedPlayers = append(bannedPlayers, user)
+	}
+
+	return &bannedPlayers, nil
 }
