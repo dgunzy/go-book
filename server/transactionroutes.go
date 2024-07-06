@@ -84,28 +84,3 @@ func (handler *Handler) CreateTransaction(w http.ResponseWriter, r *http.Request
 		return
 	}
 }
-
-// func (handler *Handler) ReadTransaction(w http.ResponseWriter, r *http.Request) {
-// 	// Extract the transactionID from the URL
-// 	transactionID := strings.TrimPrefix(r.URL.Path, "/transaction/")
-// 	transactionIDInt, err := strconv.Atoi(transactionID)
-// 	if err != nil {
-// 		http.Error(w, "Invalid transaction ID", http.StatusBadRequest)
-// 		return
-// 	}
-
-// 	// Read the transaction from the database
-// 	transaction, err := handler.dao.ReadUserTransactions(transactionIDInt)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-
-// 	// Render the transaction details template
-// 	tmpl := template.Must(template.ParseFiles("static/templates/transactiondetails.gohtml"))
-// 	err = tmpl.Execute(w, transaction)
-// 	if err != nil {
-// 		http.Error(w, err.Error(), http.StatusInternalServerError)
-// 		return
-// 	}
-// }

@@ -3,6 +3,7 @@ package server
 import (
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -184,4 +185,176 @@ func (handler *Handler) MoveBetToClosed(w http.ResponseWriter, r *http.Request) 
 
 	// Redirect to the bet details page
 	http.Redirect(w, r, "/admindashboard", http.StatusSeeOther)
+}
+
+func (handler *Handler) GetNewBetPage(w http.ResponseWriter, r *http.Request) {
+	_, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/betcreate.gohtml"))
+	if err := tmpl.Execute(w, nil); err != nil {
+		log.Println("Error executing template:", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (handler *Handler) GetPropBets(w http.ResponseWriter, r *http.Request) {
+	// Get all bets from the database
+	user, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	betCategory := "prop"
+	bets, err := handler.dao.GetAllLegalBetsByCategory(&betCategory, dbUser.UserID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type TemplateData struct {
+		User *models.User
+		Bets []models.Bet
+	}
+	data := TemplateData{
+		User: dbUser,
+		Bets: *bets,
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/futurebets.gohtml"))
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (handler *Handler) GetFutureBets(w http.ResponseWriter, r *http.Request) {
+	// Get all bets from the database
+	user, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	betCategory := "future"
+	bets, err := handler.dao.GetAllLegalBetsByCategory(&betCategory, dbUser.UserID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type TemplateData struct {
+		User *models.User
+		Bets []models.Bet
+	}
+	data := TemplateData{
+		User: dbUser,
+		Bets: *bets,
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/futurebets.gohtml"))
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (handler *Handler) GetMatchBets(w http.ResponseWriter, r *http.Request) {
+	// Get all bets from the database
+	user, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	betCategory := "matchup"
+	bets, err := handler.dao.GetAllLegalBetsByCategory(&betCategory, dbUser.UserID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type TemplateData struct {
+		User *models.User
+		Bets []models.Bet
+	}
+	data := TemplateData{
+		User: dbUser,
+		Bets: *bets,
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/matchbets.gohtml"))
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (handler *Handler) GetAllBets(w http.ResponseWriter, r *http.Request) {
+	// Get all bets from the database
+	user, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	bets, err := handler.dao.GetAllLegalBetsByCategory(nil, dbUser.UserID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	type TemplateData struct {
+		User *models.User
+		Bets []models.Bet
+	}
+	data := TemplateData{
+		User: dbUser,
+		Bets: *bets,
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/parlay.gohtml"))
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
