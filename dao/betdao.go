@@ -255,7 +255,7 @@ func (dao *UserDAO) GetAllLegalBetsByCategory(category *string, userID int) (*[]
 			WHERE bp.UserID = ?
 		)
 		AND b.ExpiryTime > CURRENT_TIMESTAMP
-		AND b.Category != 'closed'
+		AND b.Status != 'closed'
 	`
 	params := []interface{}{userID}
 
@@ -266,6 +266,7 @@ func (dao *UserDAO) GetAllLegalBetsByCategory(category *string, userID int) (*[]
 
 	rows, err := dao.db.Query(query, params...)
 	if err != nil {
+		fmt.Println(err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -298,6 +299,7 @@ func (dao *UserDAO) GetAllLegalBetsByCategory(category *string, userID int) (*[]
 		`
 		outcomeRows, err := dao.db.Query(outcomesQuery, bet.BetID)
 		if err != nil {
+			fmt.Println(err)
 			return nil, err
 		}
 		defer outcomeRows.Close()

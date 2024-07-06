@@ -14,6 +14,10 @@ import (
 	"github.com/gorilla/mux"
 )
 
+func ServeFavicon(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "static/images/favicon.ico")
+}
+
 func main() {
 
 	db, cleanup, syncDatabase, err := dao.StartDB()
@@ -41,8 +45,7 @@ func main() {
 	// Public routes
 	router.HandleFunc("/", handler.HandleLogin).Methods("GET")
 	router.HandleFunc("/login", handler.HandleLogin).Methods("GET")
-	// router.HandleFunc("/edituser", handler.HandleLogin).Methods("GET")
-
+	router.HandleFunc("/favicon.ico", ServeFavicon).Methods("GET")
 	// User protected routes
 	router.HandleFunc("/cabot-book", auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		handler.HandleHome(w, r)
