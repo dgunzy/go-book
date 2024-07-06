@@ -72,7 +72,7 @@ func (dao *UserDAO) PlaceBet(userBet models.UserBet) error {
 	return nil
 }
 
-func (dao *UserDAO) GradeBet(betID int, winningOutcomeDescription string) error {
+func (dao *UserDAO) GradeUBet(betID int, winningOutcomeDescription string) error {
 	tx, err := dao.db.Begin()
 	if err != nil {
 		return err

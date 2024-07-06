@@ -125,8 +125,8 @@ func (dao *UserDAO) UpdateBet(betID int, updates map[string]interface{}) error {
 	return nil
 }
 func (dao *UserDAO) DeleteBet(betID int) error {
-	query := `DELETE FROM Bets WHERE BetID = ?`
-	_, err := dao.db.Exec(query, betID)
+	query := `UPDATE Bets SET Status = ? WHERE BetID = ?`
+	_, err := dao.db.Exec(query, "closed", betID)
 	return err
 }
 
@@ -182,12 +182,13 @@ func (dao *UserDAO) GetAllBets() (*[]models.Bet, error) {
 
 func (dao *UserDAO) GetBetsByCategory(category string) (*[]models.Bet, error) {
 	query := `
-        SELECT b.BetID, b.Title, b.Description, b.OddsMultiplier, b.Status, b.Category, b.CreatedBy, b.CreatedAt, b.ExpiryTime
-        FROM Bets b
-        WHERE b.Category = ?
-    `
+		SELECT b.BetID, b.Title, b.Description, b.OddsMultiplier, b.Status, b.Category, b.CreatedBy, b.CreatedAt, b.ExpiryTime
+		FROM Bets b
+		WHERE b.Category = ? AND b.Status != 'closed'
+	`
 	rows, err := dao.db.Query(query, category)
 	if err != nil {
+		fmt.Println(err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -254,6 +255,7 @@ func (dao *UserDAO) GetAllLegalBetsByCategory(category *string, userID int) (*[]
 			WHERE bp.UserID = ?
 		)
 		AND b.ExpiryTime > CURRENT_TIMESTAMP
+		AND b.Category != 'closed'
 	`
 	params := []interface{}{userID}
 

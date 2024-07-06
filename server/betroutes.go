@@ -165,3 +165,23 @@ func (handler *Handler) GetBannableUsers(w http.ResponseWriter, r *http.Request)
 	tmpl := template.Must(template.ParseFiles("static/templates/fragments/bannableusers.gohtml"))
 	_ = tmpl.Execute(w, userForms)
 }
+
+func (handler *Handler) MoveBetToClosed(w http.ResponseWriter, r *http.Request) {
+	// Extract the betID from the URL
+	betID := strings.TrimPrefix(r.URL.Path, "/deletebet/")
+	betIDInt, err := strconv.Atoi(betID)
+	if err != nil {
+		http.Error(w, "Invalid bet ID", http.StatusBadRequest)
+		return
+	}
+
+	// Read the bet from the database
+	err = handler.dao.DeleteBet(betIDInt)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Redirect to the bet details page
+	http.Redirect(w, r, "/admindashboard", http.StatusSeeOther)
+}

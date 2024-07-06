@@ -86,6 +86,7 @@ func main() {
 	router.HandleFunc("/view-bannable-users", auth.RequireAdmin(handler.GetBannableUsers, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/cancel-view-bannable-users", auth.RequireAdmin(handler.CancelViewBannableUser, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/create-new-bet", auth.RequireAdmin(handler.CreateNewBet, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/deletebet/{betID}", auth.RequireAdmin(handler.MoveBetToClosed, authService, dao.NewUserDAO(db))).Methods("POST")
 
 	// Root protected routes
 	// router.HandleFunc("/rootdashboard", auth.RequireRoot(handler.RootAdminDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
