@@ -1,0 +1,33 @@
+<div class="flex flex-col items-center py-4" id="transactions">
+    <h2 class="text-2xl font-bold mb-4">Transactions</h2>
+    <table class="min-w-full table-auto">
+        <thead>
+            <tr class="bg-gray-200 text-gray-600 uppercase text-sm leading-normal">
+                <th class="py-3 px-6 text-left">Transaction</th>
+                <th class="py-3 px-6 text-left">Type</th>
+                <th class="py-3 px-6 text-left">Amount</th>
+                <th class="py-3 px-6 text-left">Description</th>
+                <th class="py-3 px-6 text-left">Created At</th>
+            </tr>
+        </thead>
+        <tbody class="text-gray-600 text-sm font-light">
+            {{ range .Transactions }}
+            <tr class="border-b border-gray-200 hover:bg-gray-100">
+                <td class="py-3 px-6 text-left whitespace-nowrap">Transaction</td>
+                <td class="py-3 px-6 text-left">
+                    <span class="{{ if eq .Type "credit" }}text-green-500{{ else }}text-red-500{{ end }}">
+                        {{ .Type }}
+                    </span>
+                </td>
+                <td class="py-3 px-6 text-left"> ${{ .Amount }}</td>
+                <td class="py-3 px-6 text-left">{{ .Description }}</td>
+                <td class="py-3 px-6 text-left">{{ .TransactionDate.Format "January 2, 2006, 15:04" }}</td>
+            </tr>
+            {{ else }}
+            <tr>
+                <td colspan="5" class="text-center py-3 px-6">No transactions found.</td>
+            </tr>
+            {{ end }}
+        </tbody>
+    </table>
+</div>

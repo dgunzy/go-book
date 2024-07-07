@@ -27,9 +27,9 @@ func (dao *UserDAO) CreateTransaction(User models.User, transaction models.Trans
 	return User.UserID, nil
 }
 
-func (dao *UserDAO) ReadUserTransactions(User *models.User) error {
+func (dao *UserDAO) ReadUserTransactions(UserId int, Transaction *[]models.Transaction) error {
 	query := `SELECT * FROM Transactions WHERE UserID = ?`
-	rows, err := dao.db.Query(query, User.UserID)
+	rows, err := dao.db.Query(query, UserId)
 	if err != nil {
 		fmt.Println(err)
 		return err
@@ -37,13 +37,22 @@ func (dao *UserDAO) ReadUserTransactions(User *models.User) error {
 	defer rows.Close()
 
 	for rows.Next() {
+		var CreatedAt string
+		var ignore interface{}
 		transaction := new(models.Transaction)
-		err := rows.Scan(&transaction.Amount, &transaction.Type, &transaction.Description, &transaction.TransactionDate)
+		err := rows.Scan(&ignore, &ignore, &transaction.Amount, &transaction.Type, &transaction.Description, &CreatedAt)
+
 		if err != nil {
 			fmt.Println(err)
 			return err
 		}
-		User.Transactions = append(User.Transactions, *transaction)
+
+		transaction.TransactionDate, err = utils.SQLiteToGo(CreatedAt)
+		if err != nil {
+			fmt.Println(err)
+			return err
+		}
+		*Transaction = append(*Transaction, *transaction)
 	}
 
 	if err := rows.Err(); err != nil {

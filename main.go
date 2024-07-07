@@ -60,6 +60,7 @@ func main() {
 	router.HandleFunc("/futurebets", auth.RequireAuth(handler.GetFutureBets, authService)).Methods("GET")
 	router.HandleFunc("/props", auth.RequireAuth(handler.GetPropBets, authService)).Methods("GET")
 	router.HandleFunc("/parlay", auth.RequireAuth(handler.GetAllBets, authService)).Methods("GET")
+	router.HandleFunc("/transactions", auth.RequireAuth(handler.ReadUserTransactions, authService)).Methods("GET")
 
 	// router.HandleFunc("/test", auth.RequireAuth(handler.Test, authService)).Methods("GET")
 

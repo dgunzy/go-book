@@ -84,3 +84,39 @@ func (handler *Handler) CreateTransaction(w http.ResponseWriter, r *http.Request
 		return
 	}
 }
+func (Handler *Handler) ReadUserTransactions(w http.ResponseWriter, r *http.Request) {
+	// Get the user from the session
+	user, err := Handler.auth.GetSessionUser(r)
+	if err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	// Get the user from the database
+	dbUser, err := Handler.dao.GetUserByEmail(user.Email)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Get the user's transactions
+	var transactions []models.Transaction
+	err = Handler.dao.ReadUserTransactions(dbUser.UserID, &transactions)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Create a new template data struct
+	type TransactionsPageData struct {
+		Transactions []models.Transaction
+	}
+
+	data := TransactionsPageData{
+		Transactions: transactions,
+	}
+	// Execute the template
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/transactions.gohtml"))
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
