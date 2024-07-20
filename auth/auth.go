@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/dgunzy/go-book/dao"
 	"github.com/gorilla/sessions"
 	"github.com/joho/godotenv"
 	"github.com/markbates/goth"
@@ -76,9 +77,9 @@ func (s *AuthService) RemoveUserSession(w http.ResponseWriter, r *http.Request) 
 	session.Save(r, w)
 }
 
-func RequireAuth(handlerFunc http.HandlerFunc, auth *AuthService) http.HandlerFunc {
+func RequireAuth(handlerFunc http.HandlerFunc, auth *AuthService, dao *dao.UserDAO) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		_, err := auth.GetSessionUser(r)
+		user, err := auth.GetSessionUser(r)
 		if err != nil {
 			log.Println("User is not authenticated!")
 			http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
@@ -87,6 +88,22 @@ func RequireAuth(handlerFunc http.HandlerFunc, auth *AuthService) http.HandlerFu
 
 		// log.Printf("user is authenticated! user: %v!", session.Email)
 
+		dbUser, err := dao.GetUserByEmail(user.Email)
+		if err != nil {
+			log.Println("Error retrieving user from database:", err)
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			return
+		}
+		if dbUser.Role == "user" {
+			if IsApplicationOnline() {
+				handlerFunc(w, r)
+				return
+			} else {
+				http.Redirect(w, r, "/applicationoffline", http.StatusTemporaryRedirect)
+				return
+			}
+		}
 		handlerFunc(w, r)
 	}
+
 }

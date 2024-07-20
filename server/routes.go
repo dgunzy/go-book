@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dgunzy/go-book/auth"
 	"github.com/dgunzy/go-book/models"
 	"github.com/markbates/goth/gothic"
 )
@@ -29,6 +30,11 @@ func parseFloat(s string) float64 {
 }
 func (handler *Handler) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.ParseFiles("static/templates/index.gohtml"))
+	tmpl.Execute(w, r.Context())
+}
+
+func (handler *Handler) ApplicationOffline(w http.ResponseWriter, r *http.Request) {
+	tmpl := template.Must(template.ParseFiles("static/templates/applicationoffline.gohtml"))
 	tmpl.Execute(w, r.Context())
 }
 
@@ -112,7 +118,7 @@ func (handler *Handler) Navbar(w http.ResponseWriter, r *http.Request) {
 	dbUser, err := handler.dao.GetUserByEmail(user.Email)
 
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("error getting db user in navbar ", err)
 		log.Println(err)
 		return
 	}
@@ -126,6 +132,8 @@ func (handler *Handler) Navbar(w http.ResponseWriter, r *http.Request) {
 	default:
 		tmpl = template.Must(template.ParseFiles("static/templates/fragments/navbar.gohtml"))
 	}
+
+	// fmt.Println("Navbar role: ", dbUser.Role)
 	if err := tmpl.Execute(w, nil); err != nil {
 		log.Println("Error executing template:", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -166,6 +174,33 @@ func (handler *Handler) AdminDashboard(w http.ResponseWriter, r *http.Request) {
 
 	template := template.Must(template.ParseFiles("static/templates/admindashboard.gohtml"))
 	template.Execute(w, adminStruct)
+}
+
+func (handler *Handler) ApplicationStatus(w http.ResponseWriter, r *http.Request) {
+
+	type Data struct {
+		ApplicationOnline bool
+	}
+
+	data := Data{
+		ApplicationOnline: auth.IsApplicationOnline(),
+	}
+	template := template.Must(template.ParseFiles("static/templates/fragments/appstatus.gohtml"))
+	err := template.Execute(w, data)
+	if err != nil {
+		fmt.Println(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+func (handler *Handler) ToggleApplicationState(w http.ResponseWriter, r *http.Request) {
+	if auth.IsApplicationOnline() {
+		auth.SetApplicationOffline()
+	} else {
+		auth.SetApplicationOnline()
+
+	}
+	http.Redirect(w, r, "/appstatus", http.StatusFound)
 }
 
 func (handler *Handler) RootUserEditingDashboard(w http.ResponseWriter, r *http.Request) {

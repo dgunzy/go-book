@@ -1,0 +1,26 @@
+<div class="max-w-sm mx-auto p-4" id="appstatus">
+  {{ if .ApplicationOnline }}
+  <div
+    class="bg-green-500 text-white font-bold py-4 px-4 rounded-lg mb-4 flex items-center justify-center"
+  >
+    Application is Online
+  </div>
+  {{ else }}
+  <div
+    class="bg-red-500 text-white font-bold py-4 px-4 rounded-lg mb-4 flex items-center justify-center"
+  >
+    Application is Offline
+  </div>
+  {{ end }}
+
+  <div class="flex justify-center">
+    <button
+      hx-post="/toggleapplicationstate"
+      hx-target="#appstatus"
+      hx-swap="outerHTML"
+      class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded text-sm"
+    >
+      Change Application State
+    </button>
+  </div>
+</div>

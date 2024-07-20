@@ -45,6 +45,7 @@ func main() {
 	// Public routes
 	router.HandleFunc("/", handler.HandleLogin).Methods("GET")
 	router.HandleFunc("/login", handler.HandleLogin).Methods("GET")
+	router.HandleFunc("/applicationoffline", handler.ApplicationOffline).Methods("GET")
 	router.HandleFunc("/favicon.ico", ServeFavicon).Methods("GET")
 	// User protected routes
 	router.HandleFunc("/cabot-book", auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
@@ -52,19 +53,21 @@ func main() {
 		if err := syncDatabase(); err != nil {
 			fmt.Println("Error syncing database:", err)
 		}
-	}, authService)).Methods("GET")
+	}, authService, dao.NewUserDAO(db))).Methods("GET")
 
-	router.HandleFunc("/dashboard", auth.RequireAuth(handler.UserDashboard, authService)).Methods("GET")
-	router.HandleFunc("/navbar", auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) { handler.Navbar(w, r) }, authService)).Methods("GET")
-	router.HandleFunc("/matchbets", auth.RequireAuth(handler.GetMatchBets, authService)).Methods("GET")
-	router.HandleFunc("/futurebets", auth.RequireAuth(handler.GetFutureBets, authService)).Methods("GET")
-	router.HandleFunc("/props", auth.RequireAuth(handler.GetPropBets, authService)).Methods("GET")
-	router.HandleFunc("/parlay", auth.RequireAuth(handler.GetAllBets, authService)).Methods("GET")
-	router.HandleFunc("/transactions", auth.RequireAuth(handler.ReadUserTransactions, authService)).Methods("GET")
+	router.HandleFunc("/dashboard", auth.RequireAuth(handler.UserDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
+	router.HandleFunc("/navbar", auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) { handler.Navbar(w, r) }, authService, dao.NewUserDAO(db))).Methods("GET")
+	router.HandleFunc("/matchbets", auth.RequireAuth(handler.GetMatchBets, authService, dao.NewUserDAO(db))).Methods("GET")
+	router.HandleFunc("/futurebets", auth.RequireAuth(handler.GetFutureBets, authService, dao.NewUserDAO(db))).Methods("GET")
+	router.HandleFunc("/props", auth.RequireAuth(handler.GetPropBets, authService, dao.NewUserDAO(db))).Methods("GET")
+	router.HandleFunc("/parlay", auth.RequireAuth(handler.GetAllBets, authService, dao.NewUserDAO(db))).Methods("GET")
+	router.HandleFunc("/transactions", auth.RequireAuth(handler.ReadUserTransactions, authService, dao.NewUserDAO(db))).Methods("GET")
 
 	// router.HandleFunc("/test", auth.RequireAuth(handler.Test, authService)).Methods("GET")
 
 	// Admin protected routes
+	router.HandleFunc("/appstatus", auth.RequireAdmin(handler.ApplicationStatus, authService, dao.NewUserDAO(db))).Methods("GET")
+	router.HandleFunc("/toggleapplicationstate", auth.RequireAdmin(handler.ToggleApplicationState, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/admindashboard", auth.RequireAdmin(handler.AdminDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/user/{email}", auth.RequireAdmin(func(w http.ResponseWriter, r *http.Request) {
 		handler.UpdateUserForm(w, r)

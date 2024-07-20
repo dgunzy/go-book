@@ -1,6 +1,6 @@
       <main id="main-content" class="container mx-auto px-6">
-    
-            
+        <div class="flex justify-center py-4" id="appstatus"></div>
+        <div hx-get="/appstatus" hx-target="#appstatus" hx-swap="outerHTML" hx-trigger="load" id="appstatus"></div>
             <div class="flex justify-center py-4" id="beteditmatchup">
                 <button hx-post="/adminbetedit/matchup" hx-target="#beteditmatchup" hx-swap="outerHTML" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">
                     Toggle Matchup Bets
