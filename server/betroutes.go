@@ -406,3 +406,165 @@ func (handler *Handler) GetAllBets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
+
+func (handler *Handler) EditBetForm(w http.ResponseWriter, r *http.Request) {
+	_, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		log.Println(err)
+		w.Header().Set("Location", "/")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+		return
+	}
+	betID := strings.TrimPrefix(r.URL.Path, "/editbet/")
+	bets, err := handler.dao.GetAllBets()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		fmt.Println(err)
+		return
+	}
+	betToEdit := models.Bet{}
+	for _, bet := range *bets {
+		if strconv.Itoa(bet.BetID) == betID {
+			betToEdit = bet
+			break
+		}
+	}
+	if betToEdit.BetID == 0 {
+		http.Error(w, "Invalid bet ID", http.StatusBadRequest)
+		return
+	}
+	for j := range betToEdit.BetOutcomes {
+		decimalOdds := betToEdit.BetOutcomes[j].Odds
+		americanOdds := utils.DecimalToAmerican(decimalOdds)
+		betToEdit.BetOutcomes[j].Odds = float64(americanOdds)
+	}
+
+	// Prepare data for the template
+	data := struct {
+		Bet               models.Bet
+		DefaultExpiryTime string
+	}{
+		Bet:               betToEdit,
+		DefaultExpiryTime: betToEdit.ExpiryTime.Format("2006-01-02T15:04"),
+	}
+
+	// Parse and execute the template
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/betedit.gohtml"))
+	if err := tmpl.Execute(w, data); err != nil {
+		log.Println("Error executing template:", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}
+
+func (handler *Handler) UpdateBet(w http.ResponseWriter, r *http.Request) {
+	// Parse the form data
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+		return
+	}
+
+	// Extract form fields
+	betID, err := strconv.Atoi(r.FormValue("BetID"))
+	if err != nil {
+		http.Error(w, "Invalid bet ID", http.StatusBadRequest)
+		return
+	}
+	title := r.FormValue("Title")
+	description := r.FormValue("Description")
+	oddsMultiplier, err := strconv.ParseFloat(r.FormValue("OddsMultiplier"), 64)
+	if err != nil {
+		http.Error(w, "Invalid odds multiplier", http.StatusBadRequest)
+		return
+	}
+	status := r.FormValue("Status")
+	category := r.FormValue("Category")
+	expiryTime := r.FormValue("ExpiryTime")
+	outcomeDescriptions := r.Form["OutcomeDescription[]"]
+	odds := r.Form["Odds[]"]
+	bannableUsers := r.Form["bannableUsers[]"]
+
+	// Convert odds from []string to []float64 (decimal odds)
+	var oddsFloat []float64
+	for _, odd := range odds {
+		decimalOdds, err := utils.AmericanStringToDecimal(odd)
+		if err != nil {
+			fmt.Println("Error converting odds to decimal:", err)
+			http.Error(w, "Invalid odds format", http.StatusBadRequest)
+			return
+		}
+		oddsFloat = append(oddsFloat, decimalOdds)
+	}
+
+	// Convert bannableUsers from []string to []int
+	var bannableUsersInt []int
+	for _, user := range bannableUsers {
+		userID, err := strconv.Atoi(user)
+		if err != nil {
+			fmt.Println("Error converting user ID to int:", err)
+			http.Error(w, "Invalid user ID format", http.StatusBadRequest)
+			return
+		}
+		bannableUsersInt = append(bannableUsersInt, userID)
+	}
+
+	dbReadyTime, err := utils.UIToGo(expiryTime)
+	if err != nil {
+		fmt.Println("Error converting expiry time to time.Time:", err)
+		http.Error(w, "Invalid expiry time format", http.StatusBadRequest)
+		return
+	}
+
+	// Now oddsFloat (in decimal format) and bannableUsersInt are ready for database operations
+	fmt.Println("BetID:", betID)
+	fmt.Println("Title:", title)
+	fmt.Println("Description:", description)
+	fmt.Println("OddsMultiplier:", oddsMultiplier)
+	fmt.Println("Status:", status)
+	fmt.Println("Category:", category)
+	fmt.Println("ExpiryTime:", dbReadyTime)
+	fmt.Println("OutcomeDescriptions:", outcomeDescriptions)
+	fmt.Println("Odds after conversion to decimal:", oddsFloat)
+	fmt.Println("BannableUsers after conversion:", bannableUsersInt)
+
+	outcomes := make([]models.BetOutcomes, len(outcomeDescriptions))
+	for i, description := range outcomeDescriptions {
+		outcomes[i] = models.BetOutcomes{
+			Description: description,
+			Odds:        oddsFloat[i],
+		}
+	}
+
+	// Update the bet in the database
+	BetToUpdate := models.Bet{
+		BetID:          betID,
+		Title:          title,
+		Description:    description,
+		OddsMultiplier: oddsMultiplier,
+		Status:         status,
+		Category:       category,
+		ExpiryTime:     dbReadyTime,
+		BetOutcomes:    outcomes,
+	}
+
+	err = handler.dao.UpdateBet(&BetToUpdate, bannableUsersInt)
+	var Message string
+	if err != nil {
+		fmt.Println(err)
+		Message = err.Error()
+	} else {
+		Message = "Bet updated successfully"
+	}
+
+	type TemplateData struct {
+		Message string
+	}
+
+	// Create an instance of the struct with the message
+	data := TemplateData{
+		Message: Message,
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/admindashboard.gohtml"))
+	_ = tmpl.Execute(w, data)
+}

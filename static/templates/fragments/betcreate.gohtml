@@ -16,7 +16,7 @@
       class="w-full p-4 bg-white rounded-lg shadow-md"
       required
     ></textarea>
-    <input type="hidden" name="Status" value="pending" />
+    <input type="hidden" name="Status" value="open" />
     <select
       name="Category"
       class="w-full p-4 bg-white rounded-lg shadow-md"
@@ -230,8 +230,21 @@
         return;
       }
 
+      // Collect all outcomes and odds
+      const outcomeDescriptions = [];
+      const odds = [];
+      outcomes.forEach((outcome, index) => {
+        outcomeDescriptions.push(outcome.value.trim());
+        odds.push(
+          form.querySelectorAll('input[name="Odds[]"]')[index].value.trim()
+        );
+      });
+
       // If all validations pass, allow the HTMX request to proceed
-      event.detail.parameters = Object.fromEntries(formData);
+      const parameters = Object.fromEntries(formData);
+      parameters["OutcomeDescription[]"] = outcomeDescriptions;
+      parameters["Odds[]"] = odds;
+      event.detail.parameters = parameters;
     }
   });
 </script>
