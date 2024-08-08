@@ -17,7 +17,6 @@
       {{ end }}
     </button>
   </div>
-
   <div class="max-w-7xl mx-auto">
     <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">
       {{- if eq .Category "prop" -}}
@@ -27,7 +26,7 @@
       {{- else if eq .Category "future" -}}
       Future Bets
       {{- else -}}
-      Toggle {{ .Category }} Bets
+      {{ .Category }} Bets
       {{ end }}
     </h2>
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -36,9 +35,6 @@
         <div class="bg-white rounded-lg shadow-md p-6">
           <h3 class="text-xl font-semibold mb-2">{{ .Title }}</h3>
           <p class="text-gray-800 mb-4">{{ .Description }}</p>
-          <p class="text-gray-800">
-            Odds Multiplier: {{ printf "%.2f" .OddsMultiplier }}
-          </p>
           <p class="text-gray-800">Status: {{ .Status }}</p>
           <p class="text-gray-800">
             Created At: {{ .CreatedAt.Format "January 2, 2006, 15:04" }}
@@ -52,7 +48,7 @@
             {{ range.BetOutcomes }}
             <div class="mb-2">
               <p class="text-gray-800 font-semibold">
-                {{ .Description }} - Odds: {{ printf "%.2f" .Odds }}
+                {{ .Description }} - Odds: {{  .Odds }}
               </p>
             </div>
             {{ end }}

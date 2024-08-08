@@ -45,7 +45,7 @@ func (handler *Handler) CreateNewBet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Extract and print form fields
+	// Extract form fields
 	title := r.FormValue("Title")
 	description := r.FormValue("Description")
 	status := r.FormValue("Status")
@@ -55,16 +55,16 @@ func (handler *Handler) CreateNewBet(w http.ResponseWriter, r *http.Request) {
 	odds := r.Form["Odds[]"]
 	bannableUsers := r.Form["bannableUsers[]"]
 
-	// Convert odds from []string to []float64
+	// Convert odds from []string to []float64 (decimal odds)
 	var oddsFloat []float64
 	for _, odd := range odds {
-		oddFloat, err := strconv.ParseFloat(odd, 64)
+		decimalOdds, err := utils.AmericanStringToDecimal(odd)
 		if err != nil {
-			// handle error, maybe log it or return an error response
-			fmt.Println("Error converting odds to float:", err)
+			fmt.Println("Error converting odds to decimal:", err)
+			http.Error(w, "Invalid odds format", http.StatusBadRequest)
 			return
 		}
-		oddsFloat = append(oddsFloat, oddFloat)
+		oddsFloat = append(oddsFloat, decimalOdds)
 	}
 
 	// Convert bannableUsers from []string to []int
@@ -72,8 +72,8 @@ func (handler *Handler) CreateNewBet(w http.ResponseWriter, r *http.Request) {
 	for _, user := range bannableUsers {
 		userID, err := strconv.Atoi(user)
 		if err != nil {
-			// handle error, maybe log it or return an error response
 			fmt.Println("Error converting user ID to int:", err)
+			http.Error(w, "Invalid user ID format", http.StatusBadRequest)
 			return
 		}
 		bannableUsersInt = append(bannableUsersInt, userID)
@@ -82,17 +82,18 @@ func (handler *Handler) CreateNewBet(w http.ResponseWriter, r *http.Request) {
 	dbReadyTime, err := utils.UIToGo(expiryTime)
 	if err != nil {
 		fmt.Println("Error converting expiry time to time.Time:", err)
+		http.Error(w, "Invalid expiry time format", http.StatusBadRequest)
 		return
 	}
-	// Now oddsFloat and bannableUsersInt are ready for database operations
 
+	// Now oddsFloat (in decimal format) and bannableUsersInt are ready for database operations
 	fmt.Println("Title:", title)
 	fmt.Println("Description:", description)
 	fmt.Println("Status:", status)
 	fmt.Println("Category:", category)
 	fmt.Println("ExpiryTime:", dbReadyTime)
 	fmt.Println("OutcomeDescriptions:", outcomeDescriptions)
-	fmt.Println("Odds after conversion:", oddsFloat)
+	fmt.Println("Odds after conversion to decimal:", oddsFloat)
 	fmt.Println("BannableUsers after conversion:", bannableUsersInt)
 
 	outcomes := make([]models.BetOutcomes, len(outcomeDescriptions))
@@ -116,17 +117,16 @@ func (handler *Handler) CreateNewBet(w http.ResponseWriter, r *http.Request) {
 		BetOutcomes:    outcomes,
 	}
 
-	err = nil
 	_, err = handler.dao.CreateBet(&BetToInsert, bannableUsersInt)
 
 	var Message string
-
 	if err != nil {
 		fmt.Println(err)
 		Message = err.Error()
 	} else {
 		Message = "Bet created successfully"
 	}
+
 	type TemplateData struct {
 		Message string
 	}
@@ -225,16 +225,25 @@ func (handler *Handler) GetPropBets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for i := range *bets {
+		for j := range (*bets)[i].BetOutcomes {
+			decimalOdds := (*bets)[i].BetOutcomes[j].Odds
+			americanOdds := utils.DecimalToAmerican(decimalOdds)
+			(*bets)[i].BetOutcomes[j].Odds = float64(americanOdds)
+		}
+	}
+
 	type TemplateData struct {
 		User *models.User
 		Bets []models.Bet
 	}
+
 	data := TemplateData{
 		User: dbUser,
 		Bets: *bets,
 	}
 
-	tmpl := template.Must(template.ParseFiles("static/templates/futurebets.gohtml"))
+	tmpl := template.Must(template.ParseFiles("static/templates/propbets.gohtml"))
 	err = tmpl.Execute(w, data)
 	if err != nil {
 		fmt.Println(err)
@@ -264,10 +273,19 @@ func (handler *Handler) GetFutureBets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for i := range *bets {
+		for j := range (*bets)[i].BetOutcomes {
+			decimalOdds := (*bets)[i].BetOutcomes[j].Odds
+			americanOdds := utils.DecimalToAmerican(decimalOdds)
+			(*bets)[i].BetOutcomes[j].Odds = float64(americanOdds)
+		}
+	}
+
 	type TemplateData struct {
 		User *models.User
 		Bets []models.Bet
 	}
+
 	data := TemplateData{
 		User: dbUser,
 		Bets: *bets,
@@ -283,7 +301,6 @@ func (handler *Handler) GetFutureBets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (handler *Handler) GetMatchBets(w http.ResponseWriter, r *http.Request) {
-	// Get all bets from the database
 	user, err := handler.auth.GetSessionUser(r)
 	if err != nil {
 		log.Println(err)
@@ -291,11 +308,13 @@ func (handler *Handler) GetMatchBets(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTemporaryRedirect)
 		return
 	}
+
 	dbUser, err := handler.dao.GetUserByEmail(user.Email)
 	if err != nil {
 		log.Println(err)
 		return
 	}
+
 	betCategory := "matchup"
 	bets, err := handler.dao.GetAllLegalBetsByCategory(&betCategory, dbUser.UserID)
 	if err != nil {
@@ -303,10 +322,20 @@ func (handler *Handler) GetMatchBets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Convert odds to American format
+	for i := range *bets {
+		for j := range (*bets)[i].BetOutcomes {
+			decimalOdds := (*bets)[i].BetOutcomes[j].Odds
+			americanOdds := utils.DecimalToAmerican(decimalOdds)
+			(*bets)[i].BetOutcomes[j].Odds = float64(americanOdds)
+		}
+	}
+
 	type TemplateData struct {
 		User *models.User
 		Bets []models.Bet
 	}
+
 	data := TemplateData{
 		User: dbUser,
 		Bets: *bets,
@@ -341,10 +370,19 @@ func (handler *Handler) GetAllBets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	for i := range *bets {
+		for j := range (*bets)[i].BetOutcomes {
+			decimalOdds := (*bets)[i].BetOutcomes[j].Odds
+			americanOdds := utils.DecimalToAmerican(decimalOdds)
+			(*bets)[i].BetOutcomes[j].Odds = float64(americanOdds)
+		}
+	}
+
 	type TemplateData struct {
 		User *models.User
 		Bets []models.Bet
 	}
+
 	data := TemplateData{
 		User: dbUser,
 		Bets: *bets,

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/dgunzy/go-book/auth"
@@ -16,6 +17,16 @@ import (
 
 func ServeFavicon(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, "static/images/favicon.ico")
+}
+func customFileServer(fs http.FileSystem) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".js") {
+			w.Header().Set("Content-Type", "application/javascript")
+		} else if strings.HasSuffix(r.URL.Path, ".css") {
+			w.Header().Set("Content-Type", "text/css")
+		}
+		http.FileServer(fs).ServeHTTP(w, r)
+	})
 }
 
 func main() {
@@ -107,8 +118,8 @@ func main() {
 	router.HandleFunc("/home", handler.HandleAuthCallbackFunction).Methods("GET")
 	router.HandleFunc("/logout/{provider}", handler.HandleLogout).Methods("GET")
 
-	fs := http.FileServer(http.Dir("/routing/static"))
-	router.Handle("/static/", http.StripPrefix("/static/", fs))
+	fs := customFileServer(http.Dir("./static"))
+	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", fs))
 
 	fmt.Println("Server running on 8080")
 	http.ListenAndServe(":8080", router)

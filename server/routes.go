@@ -10,6 +10,7 @@ import (
 
 	"github.com/dgunzy/go-book/auth"
 	"github.com/dgunzy/go-book/models"
+	"github.com/dgunzy/go-book/utils"
 	"github.com/markbates/goth/gothic"
 )
 
@@ -371,7 +372,6 @@ func (handler *Handler) AdminUserEditRemove(w http.ResponseWriter, r *http.Reque
 }
 func (handler *Handler) AdminBetEdit(w http.ResponseWriter, r *http.Request) {
 	betType := strings.TrimPrefix(r.URL.Path, "/adminbetedit/")
-
 	bets, err := handler.dao.GetBetsByCategory(betType)
 	if err != nil {
 		fmt.Println("Bet by category " + betType + " Not found ")
@@ -379,10 +379,20 @@ func (handler *Handler) AdminBetEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Convert odds to American format
+	for i := range *bets {
+		for j := range (*bets)[i].BetOutcomes {
+			decimalOdds := (*bets)[i].BetOutcomes[j].Odds
+			americanOdds := utils.DecimalToAmerican(decimalOdds)
+			(*bets)[i].BetOutcomes[j].Odds = float64(americanOdds)
+		}
+	}
+
 	type TemplateData struct {
 		Category string
 		Bets     []models.Bet
 	}
+
 	data := TemplateData{
 		Category: betType,
 		Bets:     *bets,
