@@ -1,34 +1,38 @@
 <div id="viewBannableUsers" class="w-full p-4 bg-white rounded-lg shadow-md">
-  <h3 class="text-xl font-semibold mb-2">Bannable Users</h3>
+  <h3 class="text-xl font-semibold mb-4 text-center">Bannable Users</h3>
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
     {{ range . }}
-    <div class="w-full p-4">
-      <div class="bg-white rounded-lg shadow-md p-6">
-        <h3 class="text-xl font-semibold mb-2">{{ .Username }}</h3>
-        <p class="text-gray-800 mb-4">{{ .Email }}</p>
+    <div class="w-full p-2">
+      <div class="bg-white rounded-lg shadow-md p-4">
+        <h3 class="text-lg font-semibold mb-2 break-words">{{ .Username }}</h3>
+        <p class="text-gray-800 mb-4 break-words text-sm">{{ .Email }}</p>
         <!-- User Details -->
-        <p class="text-gray-800">User ID: {{ .UserID }}</p>
         <!-- Checkbox for Bannable User -->
-        <div class="flex items-center justify-center mt-4">
+        <div class="flex items-center justify-start mt-2">
           <input
             type="checkbox"
             name="bannableUsers[]"
             value="{{ .UserID }}"
             class="mr-2"
+            id="bannableUser{{ .UserID }}"
           />
-          <label for="bannableUsers[]">Ban from accessing this bet.</label>
+          <label for="bannableUser{{ .UserID }}" class="text-sm">
+            Ban from accessing this bet
+          </label>
         </div>
       </div>
     </div>
     {{ end }}
   </div>
-  <button
-    hx-post="/cancel-view-bannable-users"
-    hx-target="#viewBannableUsers"
-    hx-swap="outerHTML"
-    type="button"
-    class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded"
-  >
-    Cancel
-  </button>
+  <div class="mt-6 text-center">
+    <button
+      hx-post="/cancel-view-bannable-users"
+      hx-target="#viewBannableUsers"
+      hx-swap="outerHTML"
+      type="button"
+      class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-4 rounded w-full sm:w-auto"
+    >
+      Cancel
+    </button>
+  </div>
 </div>

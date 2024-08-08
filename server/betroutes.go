@@ -196,8 +196,18 @@ func (handler *Handler) GetNewBetPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Calculate the default expiry time (1 week from now)
+	defaultExpiryTime := time.Now().Add(7 * 24 * time.Hour)
+
+	// Create a data struct to pass to the template
+	data := struct {
+		DefaultExpiryTime string
+	}{
+		DefaultExpiryTime: defaultExpiryTime.Format("2006-01-02T15:04"),
+	}
+
 	tmpl := template.Must(template.ParseFiles("static/templates/fragments/betcreate.gohtml"))
-	if err := tmpl.Execute(w, nil); err != nil {
+	if err := tmpl.Execute(w, data); err != nil {
 		log.Println("Error executing template:", err)
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return

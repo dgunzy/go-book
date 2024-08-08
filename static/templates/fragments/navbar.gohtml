@@ -34,6 +34,7 @@
       hx-get="/dashboard"
       hx-target="#main-content"
       hx-swap="outerhtml"
+      @click="open = !open"
       >Dashboard</a
     >
     <a
@@ -42,6 +43,7 @@
       hx-get="/matchbets"
       hx-target="#main-content"
       hx-swap="outerHTML"
+      @click="open = !open"
       >Match Bets</a
     >
     <a
@@ -50,6 +52,7 @@
       hx-get="/futurebets"
       hx-target="#main-content"
       hx-swap="outerHTML"
+      @click="open = !open"
       >Future Bets</a
     >
     <a
@@ -58,6 +61,7 @@
       hx-get="/props"
       hx-target="#main-content"
       hx-swap="outerHTML"
+      @click="open = !open"
       >Props</a
     >
     <a
@@ -66,6 +70,7 @@
       hx-get="/parlay"
       hx-target="#main-content"
       hx-swap="outerHTML"
+      @click="open = !open"
       >Parlay</a
     >
 
