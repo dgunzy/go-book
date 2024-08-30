@@ -201,7 +201,6 @@
   }
 
   function initFlatpickr() {
-    console.log("Initializing Flatpickr");
     const defaultDate = new Date(
       new Date().getTime() + 7 * 24 * 60 * 60 * 1000
     );
@@ -225,15 +224,16 @@
 
   function updateExpiryTime(date) {
     const expiryTimeInput = document.getElementById("ExpiryTime");
+    if (!expiryTimeInput) {
+      return;
+    }
+
     if (date) {
       expiryTimeInput.value = date.toISOString();
-      console.log("ExpiryTime updated:", expiryTimeInput.value);
     } else {
       expiryTimeInput.value = "";
-      console.log("No date selected");
     }
   }
-
   // Add event listener to the form submission
   document
     .getElementById("newBetForm")

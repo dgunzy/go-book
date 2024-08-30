@@ -142,21 +142,21 @@ func (dao *UserDAO) UpdateBet(bet *models.Bet, BannedUsers []int) error {
 		}
 	}
 
-	// Delete existing banned users for this bet
-	_, err = tx.Exec("DELETE FROM bannedPlayers WHERE betID = ?", bet.BetID)
-	if err != nil {
-		return err
-	}
+	// // Delete existing banned users for this bet
+	// _, err = tx.Exec("DELETE FROM bannedPlayers WHERE betID = ?", bet.BetID)
+	// if err != nil {
+	// 	return err
+	// }
 
-	// Insert the updated banned users
-	if len(BannedUsers) > 0 {
-		for _, user := range BannedUsers {
-			_, err := tx.Exec("INSERT INTO bannedPlayers (userID, betID) VALUES (?, ?)", user, bet.BetID)
-			if err != nil {
-				return err
-			}
-		}
-	}
+	// // Insert the updated banned users
+	// if len(BannedUsers) > 0 {
+	// 	for _, user := range BannedUsers {
+	// 		_, err := tx.Exec("INSERT INTO bannedPlayers (userID, betID) VALUES (?, ?)", user, bet.BetID)
+	// 		if err != nil {
+	// 			return err
+	// 		}
+	// 	}
+	// }
 
 	// Commit the transaction
 	return tx.Commit()

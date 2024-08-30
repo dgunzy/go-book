@@ -1,158 +1,100 @@
 <div id="editBetForm" class="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8">
-    <div class="bg-white shadow-md rounded-lg p-6">
-      <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">
-        Edit Bet
-      </h2>
-      <form id="editBetFormContent" class="grid grid-cols-1 gap-6">
-        <input type="hidden" name="BetID" value="{{.Bet.BetID}}" />
-        
-        <div class="form-group">
-          <label for="Title" class="block text-sm font-medium text-gray-700">Title</label>
-          <input
-            type="text"
-            id="Title"
-            name="Title"
-            value="{{.Bet.Title}}"
-            class="w-full p-4 bg-white rounded-lg shadow-sm"
-            required
-          />
-        </div>
-    
-        <div class="form-group">
-          <label for="Description" class="block text-sm font-medium text-gray-700">Description</label>
-          <textarea
-            id="Description"
-            name="Description"
-            class="w-full p-4 bg-white rounded-lg shadow-sm"
-            required
-          >{{.Bet.Description}}</textarea>
-        </div>
-    
-        <div class="form-group" style="display: none;">
-          <input
-            type="number"
-            id="OddsMultiplier"
-            name="OddsMultiplier"
-            value="{{.Bet.OddsMultiplier}}"
-            step="0.01"
-            class="w-full p-4 bg-white rounded-lg shadow-sm"
-            readonly
-            required
-          />
-        </div>
-    
-        <div class="form-group">
-          <label for="Status" class="block text-sm font-medium text-gray-700">Status</label>
-          <select
-            id="Status"
-            name="Status"
-            class="w-full p-4 bg-white rounded-lg shadow-sm"
-            required
-          >
-            <option value="open" {{if eq .Bet.Status "open"}}selected{{end}}>Open</option>
-            <option value="closed" {{if eq .Bet.Status "closed"}}selected{{end}}>Closed</option>
-          </select>
-        </div>
-    
-        <div class="form-group">
-          <label for="Category" class="block text-sm font-medium text-gray-700">Category</label>
-          <select
-            id="Category"
-            name="Category"
-            class="w-full p-4 bg-white rounded-lg shadow-sm"
-            required
-          >
-            <option value="future" {{if eq .Bet.Category "future"}}selected{{end}}>Future</option>
-            <option value="matchup" {{if eq .Bet.Category "matchup"}}selected{{end}}>Matchup</option>
-            <option value="prop" {{if eq .Bet.Category "prop"}}selected{{end}}>Prop</option>
-          </select>
-        </div>
-    
-        <div class="form-group" style="display: none;">
-          <input
-            style="display: none !important;"
-            type="number"
-            id="CreatedBy"
-            name="CreatedBy"
-            value="{{.Bet.CreatedBy}}"
-            class="w-full p-4 bg-white rounded-lg shadow-sm bg-gray-100"
-            readonly
-          />
-        </div>
-    
-        <div class="form-group">
-          <label for="CreatedAt" class="block text-sm font-medium text-gray-700">Created At</label>
-          <input
-            type="datetime-local"
-            id="CreatedAt"
-            name="CreatedAt"
-            value="{{.Bet.CreatedAt.Format "2006-01-02T15:04"}}"
-            class="w-full p-4 bg-white rounded-lg shadow-sm bg-gray-100"
-            readonly
-          />
-        </div>
-    
-        <div class="form-group">
-          <label for="ExpiryTimeDisplay" class="block text-sm font-medium text-gray-700">Expiry Time</label>
-        <div class="relative">
-          <input
-            type="text"
-            id="ExpiryTimeDisplay"
-            placeholder="Expiry Time"
-            class="w-full p-4 bg-white rounded-lg shadow-sm flatpickr-input"
-            required
-          />
-          <input
-            type="hidden"
-            id="ExpiryTime"
-            name="ExpiryTime"
-            value="{{.Bet.ExpiryTime.Format "2006-01-02T15:04:05Z07:00"}}"
-          />
-        </div>
-        </div>
-    
-        <!-- Bet Outcomes Section -->
-        <div id="betOutcomesContainer" class="w-full p-4 bg-white rounded-lg shadow-sm">
-          <h3 class="text-xl font-semibold mb-2 text-center">Bet Outcomes</h3>
-          <p class="text-gray-500 text-center text-sm mb-4">
-            Outcome descriptions cannot be modified. You can only update the odds.
-          </p>
-          {{range $index, $outcome := .Bet.BetOutcomes}}
-            <div class="flex flex-col sm:flex-row items-center gap-4 mt-4">
-              <input
-                type="text"
-                name="OutcomeDescription[]"
-                value="{{$outcome.Description}}"
-                class="w-full sm:w-2/3 p-2 bg-gray-100 rounded"
-                readonly
-              />
-              <input
-                type="number"
-                step="0.01"
-                name="Odds[]"
-                value="{{$outcome.Odds}}"
-                class="w-full sm:w-1/3 p-2 bg-white rounded"
-                required
-              />
-            </div>
-          {{end}}
-        </div>
-    
-        <button
-        id="submitButton"
-        hx-put="/update-bet/{{.Bet.BetID}}"
-        hx-swap="outerHTML"
-        hx-target="#main-content"
-        type="button"
-        class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
-      >
-        Update Bet
-      </button>
-    </form>
-  </div>
+  <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">
+    Edit Bet
+  </h2>
+  <form
+    id="editBetForm"
+    class="grid grid-cols-1 gap-6"
+    hx-put="/update-bet/{{.Bet.BetID}}"
+    hx-swap="outerHTML"
+    hx-target="#editBetForm"
+    hx-trigger="submit"
+    hx-encoding="multipart/form-data"
+  >
+    <input type="hidden" name="BetID" value="{{.Bet.BetID}}" />
+    <input
+      type="text"
+      name="Title"
+      value="{{.Bet.Title}}"
+      placeholder="Bet Title"
+      class="w-full p-4 bg-white rounded-lg shadow-md"
+      required
+    />
+    <textarea
+      name="Description"
+      placeholder="Bet Description"
+      class="w-full p-4 bg-white rounded-lg shadow-md"
+      required
+    >{{.Bet.Description}}</textarea>
+    <input type="hidden" name="Status" value="{{.Bet.Status}}" />
+    <select
+      name="Category"
+      class="w-full p-4 bg-white rounded-lg shadow-md"
+      required
+    >
+      <option value="future" {{if eq .Bet.Category "future"}}selected{{end}}>Future</option>
+      <option value="matchup" {{if eq .Bet.Category "matchup"}}selected{{end}}>Matchup</option>
+      <option value="prop" {{if eq .Bet.Category "prop"}}selected{{end}}>Prop</option>
+    </select>
+    <p class="text-gray-500 text-center">Bet expiry time.</p>
+    <div class="relative">
+      <input
+        type="text"
+        id="ExpiryTimeDisplay"
+        placeholder="Expiry Time"
+        class="w-full p-4 bg-white rounded-lg shadow-md flatpickr-input"
+        required
+      />
+      <input type="hidden" id="ExpiryTime" name="ExpiryTime" value="{{.Bet.ExpiryTime.Format "2006-01-02T15:04:05Z07:00"}}" required />
+    </div>
+    <!-- Bet Outcomes Section -->
+    <div
+      id="betOutcomesContainer"
+      class="w-full p-4 bg-white rounded-lg shadow-md"
+    >
+      <h3 class="text-xl font-semibold mb-2 text-center">Bet Outcomes</h3>
+      <p class="text-gray-500 text-center text-sm">
+        All odds must be in American format, + odds leave blank, minus odds put
+        the -.
+      </p>
+      <p class="text-gray-500 text-center text-sm mb-4">
+        Outcome descriptions cannot be modified. You can only update the odds.
+      </p>
+      <div id="betOutcomesInputs" class="space-y-4">
+        {{range $index, $outcome := .Bet.BetOutcomes}}
+          <div class="flex flex-col sm:flex-row items-center gap-4">
+            <input
+              type="text"
+              name="OutcomeDescription[]"
+              value="{{$outcome.Description}}"
+              placeholder="Outcome Description"
+              class="w-full sm:w-2/5 p-2 bg-gray-100 rounded"
+              readonly
+            />
+            <input
+              type="number"
+              step="0.01"
+              name="Odds[]"
+              value="{{$outcome.Odds}}"
+              placeholder="Odds"
+              class="w-full sm:w-1/5 p-2 bg-white rounded"
+              required
+            />
+          </div>
+        {{end}}
+      </div>
+    </div>
+    <button
+      type="submit"
+      class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
+    >
+      Update Bet
+    </button>
+  </form>
 </div>
-  
-  <div
+
+<!-- Error Modal -->
+<div
   id="errorModal"
   class="fixed z-10 inset-0 overflow-y-auto hidden"
   aria-labelledby="modal-title"
@@ -202,108 +144,106 @@
   </div>
 </div>
 
-
-
 <script>
-    function showErrorModal(message) {
-      const modal = document.getElementById("errorModal");
-      const errorMessage = document.getElementById("errorMessage");
+  function showErrorModal(message) {
+    const modal = document.getElementById("errorModal");
+    const errorMessage = document.getElementById("errorMessage");
+    if (modal && errorMessage) {
       errorMessage.textContent = message;
       modal.classList.remove("hidden");
+    } else {
+      console.log("Error modal elements not found. Error message:", message);
     }
-  
-    function closeErrorModal() {
-      const modal = document.getElementById("errorModal");
-      modal.classList.add("hidden");
-    }
-  
-    document.addEventListener("htmx:configRequest", (event) => {
-      if (event.detail.elt.id === "submitButton") {
-        const form = document.getElementById("editBetFormContent");
-        if (!form) {
-          console.error("Form not found");
-          event.preventDefault();
-          return;
-        }
-  
-        const formData = new FormData(form);
-  
-        // Perform form validation
-        const editableRequiredFields = form.querySelectorAll("[required]:not([readonly])");
-        for (let field of editableRequiredFields) {
-          if (!field.value.trim()) {
-            showErrorModal(`Please fill out the ${field.name} field.`);
-            event.preventDefault();
-            return;
-          }
-        }
-  
-        // Check if there's at least one outcome
-        const outcomes = form.querySelectorAll('input[name="OutcomeDescription[]"]');
-        if (outcomes.length === 0) {
-          showErrorModal("There must be at least one outcome.");
-          event.preventDefault();
-          return;
-        }
-  
-       
-  
-        // Check for unique outcome descriptions (although they're readonly in this form)
-        const descriptions = Array.from(outcomes).map((input) => input.value.trim());
-        if (new Set(descriptions).size !== descriptions.length) {
-          showErrorModal("All outcome descriptions must be unique.");
-          event.preventDefault();
-          return;
-        }
-  
-        // Validate ExpiryTime
-        const expiryTime = new Date(form.querySelector('#ExpiryTime').value);
-        const now = new Date();
-        if (expiryTime <= now) {
-          showErrorModal("Expiry time must be in the future.");
-          event.preventDefault();
-          return;
-        }
-  
-        // If all validations pass, allow the HTMX request to proceed
-        event.detail.parameters = Object.fromEntries(formData);
-      }
-    });
-  
-    document.addEventListener("htmx:afterSettle", (event) => {
-      if (event.detail.elt.id === "submitButton") {
-        // Check if the response indicates success (you may need to adjust this condition)
-        if (event.detail.xhr.responseText.includes("Bet updated successfully")) {
-          // Trigger a click on the Admin Dashboard link
-          const adminDashboardLink = document.querySelector('a[href="/admindashboard"]');
-          if (adminDashboardLink) {
-            adminDashboardLink.click();
-          } else {
-            console.error("Admin Dashboard link not found");
-          }
-        } else {
-          showErrorModal("Failed to update bet. Please try again.");
-        }
-      }
-    });
-    function initFlatpickr() {
-    console.log("Initializing Flatpickr");
-    flatpickr("#ExpiryTimeDisplay", {
-      enableTime: true,
-      dateFormat: "Z", // Hidden format (ISO 8601)
-      altInput: true,
-      altFormat: "F j, Y at h:i K", // User-friendly format
-      minDate: "today",
-      time_24hr: false,
-      defaultDate: document.getElementById("ExpiryTime").value,
-      onChange: function (selectedDates, dateStr, instance) {
-        // Update the hidden input with ISO 8601 format
-        document.getElementById("ExpiryTime").value = selectedDates[0].toISOString();
-        console.log("Selected date (ISO 8601):", selectedDates[0].toISOString());
-      },
-    });
   }
 
-  // Initialize Flatpickr on page load
+  function closeErrorModal() {
+    const modal = document.getElementById("errorModal");
+    if (modal) {
+      modal.classList.add("hidden");
+    } else {
+      console.log("Error modal element not found");
+    }
+  }
+
+  function initFlatpickr() {
+    const expiryTimeDisplay = document.getElementById("ExpiryTimeDisplay");
+    const expiryTimeInput = document.getElementById("ExpiryTime");
+
+    if (!expiryTimeDisplay || !expiryTimeInput) {
+      // console.log("Expiry time elements not found");
+      return;
+    }
+
+    flatpickr(expiryTimeDisplay, {
+      enableTime: true,
+      dateFormat: "Z",
+      altInput: true,
+      altFormat: "F j, Y at h:i K",
+      minDate: "today",
+      time_24hr: false,
+      defaultDate: expiryTimeInput.value,
+      onChange: function (selectedDates, dateStr, instance) {
+        updateExpiryTime(selectedDates[0]);
+      },
+    });
+
+    // Set the initial value for the hidden input
+    updateExpiryTime(new Date(expiryTimeInput.value));
+  }
+
+  function updateExpiryTime(date) {
+    const expiryTimeInput = document.getElementById("ExpiryTime");
+    if (!expiryTimeInput) {
+      console.log("Expiry time input element not found");
+      return;
+    }
+
+    if (date) {
+      expiryTimeInput.value = date.toISOString();
+    } else {
+      expiryTimeInput.value = "";
+    }
+  }
+
+  document.addEventListener("htmx:configRequest", (event) => {
+    if (event.detail.elt.id === "editBetForm") {
+      const form = event.detail.elt;
+      if (!form) {
+        console.log("Edit bet form not found");
+        event.preventDefault();
+        return;
+      }
+
+      // Perform form validation
+      const editableRequiredFields = form.querySelectorAll("[required]:not([readonly])");
+      for (let field of editableRequiredFields) {
+        if (!field.value.trim()) {
+          showErrorModal(`Please fill out the ${field.name} field.`);
+          event.preventDefault();
+          return;
+        }
+      }
+    }
+  });
+
+  document.addEventListener("htmx:afterSettle", (event) => {
+    if (event.detail.elt.id === "editBetForm") {
+      // Check if the response indicates success
+      if (event.detail.xhr.responseText.includes("Bet updated successfully")) {
+        // Trigger a click on the Admin Dashboard link
+        const adminDashboardLink = document.querySelector('a[href="/admindashboard"]');
+        if (adminDashboardLink) {
+          adminDashboardLink.click();
+        } else {
+          console.log("Admin Dashboard link not found");
+        }
+      } else {
+        showErrorModal("Failed to update bet. Please try again.");
+      }
+    }
+  });
+
   initFlatpickr();
-  </script>
+  document.addEventListener("DOMContentLoaded", initFlatpickr);
+  document.addEventListener("htmx:afterSwap", initFlatpickr);
+</script>

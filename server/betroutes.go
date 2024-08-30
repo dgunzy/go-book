@@ -45,11 +45,11 @@ func (handler *Handler) CreateNewBet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Log all form values
-	fmt.Println("Received form data:")
-	for key, values := range r.MultipartForm.Value {
-		fmt.Printf("%s: %v\n", key, values)
-	}
+	// // Log all form values
+	// fmt.Println("Received form data:")
+	// for key, values := range r.MultipartForm.Value {
+	// 	fmt.Printf("%s: %v\n", key, values)
+	// }
 	// Parse the form data
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
@@ -99,14 +99,14 @@ func (handler *Handler) CreateNewBet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Now oddsFloat (in decimal format) and bannableUsersInt are ready for database operations
-	fmt.Println("Title:", title)
-	fmt.Println("Description:", description)
-	fmt.Println("Status:", status)
-	fmt.Println("Category:", category)
-	fmt.Println("ExpiryTime:", dbReadyTime)
-	fmt.Println("OutcomeDescriptions:", outcomeDescriptions)
-	fmt.Println("Odds after conversion to decimal:", oddsFloat)
-	fmt.Println("BannableUsers after conversion:", bannableUsersInt)
+	// fmt.Println("Title:", title)
+	// fmt.Println("Description:", description)
+	// fmt.Println("Status:", status)
+	// fmt.Println("Category:", category)
+	// fmt.Println("ExpiryTime:", dbReadyTime)
+	// fmt.Println("OutcomeDescriptions:", outcomeDescriptions)
+	// fmt.Println("Odds after conversion to decimal:", oddsFloat)
+	// fmt.Println("BannableUsers after conversion:", bannableUsersInt)
 
 	outcomes := make([]models.BetOutcomes, len(outcomeDescriptions))
 	for i, description := range outcomeDescriptions {
@@ -472,31 +472,32 @@ func (handler *Handler) EditBetForm(w http.ResponseWriter, r *http.Request) {
 }
 
 func (handler *Handler) UpdateBet(w http.ResponseWriter, r *http.Request) {
-	// Parse the form data
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Failed to parse form", http.StatusBadRequest)
+	err := r.ParseMultipartForm(32 << 20) // 32MB max memory
+	if err != nil {
+		http.Error(w, "Failed to parse form: "+err.Error(), http.StatusBadRequest)
 		return
 	}
+	// Log all form values
+	// fmt.Println("Received form data:")
+	// for key, values := range r.MultipartForm.Value {
+	// 	fmt.Printf("%s: %v\n", key, values)
+	// }
 
 	// Extract form fields
-	betID, err := strconv.Atoi(r.FormValue("BetID"))
+	betID := strings.TrimPrefix(r.URL.Path, "/update-bet/")
+	betIdInt, err := strconv.Atoi(betID)
 	if err != nil {
-		http.Error(w, "Invalid bet ID", http.StatusBadRequest)
+		fmt.Println("Error converting bet ID to int:", err)
+		http.Error(w, "Invalid bet ID format", http.StatusBadRequest)
 		return
 	}
 	title := r.FormValue("Title")
 	description := r.FormValue("Description")
-	oddsMultiplier, err := strconv.ParseFloat(r.FormValue("OddsMultiplier"), 64)
-	if err != nil {
-		http.Error(w, "Invalid odds multiplier", http.StatusBadRequest)
-		return
-	}
 	status := r.FormValue("Status")
 	category := r.FormValue("Category")
 	expiryTime := r.FormValue("ExpiryTime")
 	outcomeDescriptions := r.Form["OutcomeDescription[]"]
 	odds := r.Form["Odds[]"]
-	bannableUsers := r.Form["bannableUsers[]"]
 
 	// Convert odds from []string to []float64 (decimal odds)
 	var oddsFloat []float64
@@ -510,18 +511,7 @@ func (handler *Handler) UpdateBet(w http.ResponseWriter, r *http.Request) {
 		oddsFloat = append(oddsFloat, decimalOdds)
 	}
 
-	// Convert bannableUsers from []string to []int
-	var bannableUsersInt []int
-	for _, user := range bannableUsers {
-		userID, err := strconv.Atoi(user)
-		if err != nil {
-			fmt.Println("Error converting user ID to int:", err)
-			http.Error(w, "Invalid user ID format", http.StatusBadRequest)
-			return
-		}
-		bannableUsersInt = append(bannableUsersInt, userID)
-	}
-
+	fmt.Println(expiryTime + " is the expiry time entered to backend")
 	dbReadyTime, err := utils.UIToGo(expiryTime)
 	if err != nil {
 		fmt.Println("Error converting expiry time to time.Time:", err)
@@ -529,17 +519,15 @@ func (handler *Handler) UpdateBet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Now oddsFloat (in decimal format) and bannableUsersInt are ready for database operations
-	fmt.Println("BetID:", betID)
-	fmt.Println("Title:", title)
-	fmt.Println("Description:", description)
-	fmt.Println("OddsMultiplier:", oddsMultiplier)
-	fmt.Println("Status:", status)
-	fmt.Println("Category:", category)
-	fmt.Println("ExpiryTime:", dbReadyTime)
-	fmt.Println("OutcomeDescriptions:", outcomeDescriptions)
-	fmt.Println("Odds after conversion to decimal:", oddsFloat)
-	fmt.Println("BannableUsers after conversion:", bannableUsersInt)
+	// Now oddsFloat (in decimal format) is ready for database operations
+	// fmt.Println("BetID:", betIdInt)
+	// fmt.Println("Title:", title)
+	// fmt.Println("Description:", description)
+	// fmt.Println("Status:", status)
+	// fmt.Println("Category:", category)
+	// fmt.Println("ExpiryTime:", dbReadyTime)
+	// fmt.Println("OutcomeDescriptions:", outcomeDescriptions)
+	// fmt.Println("Odds after conversion to decimal:", oddsFloat)
 
 	outcomes := make([]models.BetOutcomes, len(outcomeDescriptions))
 	for i, description := range outcomeDescriptions {
@@ -551,17 +539,16 @@ func (handler *Handler) UpdateBet(w http.ResponseWriter, r *http.Request) {
 
 	// Update the bet in the database
 	BetToUpdate := models.Bet{
-		BetID:          betID,
-		Title:          title,
-		Description:    description,
-		OddsMultiplier: oddsMultiplier,
-		Status:         status,
-		Category:       category,
-		ExpiryTime:     dbReadyTime,
-		BetOutcomes:    outcomes,
+		BetID:       betIdInt,
+		Title:       title,
+		Description: description,
+		Status:      status,
+		Category:    category,
+		ExpiryTime:  dbReadyTime,
+		BetOutcomes: outcomes,
 	}
 
-	err = handler.dao.UpdateBet(&BetToUpdate, bannableUsersInt)
+	err = handler.dao.UpdateBet(&BetToUpdate, nil)
 	var Message string
 	if err != nil {
 		fmt.Println(err)
@@ -573,12 +560,11 @@ func (handler *Handler) UpdateBet(w http.ResponseWriter, r *http.Request) {
 	type TemplateData struct {
 		Message string
 	}
-
 	// Create an instance of the struct with the message
 	data := TemplateData{
 		Message: Message,
 	}
 
-	tmpl := template.Must(template.ParseFiles("static/templates/admindashboard.gohtml"))
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/createbetbutton.gohtml"))
 	_ = tmpl.Execute(w, data)
 }
