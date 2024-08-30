@@ -73,6 +73,7 @@ func main() {
 	router.HandleFunc("/props", auth.RequireAuth(handler.GetPropBets, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/parlay", auth.RequireAuth(handler.GetAllBets, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/transactions", auth.RequireAuth(handler.ReadUserTransactions, authService, dao.NewUserDAO(db))).Methods("GET")
+	router.HandleFunc("/wager", auth.RequireAuth(handler.PlaceWager, authService, dao.NewUserDAO(db))).Methods("POST")
 
 	// router.HandleFunc("/test", auth.RequireAuth(handler.Test, authService)).Methods("GET")
 

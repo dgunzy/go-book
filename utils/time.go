@@ -5,11 +5,11 @@ import (
 )
 
 const (
-	UIInputFormat = "2006-01-02T15:04" // Updated format to match <input type="datetime-local">
-	SQLiteFormat  = time.RFC3339       // "2006-01-02T15:04:05Z"
+	UIInputFormat = time.RFC3339 // Updated to match Flatpickr's ISO 8601 output
+	SQLiteFormat  = time.RFC3339 // Keeping this the same
 )
 
-// UIToGo converts a UI input time string to a Go time.Time object.
+// UIToGo converts a UI input time string (now in ISO 8601 format) to a Go time.Time object.
 func UIToGo(uiTime string) (time.Time, error) {
 	return time.Parse(UIInputFormat, uiTime)
 }
@@ -24,7 +24,7 @@ func SQLiteToGo(sqliteTime string) (time.Time, error) {
 	return time.Parse(SQLiteFormat, sqliteTime)
 }
 
-// GoToUI converts a Go time.Time object to a UI input format string.
+// GoToUI converts a Go time.Time object to a UI input format string (ISO 8601).
 func GoToUI(goTime time.Time) string {
 	return goTime.Format(UIInputFormat)
 }

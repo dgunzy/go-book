@@ -78,6 +78,7 @@ func (handler *Handler) CreateNewBet(w http.ResponseWriter, r *http.Request) {
 		}
 		bannableUsersInt = append(bannableUsersInt, userID)
 	}
+	fmt.Println(expiryTime + " is the expiry time entered to backend")
 
 	dbReadyTime, err := utils.UIToGo(expiryTime)
 	if err != nil {
@@ -184,7 +185,9 @@ func (handler *Handler) MoveBetToClosed(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Redirect to the bet details page
-	http.Redirect(w, r, "/admindashboard", http.StatusSeeOther)
+	w.Header().Set("Content-Type", "text/html")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "<p>%s</p>", "Bet moved to closed successfully")
 }
 
 func (handler *Handler) GetNewBetPage(w http.ResponseWriter, r *http.Request) {

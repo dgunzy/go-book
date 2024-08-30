@@ -7,7 +7,7 @@ import (
 	"github.com/dgunzy/go-book/utils"
 )
 
-// Transaction Create/Read operations
+// Transaction Create/Read operations. Transactions ajust user balance.
 func (dao *UserDAO) CreateTransaction(User models.User, transaction models.Transaction) (userID int, error error) {
 	// Set the transaction date to now before inserting
 

@@ -23,7 +23,6 @@ func (dao *UserDAO) GetUserByID(userID int) (*models.User, error) {
 
 	var user models.User
 	err := row.Scan(&user.UserID, &user.Username, &user.Email, &user.Role, &user.Balance, &user.FreePlayBalance, &user.AutoApproveLimit)
-	
 
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -161,8 +160,10 @@ func (dao *UserDAO) AdjustUserBalance(userID int, adjustmentAmount float64) erro
 		fmt.Println(err)
 		return err
 	}
+	//LOGGING
 	fmt.Printf("current balance %.2f\n", currentBalance)
 	newBalance := currentBalance + adjustmentAmount
+	fmt.Printf("new balance %.2f\n", newBalance)
 
 	// Update the user's balance in the database
 	updateQuery := "UPDATE Users SET Balance = ? WHERE UserID = ?"

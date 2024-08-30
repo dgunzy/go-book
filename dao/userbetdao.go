@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/dgunzy/go-book/models"
+	"github.com/dgunzy/go-book/utils"
 )
 
 func (dao *UserDAO) GetUserBets(userEmail string) ([]*models.UserBet, error) {
@@ -54,9 +55,11 @@ func (dao *UserDAO) PlaceBet(userBet models.UserBet) error {
 	}
 	defer tx.Rollback()
 
+	dbTime := utils.GoToSQLite(userBet.PlacedAt)
+
 	// Insert the new bet into the UserBets table
 	insertQuery := `INSERT INTO UserBets (UserID, Amount, BetDescription, Odds, Result, PlacedAt, Approved) VALUES (?, ?, ?, ?, 'ungraded', ?, ?)`
-	_, err = tx.Exec(insertQuery, userBet.UserID, userBet.Amount, userBet.BetDescription, userBet.Odds, userBet.PlacedAt, false)
+	_, err = tx.Exec(insertQuery, userBet.UserID, userBet.Amount, userBet.BetDescription, userBet.Odds, dbTime, userBet.Approved)
 	if err != nil {
 		fmt.Println(err)
 		return err

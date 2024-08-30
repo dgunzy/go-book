@@ -93,15 +93,22 @@
         </div>
     
         <div class="form-group">
-          <label for="ExpiryTime" class="block text-sm font-medium text-gray-700">Expiry Time</label>
+          <label for="ExpiryTimeDisplay" class="block text-sm font-medium text-gray-700">Expiry Time</label>
+        <div class="relative">
           <input
-            type="datetime-local"
-            id="ExpiryTime"
-            name="ExpiryTime"
-            value="{{.Bet.ExpiryTime.Format "2006-01-02T15:04"}}"
-            class="w-full p-4 bg-white rounded-lg shadow-sm"
+            type="text"
+            id="ExpiryTimeDisplay"
+            placeholder="Expiry Time"
+            class="w-full p-4 bg-white rounded-lg shadow-sm flatpickr-input"
             required
           />
+          <input
+            type="hidden"
+            id="ExpiryTime"
+            name="ExpiryTime"
+            value="{{.Bet.ExpiryTime.Format "2006-01-02T15:04:05Z07:00"}}"
+          />
+        </div>
         </div>
     
         <!-- Bet Outcomes Section -->
@@ -279,4 +286,24 @@
         }
       }
     });
+    function initFlatpickr() {
+    console.log("Initializing Flatpickr");
+    flatpickr("#ExpiryTimeDisplay", {
+      enableTime: true,
+      dateFormat: "Z", // Hidden format (ISO 8601)
+      altInput: true,
+      altFormat: "F j, Y at h:i K", // User-friendly format
+      minDate: "today",
+      time_24hr: false,
+      defaultDate: document.getElementById("ExpiryTime").value,
+      onChange: function (selectedDates, dateStr, instance) {
+        // Update the hidden input with ISO 8601 format
+        document.getElementById("ExpiryTime").value = selectedDates[0].toISOString();
+        console.log("Selected date (ISO 8601):", selectedDates[0].toISOString());
+      },
+    });
+  }
+
+  // Initialize Flatpickr on page load
+  initFlatpickr();
   </script>

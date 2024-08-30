@@ -2,7 +2,14 @@
   <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">
     Create New Bet
   </h2>
-  <form id="newBetForm" class="grid grid-cols-1 gap-6">
+  <form
+    id="newBetForm"
+    class="grid grid-cols-1 gap-6"
+    hx-post="/create-new-bet"
+    hx-swap="outerHTML"
+    hx-target="#createBetForm"
+    hx-trigger="submit"
+  >
     <input
       type="text"
       name="Title"
@@ -27,15 +34,16 @@
       <option value="prop">Prop</option>
     </select>
     <p class="text-gray-500 text-center">Bet expiry time.</p>
-    <input
-      type="datetime-local"
-      name="ExpiryTime"
-      id="ExpiryTime"
-      placeholder="Expiry Time"
-      value="{{.DefaultExpiryTime}}"
-      class="w-full p-4 bg-white rounded-lg shadow-md"
-      required
-    />
+    <div class="relative">
+      <input
+        type="text"
+        id="ExpiryTimeDisplay"
+        placeholder="Expiry Time"
+        class="w-full p-4 bg-white rounded-lg shadow-md flatpickr-input"
+        required
+      />
+      <input type="hidden" id="ExpiryTime" name="ExpiryTime" />
+    </div>
     <!-- Bet Outcomes Section -->
     <div
       id="betOutcomesContainer"
@@ -49,7 +57,7 @@
       <p class="text-gray-500 text-center text-sm mb-4">
         All Descriptions must be unique and not empty.
       </p>
-      <div id="betOutcomesContainer" class="space-y-4">
+      <div id="betOutcomesInputs" class="space-y-4">
         <div class="flex flex-col sm:flex-row items-center gap-4">
           <input
             type="text"
@@ -77,6 +85,7 @@
       </div>
     </div>
     <button
+      type="button"
       hx-get="/view-bannable-users"
       hx-swap="outerHTML"
       id="viewBannableUsers"
@@ -87,10 +96,7 @@
     </button>
     <button
       id="submitButton"
-      hx-post="/create-new-bet"
-      hx-swap="outerHTML"
-      hx-target="#createBetForm"
-      type="button"
+      type="submit"
       class="w-full bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
     >
       Create Bet
@@ -150,10 +156,8 @@
 </div>
 
 <script>
-  // Set default expiry time (1 week from now)
-
   function addOutcome() {
-    const container = document.getElementById("betOutcomesContainer");
+    const container = document.getElementById("betOutcomesInputs");
     const outcomeDiv = document.createElement("div");
     outcomeDiv.className = "flex flex-col sm:flex-row items-center gap-4 mt-4";
     outcomeDiv.innerHTML = `
@@ -196,8 +200,8 @@
   }
 
   document.addEventListener("htmx:configRequest", (event) => {
-    if (event.detail.elt.id === "submitButton") {
-      const form = document.getElementById("newBetForm");
+    if (event.detail.elt.id === "newBetForm") {
+      const form = event.detail.elt;
       const formData = new FormData(form);
 
       // Perform form validation
@@ -241,10 +245,39 @@
       });
 
       // If all validations pass, allow the HTMX request to proceed
-      const parameters = Object.fromEntries(formData);
-      parameters["OutcomeDescription[]"] = outcomeDescriptions;
-      parameters["Odds[]"] = odds;
-      event.detail.parameters = parameters;
+      event.detail.parameters = formData;
     }
   });
+
+  // Prevent default form submission
+  document
+    .getElementById("newBetForm")
+    .addEventListener("submit", function (e) {
+      e.preventDefault();
+    });
+
+  function initFlatpickr() {
+    console.log("Initializing Flatpickr");
+    flatpickr("#ExpiryTimeDisplay", {
+      enableTime: true,
+      dateFormat: "Z", // Hidden format (ISO 8601)
+      altInput: true,
+      altFormat: "F j, Y at h:i K", // User-friendly format
+      minDate: "today",
+      time_24hr: false,
+      defaultDate: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000),
+      onChange: function (selectedDates, dateStr, instance) {
+        // Update the hidden input with ISO 8601 format
+        document.getElementById("ExpiryTime").value =
+          selectedDates[0].toISOString();
+        console.log(
+          "Selected date (ISO 8601):",
+          selectedDates[0].toISOString()
+        );
+      },
+    });
+  }
+
+  // Initialize Flatpickr on page load
+  initFlatpickr();
 </script>
