@@ -9,6 +9,7 @@
     hx-swap="outerHTML"
     hx-target="#createBetForm"
     hx-trigger="submit"
+    hx-encoding="multipart/form-data"
   >
     <input
       type="text"
@@ -42,7 +43,7 @@
         class="w-full p-4 bg-white rounded-lg shadow-md flatpickr-input"
         required
       />
-      <input type="hidden" id="ExpiryTime" name="ExpiryTime" />
+      <input type="hidden" id="ExpiryTime" name="ExpiryTime" required />
     </div>
     <!-- Bet Outcomes Section -->
     <div
@@ -199,85 +200,52 @@
     modal.classList.add("hidden");
   }
 
-  document.addEventListener("htmx:configRequest", (event) => {
-    if (event.detail.elt.id === "newBetForm") {
-      const form = event.detail.elt;
-      const formData = new FormData(form);
-
-      // Perform form validation
-      const requiredFields = form.querySelectorAll("[required]");
-      for (let field of requiredFields) {
-        if (!field.value.trim()) {
-          showErrorModal(`Please fill out the ${field.name} field.`);
-          event.preventDefault();
-          return;
-        }
-      }
-
-      // Check if there's at least one outcome
-      const outcomes = form.querySelectorAll(
-        'input[name="OutcomeDescription[]"]'
-      );
-      if (outcomes.length === 0) {
-        showErrorModal("Please add at least one outcome.");
-        event.preventDefault();
-        return;
-      }
-
-      // Check for unique outcome descriptions
-      const descriptions = Array.from(outcomes).map((input) =>
-        input.value.trim()
-      );
-      if (new Set(descriptions).size !== descriptions.length) {
-        showErrorModal("All outcome descriptions must be unique.");
-        event.preventDefault();
-        return;
-      }
-
-      // Collect all outcomes and odds
-      const outcomeDescriptions = [];
-      const odds = [];
-      outcomes.forEach((outcome, index) => {
-        outcomeDescriptions.push(outcome.value.trim());
-        odds.push(
-          form.querySelectorAll('input[name="Odds[]"]')[index].value.trim()
-        );
-      });
-
-      // If all validations pass, allow the HTMX request to proceed
-      event.detail.parameters = formData;
-    }
-  });
-
-  // Prevent default form submission
-  document
-    .getElementById("newBetForm")
-    .addEventListener("submit", function (e) {
-      e.preventDefault();
-    });
-
   function initFlatpickr() {
     console.log("Initializing Flatpickr");
+    const defaultDate = new Date(
+      new Date().getTime() + 7 * 24 * 60 * 60 * 1000
+    );
+
     flatpickr("#ExpiryTimeDisplay", {
       enableTime: true,
-      dateFormat: "Z", // Hidden format (ISO 8601)
+      dateFormat: "Z",
       altInput: true,
-      altFormat: "F j, Y at h:i K", // User-friendly format
+      altFormat: "F j, Y at h:i K",
       minDate: "today",
       time_24hr: false,
-      defaultDate: new Date(new Date().getTime() + 7 * 24 * 60 * 60 * 1000),
+      defaultDate: defaultDate,
       onChange: function (selectedDates, dateStr, instance) {
-        // Update the hidden input with ISO 8601 format
-        document.getElementById("ExpiryTime").value =
-          selectedDates[0].toISOString();
-        console.log(
-          "Selected date (ISO 8601):",
-          selectedDates[0].toISOString()
-        );
+        updateExpiryTime(selectedDates[0]);
       },
     });
+
+    // Set the initial value for the hidden input
+    updateExpiryTime(defaultDate);
   }
 
-  // Initialize Flatpickr on page load
+  function updateExpiryTime(date) {
+    const expiryTimeInput = document.getElementById("ExpiryTime");
+    if (date) {
+      expiryTimeInput.value = date.toISOString();
+      console.log("ExpiryTime updated:", expiryTimeInput.value);
+    } else {
+      expiryTimeInput.value = "";
+      console.log("No date selected");
+    }
+  }
+
+  // Add event listener to the form submission
+  document
+    .getElementById("newBetForm")
+    .addEventListener("submit", function (event) {
+      const expiryTimeInput = document.getElementById("ExpiryTime");
+      if (!expiryTimeInput.value) {
+        event.preventDefault(); // Prevent form submission
+        showErrorModal("Please select an expiry time.");
+      }
+    });
+
   initFlatpickr();
+  document.addEventListener("DOMContentLoaded", initFlatpickr);
+  document.addEventListener("htmx:afterSwap", initFlatpickr);
 </script>

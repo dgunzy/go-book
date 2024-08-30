@@ -39,6 +39,17 @@ func (handler *Handler) ReadBet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (handler *Handler) CreateNewBet(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseMultipartForm(32 << 20) // 32MB max memory
+	if err != nil {
+		http.Error(w, "Failed to parse form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Log all form values
+	fmt.Println("Received form data:")
+	for key, values := range r.MultipartForm.Value {
+		fmt.Printf("%s: %v\n", key, values)
+	}
 	// Parse the form data
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form", http.StatusBadRequest)
