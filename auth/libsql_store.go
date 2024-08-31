@@ -28,6 +28,9 @@ func NewLibsqlStore(db *sql.DB, keyPairs ...[]byte) (*LibsqlStore, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
+	if len(keyPairs) == 0 {
+		keyPairs = [][]byte{securecookie.GenerateRandomKey(32)}
+	}
 	codecs := securecookie.CodecsFromPairs(keyPairs...)
 	return &LibsqlStore{
 		db:     db,
@@ -54,10 +57,11 @@ func (s *LibsqlStore) Get(r *http.Request, name string) (*sessions.Session, erro
 	}
 
 	session := sessions.NewSession(s, name)
-	err = securecookie.DecodeMulti(name, cookie.Value, &session.Values, s.Codecs...)
+	err = securecookie.DecodeMulti(name, cookie.Value, &session.ID, s.Codecs...)
 	if err != nil {
 		log.Printf("Error decoding cookie: %v", err)
-		return s.New(r, name)
+		// Instead of returning a new session, let's try to use the encoded value as is
+		session.ID = cookie.Value
 	}
 
 	// Verify and load session from database
@@ -100,7 +104,7 @@ func (s *LibsqlStore) Save(r *http.Request, w http.ResponseWriter, session *sess
 
 	encoded, err := securecookie.EncodeMulti(session.Name(), session.Values, s.Codecs...)
 	if err != nil {
-		log.Printf("Error encoding session: %v", err)
+		log.Printf("Error encoding session values: %v", err)
 		return err
 	}
 
@@ -112,14 +116,16 @@ func (s *LibsqlStore) Save(r *http.Request, w http.ResponseWriter, session *sess
 		return err
 	}
 
-	encoded, err = securecookie.EncodeMulti(session.Name(), session.ID, s.Codecs...)
+	encodedID, err := securecookie.EncodeMulti(session.Name(), session.ID, s.Codecs...)
 	if err != nil {
-		log.Printf("Error encoding session ID for cookie: %v", err)
+		log.Printf("Error encoding session ID: %v", err)
 		return err
 	}
 
-	http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, session.Options))
-	log.Printf("Session saved and cookie set for ID: %s", session.ID)
+	cookie := sessions.NewCookie(session.Name(), encodedID, session.Options)
+	http.SetCookie(w, cookie)
+	log.Printf("Session saved and cookie set for ID: %s, Name: %s, Value: %s, MaxAge: %d, HttpOnly: %v, Secure: %v",
+		session.ID, cookie.Name, cookie.Value, cookie.MaxAge, cookie.HttpOnly, cookie.Secure)
 	return nil
 }
 
