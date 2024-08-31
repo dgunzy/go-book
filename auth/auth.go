@@ -85,7 +85,7 @@ func RequireAuth(handlerFunc http.HandlerFunc, auth *AuthService, dao *dao.UserD
 		user, err := auth.GetSessionUser(r)
 		if err != nil {
 			fmt.Printf("User is not authenticated: %v", err)
-			http.Redirect(w, r, "/fmtin", http.StatusTemporaryRedirect)
+			http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
 			return
 		}
 		dbUser, err := dao.GetUserByEmail(user.Email)
