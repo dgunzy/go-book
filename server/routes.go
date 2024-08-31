@@ -55,15 +55,12 @@ func (handler *Handler) HandleAuthCallbackFunction(w http.ResponseWriter, r *htt
 		fmt.Fprintln(w, err)
 		return
 	}
-
 	err = handler.auth.StoreUserSession(w, r, user)
 	if err != nil {
 		log.Println(err)
-		w.Header().Set("Location", "/")
-		w.WriteHeader(http.StatusTemporaryRedirect)
+		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 		return
 	}
-
 	http.Redirect(w, r, "/cabot-book", http.StatusFound)
 }
 

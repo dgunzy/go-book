@@ -127,7 +127,7 @@ func main() {
 
 	//Auth Routes
 	router.HandleFunc("/auth/{provider}", handler.HandleProviderLogin).Methods("GET")
-	router.HandleFunc("/home", handler.HandleAuthCallbackFunction).Methods("GET")
+	router.HandleFunc("/auth/{provider}/callback", handler.HandleAuthCallbackFunction).Methods("GET")
 	router.HandleFunc("/logout/{provider}", handler.HandleLogout).Methods("GET")
 
 	fs := customFileServer(http.Dir("./static"))
