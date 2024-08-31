@@ -37,44 +37,64 @@ func NewAuthService(store sessions.Store) *AuthService {
 func (s *AuthService) GetSessionUser(r *http.Request) (goth.User, error) {
 	session, err := s.Store.Get(r, SessionName)
 	if err != nil {
+		log.Printf("Error getting session: %v", err)
 		return goth.User{}, err
 	}
 	u, ok := session.Values["user"].(goth.User)
 	if !ok {
+		log.Println("User not found in session")
 		return goth.User{}, fmt.Errorf("user is not authenticated")
 	}
+	log.Printf("Session user retrieved: %s", u.Email)
 	return u, nil
 }
 
 func (s *AuthService) StoreUserSession(w http.ResponseWriter, r *http.Request, user goth.User) error {
-	session, _ := s.Store.Get(r, SessionName)
+	session, err := s.Store.Get(r, SessionName)
+	if err != nil {
+		log.Printf("Error getting session for storing user: %v", err)
+		return err
+	}
 	session.Values["user"] = user
-	return session.Save(r, w)
+	err = session.Save(r, w)
+	if err != nil {
+		log.Printf("Error saving session: %v", err)
+		return err
+	}
+	log.Printf("User session stored for: %s", user.Email)
+	return nil
 }
 
 func (s *AuthService) RemoveUserSession(w http.ResponseWriter, r *http.Request) {
-	session, _ := s.Store.Get(r, SessionName)
+	session, err := s.Store.Get(r, SessionName)
+	if err != nil {
+		log.Printf("Error getting session for removal: %v", err)
+		return
+	}
 	delete(session.Values, "user")
 	session.Options.MaxAge = -1
-	session.Save(r, w)
+	err = session.Save(r, w)
+	if err != nil {
+		log.Printf("Error saving session after removal: %v", err)
+	} else {
+		log.Println("User session removed successfully")
+	}
 }
 
 func RequireAuth(handlerFunc http.HandlerFunc, auth *AuthService, dao *dao.UserDAO) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, err := auth.GetSessionUser(r)
 		if err != nil {
-			log.Println("User is not authenticated:", err)
+			log.Printf("User is not authenticated: %v", err)
 			http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
 			return
 		}
-
 		dbUser, err := dao.GetUserByEmail(user.Email)
 		if err != nil {
-			log.Println("Error retrieving user from database:", err)
+			log.Printf("Error retrieving user from database: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
-
 		if dbUser.Role == "user" {
 			if IsApplicationOnline() {
 				handlerFunc(w, r)
@@ -83,7 +103,6 @@ func RequireAuth(handlerFunc http.HandlerFunc, auth *AuthService, dao *dao.UserD
 			}
 			return
 		}
-
 		handlerFunc(w, r)
 	}
 }
