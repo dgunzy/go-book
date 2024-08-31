@@ -37,6 +37,11 @@ func main() {
 		return
 	}
 	sessionKey := os.Getenv("SESSION")
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // default port if not specified
+		log.Println("Warning: PORT not set, using default:", port)
+	}
 
 	timeInSeconds := time.Duration(7 * 24 * time.Hour).Seconds()
 
@@ -128,9 +133,12 @@ func main() {
 	fs := customFileServer(http.Dir("./static"))
 	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", fs))
 
-	fmt.Println("Server running on 8080")
-	http.ListenAndServe(":8080", router)
+	fmt.Printf("Server starting on port %s\n", port)
+	err = http.ListenAndServe(":"+port, router)
 	defer cleanup()
+	if err != nil {
+		log.Fatal("Error starting server: ", err)
+	}
 }
 
 func initStorage(db *sql.DB) {

@@ -26,11 +26,16 @@ func NewAuthService(store sessions.Store) *AuthService {
 	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
 
 	googleClientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
+	callbackURL := os.Getenv("CALLBACK_URL")
+	if callbackURL == "" {
+		callbackURL = "http://localhost:8080/home" // Default fallback
+		log.Println("Warning: CALLBACK_URL not set, using default:", callbackURL)
+	}
 
 	gothic.Store = store
 
 	goth.UseProviders(
-		google.New(googleClientID, googleClientSecret, "http://localhost:8080/home"),
+		google.New(googleClientID, googleClientSecret, callbackURL),
 	)
 	return &AuthService{}
 }
