@@ -2,9 +2,11 @@ package server
 
 import (
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dgunzy/go-book/models"
@@ -50,11 +52,6 @@ func (handler *Handler) PlaceWager(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract and validate form fields
-	betID, err := strconv.Atoi(r.FormValue("bet_id"))
-	if err != nil {
-		handler.respondWithMessage(w, "Invalid BetID")
-		return
-	}
 
 	amount, err := strconv.ParseFloat(r.FormValue("wager_amount"), 64)
 	if err != nil || amount <= 0 {
@@ -93,7 +90,6 @@ func (handler *Handler) PlaceWager(w http.ResponseWriter, r *http.Request) {
 		Result:         "", // Not graded yet
 		BetDescription: outcomeDescription,
 		Odds:           odds,
-		BetId:          betID,
 		UserID:         dbUser.UserID,
 		Approved:       approvalState,
 	}
@@ -137,4 +133,87 @@ func (handler *Handler) respondWithMessage(w http.ResponseWriter, message string
 	w.Header().Set("Content-Type", "text/html")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, "<p>%s</p>", message)
+}
+
+// betFlag is a string that can be either "pending" or "approved" or "all". All displays unapproved bets only.
+func (handler *Handler) GetUserBets(w http.ResponseWriter, r *http.Request) {
+
+	betFlag := strings.TrimPrefix(r.URL.Path, "/userbets/")
+	// Get the current user from the session
+	user, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		handler.respondWithMessage(w, "Error retrieving user session")
+		return
+	}
+
+	// Get the user from the database
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+	if err != nil {
+		handler.respondWithMessage(w, "Error retrieving user data")
+		return
+	}
+
+	// Get all user bets from the database
+	userBets, err := handler.dao.GetAllUserBets()
+	if err != nil {
+		handler.respondWithMessage(w, "Error retrieving user bets")
+		return
+	}
+
+	betsToDisplay := []*models.UserBet{}
+	// Filter the user bets based on the betFlag
+
+	type PageData struct {
+		UserBets []*models.UserBet
+		User     *models.User
+	}
+	data := PageData{}
+
+	if betFlag == "pending" {
+		for _, bet := range userBets {
+			if bet.UserID == dbUser.UserID && !bet.Approved {
+				betsToDisplay = append(betsToDisplay, bet)
+			}
+		}
+		data = PageData{
+			UserBets: betsToDisplay,
+			User:     dbUser,
+		}
+	}
+	if betFlag == "approved" {
+		for _, bet := range userBets {
+			if bet.UserID == dbUser.UserID && bet.Approved {
+				betsToDisplay = append(betsToDisplay, bet)
+			}
+		}
+		data = PageData{
+			UserBets: betsToDisplay,
+			User:     dbUser,
+		}
+	}
+
+	if betFlag == "all" {
+		for _, bet := range userBets {
+			if !bet.Approved {
+				betsToDisplay = append(betsToDisplay, bet)
+			}
+		}
+		data = PageData{
+			UserBets: betsToDisplay,
+			User:     dbUser,
+		}
+
+	}
+	if data.User == nil {
+		handler.respondWithMessage(w, "Internal Server Error")
+		return
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/userbets.gohtml"))
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		fmt.Println("Error executing template:", err)
+		return
+	}
+
 }

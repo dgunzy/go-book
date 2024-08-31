@@ -74,6 +74,7 @@ func main() {
 	router.HandleFunc("/parlay", auth.RequireAuth(handler.GetAllBets, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/transactions", auth.RequireAuth(handler.ReadUserTransactions, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/wager", auth.RequireAuth(handler.PlaceWager, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/userbets/{betflag}", auth.RequireAuth(handler.GetUserBets, authService, dao.NewUserDAO(db))).Methods("POST")
 
 	// router.HandleFunc("/test", auth.RequireAuth(handler.Test, authService)).Methods("GET")
 
@@ -94,6 +95,7 @@ func main() {
 			fmt.Println("Error syncing database:", err)
 		}
 	}, authService, dao.NewUserDAO(db))).Methods("POST")
+
 	router.HandleFunc("/adminuseredit", auth.RequireAdmin(handler.AdminUserEdit, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/adminusereditremove", auth.RequireAdmin(handler.AdminUserEditRemove, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/adminbetedit/{bettype}", auth.RequireAdmin(handler.AdminBetEdit, authService, dao.NewUserDAO(db))).Methods("POST")

@@ -37,7 +37,7 @@
     </div>
     <div class="flex justify-center py-4" id="pending-bets">
       <button
-        hx-post="/pending-bets"
+        hx-post="/userbets/pending"
         hx-target="#pending-bets"
         hx-swap="outerHTML"
         class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4"
@@ -47,7 +47,7 @@
     </div>
     <div class="flex justify-center py-4" id="approved-bets">
       <button
-        hx-post="/approved-bets"
+        hx-post="/userbets/approved"
         hx-target="#approved-bets"
         hx-swap="outerHTML"
         class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4"
