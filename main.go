@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/dgunzy/go-book/auth"
 	"github.com/dgunzy/go-book/dao"
@@ -38,6 +37,12 @@ func main() {
 		return
 	}
 
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // default port if not specified
+		log.Println("Warning: PORT not set, using default:", port)
+	}
+
 	sessionKey := os.Getenv("SESSION_KEY")
 	if sessionKey == "" {
 		log.Fatal("SESSION_KEY environment variable not set")
@@ -47,29 +52,12 @@ func main() {
 	sessionStore.Options = &sessions.Options{
 		Path:     "/",
 		MaxAge:   86400 * 7, // 7 days
-		HttpOnly: true,
+		HttpOnly: false,
 		Secure:   true, // Set to true if using HTTPS
 	}
 
 	authService := auth.NewAuthService(sessionStore)
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080" // default port if not specified
-		log.Println("Warning: PORT not set, using default:", port)
-	}
-
-	timeInSeconds := time.Duration(7 * 24 * time.Hour).Seconds()
-
-	sessionStore := auth.NewCookieStore(auth.SessionOptions{
-		CookiesKey: sessionKey,
-		MaxAge:     int(timeInSeconds),
-		Secure:     true,
-		HttpOnly:   false,
-	})
 	initStorage(db)
-
-	authService := auth.NewAuthService(sessionStore)
-
 	router := mux.NewRouter()
 
 	handler := server.New(dao.NewUserDAO(db), authService)
