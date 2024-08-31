@@ -67,6 +67,7 @@ func main() {
 	}()
 	router := mux.NewRouter()
 
+	router.Use(secureHeadersMiddleware)
 	handler := server.New(dao.NewUserDAO(db), authService)
 	// Public routes
 	router.HandleFunc("/", handler.HandleLogin).Methods("GET")
@@ -171,4 +172,10 @@ func cleanupSessions(db *sql.DB) error {
 		return fmt.Errorf("error cleaning up sessions: %w", err)
 	}
 	return nil
+}
+func secureHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+		next.ServeHTTP(w, r)
+	})
 }

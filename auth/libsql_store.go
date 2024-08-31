@@ -40,6 +40,7 @@ func NewLibsqlStore(db *sql.DB, keyPairs ...[]byte) (*LibsqlStore, error) {
 			MaxAge:   86400 * 7,
 			HttpOnly: true,
 			Secure:   true, // Set to true if using HTTPS
+			SameSite: http.SameSiteLaxMode,
 		},
 	}, nil
 }
@@ -123,9 +124,10 @@ func (s *LibsqlStore) Save(r *http.Request, w http.ResponseWriter, session *sess
 	}
 
 	cookie := sessions.NewCookie(session.Name(), encodedID, session.Options)
+	cookie.Expires = time.Now().Add(time.Duration(session.Options.MaxAge) * time.Second)
 	http.SetCookie(w, cookie)
-	log.Printf("Session saved and cookie set for ID: %s, Name: %s, Value: %s, MaxAge: %d, HttpOnly: %v, Secure: %v",
-		session.ID, cookie.Name, cookie.Value, cookie.MaxAge, cookie.HttpOnly, cookie.Secure)
+	log.Printf("Session saved and cookie set for ID: %s, Name: %s, Value: %s, MaxAge: %d, Expires: %s, HttpOnly: %v, Secure: %v, SameSite: %v, Domain: %s",
+		session.ID, cookie.Name, cookie.Value, cookie.MaxAge, cookie.Expires, cookie.HttpOnly, cookie.Secure, cookie.SameSite, cookie.Domain)
 	return nil
 }
 
