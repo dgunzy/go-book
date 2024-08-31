@@ -8,7 +8,6 @@ import (
 
 	"github.com/dgunzy/go-book/dao"
 	"github.com/gorilla/sessions"
-	"github.com/joho/godotenv"
 	"github.com/markbates/goth"
 	"github.com/markbates/goth/gothic"
 	"github.com/markbates/goth/providers/google"
@@ -18,10 +17,6 @@ type AuthService struct{}
 
 func NewAuthService(store sessions.Store) *AuthService {
 	gothic.Store = store
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatalf("Error loading .env file")
-	}
 
 	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
 

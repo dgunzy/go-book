@@ -6,18 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/joho/godotenv"
-
 	"github.com/tursodatabase/go-libsql"
 )
 
 func StartDB() (*sql.DB, func(), func() error, error) {
-
-	err := godotenv.Load()
-
-	if err != nil {
-		fmt.Println("Error getting env")
-	}
 
 	dbName := "cabot-book"
 	primaryUrl := os.Getenv("DBURI")
