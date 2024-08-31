@@ -6,6 +6,7 @@
     <div class="flex flex-wrap justify-center">
       {{ range.Bets }}
       {{ $betID := .BetID }}
+      {{ $BetDescription := .Description }}
       <div class="w-full sm:w-1/2 lg:w-1/3 p-4">
         <div class="bg-white rounded-lg shadow-md p-6">
           <h3 class="text-xl font-semibold mb-2">{{ .Title }}</h3>
@@ -27,10 +28,13 @@
               <p class="text-gray-800">Odds: {{ .Odds }}</p>
               <form hx-post="/wager" hx-trigger="submit" class="mt-2">
                 <input type="hidden" name="bet_id" value="{{ $betID }}" />
+
                 <input
                   type="hidden"
                   name="outcome_description"
-                  value="{{ .Description }}"
+                  value="{{ .Description }} -  with bet description: {{
+                    $BetDescription
+                  }}"
                 />
                 <input type="hidden" name="odds" value="{{ .Odds }}" />
                 <div class="flex items-center">

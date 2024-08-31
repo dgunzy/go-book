@@ -75,6 +75,7 @@ func main() {
 	router.HandleFunc("/transactions", auth.RequireAuth(handler.ReadUserTransactions, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/wager", auth.RequireAuth(handler.PlaceWager, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/userbets/{betflag}", auth.RequireAuth(handler.GetUserBets, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/delete-user-bet/{betid}", auth.RequireAuth(handler.DeleteUserBet, authService, dao.NewUserDAO(db))).Methods("POST")
 
 	// router.HandleFunc("/test", auth.RequireAuth(handler.Test, authService)).Methods("GET")
 
@@ -110,6 +111,8 @@ func main() {
 	router.HandleFunc("/deletebet/{betID}", auth.RequireAdmin(handler.MoveBetToClosed, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/editbet/{betID}", auth.RequireAdmin(handler.EditBetForm, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/update-bet/{betID}", auth.RequireAdmin(handler.UpdateBet, authService, dao.NewUserDAO(db))).Methods("PUT")
+	router.HandleFunc("/approve-user-bet/{betid}", auth.RequireAdmin(handler.ApproveUserBet, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/grade-user-bet/{betid}/{result}", auth.RequireAdmin(handler.GradeUserBet, authService, dao.NewUserDAO(db))).Methods("POST")
 
 	// Root protected routes
 	// router.HandleFunc("/rootdashboard", auth.RequireRoot(handler.RootAdminDashboard, authService, dao.NewUserDAO(db))).Methods("GET")

@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/dgunzy/go-book/models"
+	"github.com/dgunzy/go-book/utils"
 )
 
 func (handler *Handler) PlaceWager(w http.ResponseWriter, r *http.Request) {
@@ -204,6 +206,30 @@ func (handler *Handler) GetUserBets(w http.ResponseWriter, r *http.Request) {
 		}
 
 	}
+
+	if betFlag == "allgrade" {
+
+		if dbUser.Role != "admin" && dbUser.Role != "root" {
+			handler.respondWithMessage(w, "You do not have permission to view this page")
+			return
+		}
+		for _, bet := range userBets {
+			if bet.Result == "ungraded" {
+				betsToDisplay = append(betsToDisplay, bet)
+			}
+		}
+		data = PageData{
+			UserBets: betsToDisplay,
+			User:     dbUser,
+		}
+		tmpl := template.Must(template.ParseFiles("static/templates/fragments/userbetgrade.gohtml"))
+		err = tmpl.Execute(w, data)
+		if err != nil {
+			fmt.Println("Error executing template:", err)
+		}
+		return
+
+	}
 	if data.User == nil {
 		handler.respondWithMessage(w, "Internal Server Error")
 		return
@@ -216,4 +242,119 @@ func (handler *Handler) GetUserBets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+}
+
+// DeleteBet handles the deletion of a bet
+func (handler *Handler) DeleteUserBet(w http.ResponseWriter, r *http.Request) {
+	// Extract betID from query parameters
+	betIDStr := strings.TrimPrefix(r.URL.Path, "/delete-user-bet/")
+	if betIDStr == "" {
+		handler.respondWithMessage(w, "Missing bet ID")
+		return
+	}
+
+	betID, err := strconv.Atoi(betIDStr)
+	if err != nil {
+		handler.respondWithMessage(w, "Invalid bet ID")
+		return
+	}
+
+	// Delete the bet
+	err = handler.dao.DeleteUserBetByID(betID)
+	if err != nil {
+		handler.respondWithMessage(w, fmt.Sprintf("Error deleting bet: %v", err))
+		return
+	}
+
+	handler.respondWithMessage(w, fmt.Sprintf("Bet with ID %d deleted successfully", betID))
+}
+
+// ApproveBet handles the approval of a bet
+func (handler *Handler) ApproveUserBet(w http.ResponseWriter, r *http.Request) {
+	// Extract betID from query parameters
+	betIDStr := strings.TrimPrefix(r.URL.Path, "/approve-user-bet/")
+	if betIDStr == "" {
+		handler.respondWithMessage(w, "Missing bet ID")
+		return
+	}
+
+	betID, err := strconv.Atoi(betIDStr)
+	if err != nil {
+		handler.respondWithMessage(w, "Invalid bet ID")
+		return
+	}
+
+	// Approve the bet
+	err = handler.dao.ApproveUserBet(betID)
+	if err != nil {
+		handler.respondWithMessage(w, fmt.Sprintf("Error approving bet: %v", err))
+		return
+	}
+
+	handler.respondWithMessage(w, fmt.Sprintf("Bet with ID %d approved successfully", betID))
+}
+
+// GradeBet handles the grading of a bet
+func (handler *Handler) GradeUserBet(w http.ResponseWriter, r *http.Request) {
+
+	path := strings.TrimPrefix(r.URL.Path, "/grade-user-bet/")
+	parts := strings.Split(path, "/")
+
+	if len(parts) != 2 {
+		handler.respondWithMessage(w, "Invalid URL format")
+		return
+	}
+
+	betIDStr := parts[0]
+	result := parts[1]
+
+	if betIDStr == "" || result == "" {
+		handler.respondWithMessage(w, "Missing bet ID or result")
+		return
+	}
+
+	betID, err := strconv.Atoi(betIDStr)
+	if err != nil {
+		handler.respondWithMessage(w, "Invalid bet ID")
+		return
+	}
+
+	if result != "win" && result != "lose" {
+		handler.respondWithMessage(w, "Invalid result: must be 'win' or 'lose'")
+		return
+	}
+
+	// Grade the bet
+	gradedBet, err := handler.dao.GradeUserBet(betID, result)
+	if err != nil {
+		handler.respondWithMessage(w, fmt.Sprintf("Error grading bet: %v", err))
+		return
+	}
+
+	dbUser, err := handler.dao.GetUserByID(gradedBet.UserID)
+	if err != nil {
+		handler.respondWithMessage(w, "Error retrieving user data")
+		return
+	}
+
+	if result == "win" {
+		decimalOdds := utils.AmericanToDecimal(int(gradedBet.Odds))
+		result := gradedBet.Amount * decimalOdds
+		roundedResult := math.Round(result*100) / 100
+		transaction := models.Transaction{
+			Amount:          roundedResult,
+			Type:            "credit",
+			Description:     fmt.Sprintf("Won bet on %s", gradedBet.BetDescription),
+			TransactionDate: time.Now(),
+		}
+		_, err := handler.dao.CreateTransaction(*dbUser, transaction)
+		if err != nil {
+			log.Printf("Error creating transaction: %v", err)
+			handler.respondWithMessage(w, "Error placing wager")
+			return
+		}
+
+	}
+
+	handler.respondWithMessage(w, fmt.Sprintf("Bet with ID %d graded as %s successfully", betID, result))
 }

@@ -31,6 +31,11 @@
                     Approve or Reject Bets
                 </button>
             </div> 
+            <div class="flex justify-center py-4" id="approve-bets">
+                <button hx-post="/userbets/allgrade" hx-target="#approve-bets" hx-swap="outerHTML" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mb-4">
+                    Grade User's Bets
+                </button>
+            </div>
         </div>
         
     </main>
