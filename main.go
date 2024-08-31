@@ -13,6 +13,7 @@ import (
 	"github.com/dgunzy/go-book/dao"
 	"github.com/dgunzy/go-book/server"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/sessions"
 )
 
 func ServeFavicon(w http.ResponseWriter, r *http.Request) {
@@ -36,7 +37,21 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	sessionKey := os.Getenv("SESSION")
+
+	sessionKey := os.Getenv("SESSION_KEY")
+	if sessionKey == "" {
+		log.Fatal("SESSION_KEY environment variable not set")
+	}
+
+	sessionStore := sessions.NewCookieStore([]byte(sessionKey))
+	sessionStore.Options = &sessions.Options{
+		Path:     "/",
+		MaxAge:   86400 * 7, // 7 days
+		HttpOnly: true,
+		Secure:   true, // Set to true if using HTTPS
+	}
+
+	authService := auth.NewAuthService(sessionStore)
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080" // default port if not specified

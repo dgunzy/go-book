@@ -13,7 +13,11 @@ import (
 	"github.com/markbates/goth/providers/google"
 )
 
-type AuthService struct{}
+const SessionName = "session"
+
+type AuthService struct {
+	Store sessions.Store
+}
 
 func NewAuthService(store sessions.Store) *AuthService {
 	gothic.Store = store
@@ -27,48 +31,31 @@ func NewAuthService(store sessions.Store) *AuthService {
 	goth.UseProviders(
 		google.New(googleClientID, googleClientSecret, callbackURL),
 	)
-	return &AuthService{}
+	return &AuthService{Store: store}
 }
+
 func (s *AuthService) GetSessionUser(r *http.Request) (goth.User, error) {
-	session, err := gothic.Store.Get(r, SessionName)
+	session, err := s.Store.Get(r, SessionName)
 	if err != nil {
 		return goth.User{}, err
 	}
-
-	u := session.Values["user"]
-	if u == nil {
-		return goth.User{}, fmt.Errorf("user is not authenticated! %v", u)
+	u, ok := session.Values["user"].(goth.User)
+	if !ok {
+		return goth.User{}, fmt.Errorf("user is not authenticated")
 	}
-
-	return u.(goth.User), nil
+	return u, nil
 }
+
 func (s *AuthService) StoreUserSession(w http.ResponseWriter, r *http.Request, user goth.User) error {
-	// Get a session. We're ignoring the error resulted from decoding an
-	// existing session: Get() always returns a session, even if empty.
-	session, _ := gothic.Store.Get(r, SessionName)
-
+	session, _ := s.Store.Get(r, SessionName)
 	session.Values["user"] = user
-
-	err := session.Save(r, w)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return err
-	}
-
-	return nil
+	return session.Save(r, w)
 }
+
 func (s *AuthService) RemoveUserSession(w http.ResponseWriter, r *http.Request) {
-	session, err := gothic.Store.Get(r, SessionName)
-	if err != nil {
-		log.Println(err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	session.Values["user"] = goth.User{}
-	// delete the cookie immediately
+	session, _ := s.Store.Get(r, SessionName)
+	delete(session.Values, "user")
 	session.Options.MaxAge = -1
-
 	session.Save(r, w)
 }
 
@@ -76,12 +63,10 @@ func RequireAuth(handlerFunc http.HandlerFunc, auth *AuthService, dao *dao.UserD
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, err := auth.GetSessionUser(r)
 		if err != nil {
-			log.Println("User is not authenticated!")
+			log.Println("User is not authenticated:", err)
 			http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
 			return
 		}
-
-		// log.Printf("user is authenticated! user: %v!", session.Email)
 
 		dbUser, err := dao.GetUserByEmail(user.Email)
 		if err != nil {
@@ -89,16 +74,16 @@ func RequireAuth(handlerFunc http.HandlerFunc, auth *AuthService, dao *dao.UserD
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
+
 		if dbUser.Role == "user" {
 			if IsApplicationOnline() {
 				handlerFunc(w, r)
-				return
 			} else {
 				http.Redirect(w, r, "/applicationoffline", http.StatusTemporaryRedirect)
-				return
 			}
+			return
 		}
+
 		handlerFunc(w, r)
 	}
-
 }
