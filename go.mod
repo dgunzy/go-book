@@ -4,6 +4,7 @@ go 1.22.1
 
 require (
 	github.com/gorilla/mux v1.6.2
+	github.com/gorilla/securecookie v1.1.1
 	github.com/gorilla/sessions v1.1.1
 	github.com/markbates/goth v1.79.0
 	github.com/tursodatabase/go-libsql v0.0.0-20240322134723-08771dcdd2f1
@@ -16,7 +17,6 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/go-cmp v0.6.0 // indirect
 	github.com/gorilla/context v1.1.1 // indirect
-	github.com/gorilla/securecookie v1.1.1 // indirect
 	github.com/libsql/sqlite-antlr4-parser v0.0.0-20230802215326-5cb5bb604475 // indirect
 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e // indirect
 	golang.org/x/oauth2 v0.17.0 // indirect

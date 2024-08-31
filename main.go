@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/dgunzy/go-book/auth"
 	"github.com/dgunzy/go-book/dao"
@@ -37,18 +38,15 @@ func main() {
 		return
 	}
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080" // default port if not specified
-		log.Println("Warning: PORT not set, using default:", port)
-	}
-
 	sessionKey := os.Getenv("SESSION_KEY")
 	if sessionKey == "" {
 		log.Fatal("SESSION_KEY environment variable not set")
 	}
 
-	sessionStore := sessions.NewCookieStore([]byte(sessionKey))
+	sessionStore, err := auth.NewLibsqlStore(db, []byte(sessionKey))
+	if err != nil {
+		log.Fatalf("Error creating LibsqlStore: %v", err)
+	}
 	sessionStore.Options = &sessions.Options{
 		Path:     "/",
 		MaxAge:   86400 * 7, // 7 days
@@ -58,6 +56,13 @@ func main() {
 
 	authService := auth.NewAuthService(sessionStore)
 	initStorage(db)
+
+	go func() {
+		for {
+			cleanupSessions(db)
+			time.Sleep(24 * time.Hour)
+		}
+	}()
 	router := mux.NewRouter()
 
 	handler := server.New(dao.NewUserDAO(db), authService)
@@ -135,6 +140,11 @@ func main() {
 
 	fs := customFileServer(http.Dir("./static"))
 	router.PathPrefix("/static/").Handler(http.StripPrefix("/static/", fs))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080" // default port if not specified
+		log.Println("Warning: PORT not set, using default:", port)
+	}
 
 	fmt.Printf("Server starting on port %s\n", port)
 	err = http.ListenAndServe(":"+port, router)
@@ -151,4 +161,11 @@ func initStorage(db *sql.DB) {
 	}
 
 	log.Println("DB: Successfully connected!")
+}
+
+func cleanupSessions(db *sql.DB) {
+	_, err := db.Exec("DELETE FROM sessions WHERE expiry < ?", time.Now())
+	if err != nil {
+		log.Printf("Error cleaning up sessions: %v", err)
+	}
 }
