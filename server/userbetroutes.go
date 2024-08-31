@@ -80,10 +80,10 @@ func (handler *Handler) PlaceWager(w http.ResponseWriter, r *http.Request) {
 		approvalState = true
 	}
 
-	if dbUser.Balance < amount {
-		handler.respondWithMessage(w, fmt.Sprintf("Insufficient funds. Your balance: $%.2f, Wager amount: $%.2f", dbUser.Balance, amount))
-		return
-	}
+	// if dbUser.Balance < amount {
+	// 	handler.respondWithMessage(w, fmt.Sprintf("Insufficient funds. Your balance: $%.2f, Wager amount: $%.2f", dbUser.Balance, amount))
+	// 	return
+	// }
 
 	// Create a new UserBet
 	userBet := &models.UserBet{
@@ -161,7 +161,10 @@ func (handler *Handler) GetUserBets(w http.ResponseWriter, r *http.Request) {
 		handler.respondWithMessage(w, "Error retrieving user bets")
 		return
 	}
-
+	if userBets == nil {
+		handler.respondWithMessage(w, "No bets found")
+		return
+	}
 	betsToDisplay := []*models.UserBet{}
 	// Filter the user bets based on the betFlag
 
@@ -256,6 +259,32 @@ func (handler *Handler) DeleteUserBet(w http.ResponseWriter, r *http.Request) {
 	betID, err := strconv.Atoi(betIDStr)
 	if err != nil {
 		handler.respondWithMessage(w, "Invalid bet ID")
+		return
+	}
+
+	// Get the bet from the database
+	gradedBet, err := handler.dao.GetUserBetID(betID)
+	if err != nil {
+		handler.respondWithMessage(w, "Error retrieving bet data")
+		return
+	}
+
+	dbUser, err := handler.dao.GetUserByID(gradedBet.UserID)
+	if err != nil {
+		handler.respondWithMessage(w, "Error retrieving user data")
+		return
+	}
+
+	transaction := models.Transaction{
+		Amount:          gradedBet.Amount,
+		Type:            "credit",
+		Description:     fmt.Sprintf("Refund on bet %s", gradedBet.BetDescription),
+		TransactionDate: time.Now(),
+	}
+	_, err = handler.dao.CreateTransaction(*dbUser, transaction)
+	if err != nil {
+		log.Printf("Error creating transaction: %v", err)
+		handler.respondWithMessage(w, "Error placing wager")
 		return
 	}
 
@@ -357,4 +386,87 @@ func (handler *Handler) GradeUserBet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	handler.respondWithMessage(w, fmt.Sprintf("Bet with ID %d graded as %s successfully", betID, result))
+}
+
+func (handler *Handler) PlaceWagerForUser(w http.ResponseWriter, r *http.Request) {
+	// Parse form data
+	err := r.ParseForm()
+	if err != nil {
+		handler.respondWithMessage(w, "Error parsing form data")
+		return
+	}
+
+	// Extract and validate form fields
+	userIDStr := r.FormValue("user_id")
+	userID, err := strconv.Atoi(userIDStr)
+	if err != nil {
+		handler.respondWithMessage(w, "Invalid user ID")
+		return
+	}
+
+	// Fetch the user from the database
+	dbUser, err := handler.dao.GetUserByID(userID)
+	if err != nil {
+		handler.respondWithMessage(w, "Error retrieving user data")
+		return
+	}
+
+	outcomeDescription := r.FormValue("outcome_description")
+	if outcomeDescription == "" {
+		handler.respondWithMessage(w, "Invalid outcome description")
+		return
+	}
+
+	odds, err := strconv.ParseFloat(r.FormValue("odds"), 64)
+	if err != nil {
+		handler.respondWithMessage(w, "Invalid odds")
+		return
+	}
+
+	amount, err := strconv.ParseFloat(r.FormValue("wager_amount"), 64)
+	if err != nil || amount <= 0 {
+		handler.respondWithMessage(w, "Invalid wager amount")
+		return
+	}
+	// if amount > dbUser.Balance {
+	// 	handler.respondWithMessage(w, fmt.Sprintf("Insufficient funds. User balance: $%.2f, Wager amount: $%.2f", dbUser.Balance, amount))
+	// 	return
+	// }
+
+	// Create a new UserBet
+	userBet := &models.UserBet{
+		Amount:         amount,
+		PlacedAt:       time.Now(),
+		Result:         "ungraded", // Not graded yet
+		BetDescription: outcomeDescription,
+		Odds:           odds,
+		UserID:         dbUser.UserID,
+		Approved:       true, // Auto-approve admin-placed bets
+
+	}
+
+	// Insert the UserBet into the database
+	err = handler.dao.PlaceBet(*userBet)
+	if err != nil {
+		log.Printf("Error creating user bet: %v", err)
+		handler.respondWithMessage(w, "Error placing wager")
+		return
+	}
+
+	// Create a transaction for the bet
+	transaction := models.Transaction{
+		Amount:          -amount,
+		Type:            "debit",
+		Description:     fmt.Sprintf("Admin placed wager on %s", outcomeDescription),
+		TransactionDate: time.Now(),
+	}
+	_, err = handler.dao.CreateTransaction(*dbUser, transaction)
+	if err != nil {
+		log.Printf("Error creating transaction: %v", err)
+		handler.respondWithMessage(w, "Error recording transaction")
+		return
+	}
+
+	// Respond with a success message
+	handler.respondWithMessage(w, fmt.Sprintf("Wager placed successfully for user %s! Amount: $%.2f, Outcome: %s", dbUser.Username, amount, outcomeDescription))
 }

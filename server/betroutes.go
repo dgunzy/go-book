@@ -568,3 +568,49 @@ func (handler *Handler) UpdateBet(w http.ResponseWriter, r *http.Request) {
 	tmpl := template.Must(template.ParseFiles("static/templates/fragments/createbetbutton.gohtml"))
 	_ = tmpl.Execute(w, data)
 }
+
+func (handler *Handler) AdminBetForm(w http.ResponseWriter, r *http.Request) {
+	// Check if the user is an admin
+
+	// Get all bets from the database
+	bets, err := handler.dao.GetAllBets()
+	if err != nil {
+		http.Error(w, "Error retrieving bets: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Get all users from the database
+	users, err := handler.dao.GetAllUsers()
+	if err != nil {
+		http.Error(w, "Error retrieving users: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Convert odds to American format for display
+	for i := range *bets {
+		for j := range (*bets)[i].BetOutcomes {
+			decimalOdds := (*bets)[i].BetOutcomes[j].Odds
+			americanOdds := utils.DecimalToAmerican(decimalOdds)
+			(*bets)[i].BetOutcomes[j].Odds = float64(americanOdds)
+		}
+	}
+
+	type TemplateData struct {
+		AllUsers []*models.User
+		Bets     []models.Bet
+	}
+
+	data := TemplateData{
+		AllUsers: users,
+		Bets:     *bets,
+	}
+
+	// Parse and execute the template
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/adminbets.gohtml"))
+	err = tmpl.Execute(w, data)
+	if err != nil {
+		log.Println("Error executing template:", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+}

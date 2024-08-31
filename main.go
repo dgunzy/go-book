@@ -113,13 +113,12 @@ func main() {
 	router.HandleFunc("/update-bet/{betID}", auth.RequireAdmin(handler.UpdateBet, authService, dao.NewUserDAO(db))).Methods("PUT")
 	router.HandleFunc("/approve-user-bet/{betid}", auth.RequireAdmin(handler.ApproveUserBet, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/grade-user-bet/{betid}/{result}", auth.RequireAdmin(handler.GradeUserBet, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/get-all-bets-admin", auth.RequireAdmin(handler.AdminBetForm, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/admin-wager", auth.RequireAdmin(handler.PlaceWagerForUser, authService, dao.NewUserDAO(db))).Methods("POST")
 
 	// Root protected routes
-	// router.HandleFunc("/rootdashboard", auth.RequireRoot(handler.RootAdminDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
-	router.HandleFunc("/rootdashboard", auth.RequireRoot(handler.RootUserEditingDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
 
-	// router.HandleFunc("/rununittests", auth.RequireRoot(handler.RunUnitTests, authService, dao.NewUserDAO(db))).Methods("GET")
-	// router.HandleFunc("/runusergetbettest", auth.RequireRoot(handler.RunGetUserBetTest, authService, dao.NewUserDAO(db))).Methods("GET")
+	router.HandleFunc("/rootdashboard", auth.RequireRoot(handler.RootUserEditingDashboard, authService, dao.NewUserDAO(db))).Methods("GET")
 
 	//Auth Routes
 	router.HandleFunc("/auth/{provider}", handler.HandleProviderLogin).Methods("GET")

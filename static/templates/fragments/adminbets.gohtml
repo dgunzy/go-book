@@ -1,0 +1,75 @@
+<section id="available-bets" class="py-12">
+  <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">Match Bets</h2>
+  <div class="flex flex-wrap justify-center">
+    {{ range.Bets }}
+    {{ $betID := .BetID }}
+    {{ $BetDescription := .Description }}
+    <div class="w-full sm:w-1/2 lg:w-1/3 p-4">
+      <div class="bg-white rounded-lg shadow-md p-6">
+        <h3 class="text-xl font-semibold mb-2 break-words">{{ .Title }}</h3>
+        <p class="text-gray-600 mb-4 break-words">{{ .Description }}</p>
+        <div class="mb-4">
+          <p class="text-gray-800 font-semibold">Status: {{ .Status }}</p>
+          <p class="text-gray-800 font-semibold">
+            Created At: {{ .CreatedAt.Format "January 2, 2006, 15:04" }}
+          </p>
+          <p class="text-gray-800 font-semibold">
+            Expiry Time: {{ .ExpiryTime.Format "January 2, 2006, 15:04" }}
+          </p>
+        </div>
+        <div>
+          <h4 class="text-lg font-semibold mb-2">Outcomes:</h4>
+          {{ range.BetOutcomes }}
+          <div class="mb-4 border-t pt-4">
+            <p class="text-gray-800 break-words">{{ .Description }}</p>
+            <p class="text-gray-800">Odds: {{ .Odds }}</p>
+            <form hx-post="/admin-wager" hx-trigger="submit" class="mt-2">
+              <input type="hidden" name="bet_id" value="{{ $betID }}" />
+              <input
+                type="hidden"
+                name="outcome_description"
+                value="{{ .Description }} -  with bet description: {{
+                  $BetDescription
+                }} placed by an Admin."
+              />
+              <input type="hidden" name="odds" value="{{ .Odds }}" />
+              <div class="flex flex-col space-y-2">
+                <select
+                  name="user_id"
+                  class="border rounded p-2 w-full"
+                  required
+                >
+                  <option value="">Select a user</option>
+                  {{ range $.AllUsers }}
+                  <option value="{{ .UserID }}">
+                    {{ .Username }} ({{ .Email }})
+                  </option>
+                  {{
+                    end
+                  }}
+                </select>
+                <input
+                  type="number"
+                  name="wager_amount"
+                  placeholder="Enter wager amount"
+                  class="border rounded p-2 w-full"
+                  required
+                  min="0.01"
+                  step="0.01"
+                />
+                <button
+                  type="submit"
+                  class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 w-full"
+                >
+                  Place Bet for User
+                </button>
+              </div>
+            </form>
+          </div>
+          {{ end }}
+        </div>
+      </div>
+    </div>
+    {{ end }}
+  </div>
+</section>

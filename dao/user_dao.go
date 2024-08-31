@@ -161,9 +161,9 @@ func (dao *UserDAO) AdjustUserBalance(userID int, adjustmentAmount float64) erro
 		return err
 	}
 	//LOGGING
-	fmt.Printf("current balance %.2f\n", currentBalance)
+	// fmt.Printf("current balance %.2f\n", currentBalance)
 	newBalance := currentBalance + adjustmentAmount
-	fmt.Printf("new balance %.2f\n", newBalance)
+	// fmt.Printf("new balance %.2f\n", newBalance)
 
 	// Update the user's balance in the database
 	updateQuery := "UPDATE Users SET Balance = ? WHERE UserID = ?"

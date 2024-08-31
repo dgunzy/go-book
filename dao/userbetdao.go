@@ -37,8 +37,17 @@ func (dao *UserDAO) PlaceBet(userBet models.UserBet) error {
 
 func (dao *UserDAO) GetAllUserBets() ([]*models.UserBet, error) {
 	var userBets []*models.UserBet
-
-	query := `SELECT UserBetID, Amount, PlacedAt, Result, BetDescription, Odds,UserID, Approved FROM UserBets`
+	query := `
+		SELECT UserBetID, Amount, PlacedAt, Result, BetDescription, Odds, UserID, Approved 
+		FROM UserBets
+		ORDER BY 
+			CASE 
+				WHEN Result = 'ungraded' THEN 0 
+				WHEN Result = 'win' THEN 1
+				WHEN Result = 'loss' THEN 2
+				ELSE 3
+			END
+	`
 	rows, err := dao.db.Query(query)
 	if err != nil {
 		fmt.Println("Error querying all user bets:", err)
@@ -115,5 +124,16 @@ func (dao *UserDAO) GradeUserBet(userBetID int, result string) (models.UserBet, 
 		return gradedBet, err
 	}
 
+	return gradedBet, nil
+}
+
+func (dao *UserDAO) GetUserBetID(userBetId int) (*models.UserBet, error) {
+	gradedBet := new(models.UserBet)
+	query := `SELECT UserBetID, Amount, PlacedAt, Result, BetDescription, Odds, UserID, Approved FROM UserBets WHERE UserBetID = ?`
+	err := dao.db.QueryRow(query, userBetId).Scan(&gradedBet.UserBetID, &gradedBet.Amount, &gradedBet.PlacedAt, &gradedBet.Result, &gradedBet.BetDescription, &gradedBet.Odds, &gradedBet.UserID, &gradedBet.Approved)
+	if err != nil {
+		fmt.Println("Error retrieving user bet:", err)
+		return nil, err
+	}
 	return gradedBet, nil
 }
