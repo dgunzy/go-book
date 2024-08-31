@@ -59,7 +59,9 @@ func main() {
 
 	go func() {
 		for {
-			cleanupSessions(db)
+			if err := cleanupSessions(db); err != nil {
+				log.Printf("Error cleaning up sessions: %v", err)
+			}
 			time.Sleep(24 * time.Hour)
 		}
 	}()
@@ -163,9 +165,10 @@ func initStorage(db *sql.DB) {
 	log.Println("DB: Successfully connected!")
 }
 
-func cleanupSessions(db *sql.DB) {
-	_, err := db.Exec("DELETE FROM sessions WHERE expiry < ?", time.Now())
+func cleanupSessions(db *sql.DB) error {
+	_, err := db.Exec("DELETE FROM sessions WHERE expiry < datetime('now')")
 	if err != nil {
-		log.Printf("Error cleaning up sessions: %v", err)
+		return fmt.Errorf("error cleaning up sessions: %w", err)
 	}
+	return nil
 }

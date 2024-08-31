@@ -58,8 +58,9 @@ func (s *LibsqlStore) Save(r *http.Request, w http.ResponseWriter, session *sess
 	if err != nil {
 		return err
 	}
+	expiryTime := time.Now().Add(time.Duration(session.Options.MaxAge) * time.Second).UTC().Format("2006-01-02 15:04:05")
 	_, err = s.db.Exec("INSERT OR REPLACE INTO sessions (id, data, expiry) VALUES (?, ?, ?)",
-		session.ID, encoded, time.Now().Add(time.Duration(session.Options.MaxAge)*time.Second))
+		session.ID, encoded, expiryTime)
 	return err
 }
 
