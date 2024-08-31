@@ -62,7 +62,8 @@ func (s *LibsqlStore) Get(r *http.Request, name string) (*sessions.Session, erro
 
 	// Verify and load session from database
 	var dbData string
-	err = s.db.QueryRow("SELECT data FROM sessions WHERE id = ? AND expiry > ?", session.ID, time.Now().UTC()).Scan(&dbData)
+	var expiryStr string
+	err = s.db.QueryRow("SELECT data, expiry FROM sessions WHERE id = ? AND datetime(expiry) > datetime('now')", session.ID).Scan(&dbData, &expiryStr)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("Session not found in database or expired: %v", err)
@@ -104,8 +105,8 @@ func (s *LibsqlStore) Save(r *http.Request, w http.ResponseWriter, session *sess
 	}
 
 	expiryTime := time.Now().Add(time.Duration(session.Options.MaxAge) * time.Second).UTC()
-	_, err = s.db.Exec("INSERT OR REPLACE INTO sessions (id, data, expiry) VALUES (?, ?, ?)",
-		session.ID, encoded, expiryTime)
+	_, err = s.db.Exec("INSERT OR REPLACE INTO sessions (id, data, expiry) VALUES (?, ?, datetime(?))",
+		session.ID, encoded, expiryTime.Format("2006-01-02 15:04:05"))
 	if err != nil {
 		log.Printf("Error saving session to database: %v", err)
 		return err
