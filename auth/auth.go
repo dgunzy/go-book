@@ -2,7 +2,6 @@ package auth
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 
@@ -26,7 +25,7 @@ func NewAuthService(store sessions.Store) *AuthService {
 	callbackURL := os.Getenv("CALLBACK_URL")
 	if callbackURL == "" {
 		callbackURL = "http://localhost:8080/auth/google/callback" // Default fallback
-		log.Println("Warning: CALLBACK_URL not set, using default:", callbackURL)
+		fmt.Println("Warning: CALLBACK_URL not set, using default:", callbackURL)
 	}
 	goth.UseProviders(
 		google.New(googleClientID, googleClientSecret, callbackURL),
@@ -37,47 +36,47 @@ func NewAuthService(store sessions.Store) *AuthService {
 func (s *AuthService) GetSessionUser(r *http.Request) (goth.User, error) {
 	session, err := s.Store.Get(r, SessionName)
 	if err != nil {
-		log.Printf("Error getting session: %v", err)
+		fmt.Printf("Error getting session: %v", err)
 		return goth.User{}, err
 	}
 	u, ok := session.Values["user"].(goth.User)
 	if !ok {
-		log.Println("User not found in session")
+		fmt.Println("User not found in session")
 		return goth.User{}, fmt.Errorf("user is not authenticated")
 	}
-	log.Printf("Session user retrieved: %s", u.Email)
+	fmt.Printf("Session user retrieved: %s", u.Email)
 	return u, nil
 }
 
 func (s *AuthService) StoreUserSession(w http.ResponseWriter, r *http.Request, user goth.User) error {
 	session, err := s.Store.Get(r, SessionName)
 	if err != nil {
-		log.Printf("Error getting session for storing user: %v", err)
+		fmt.Printf("Error getting session for storing user: %v", err)
 		return err
 	}
 	session.Values["user"] = user
 	err = session.Save(r, w)
 	if err != nil {
-		log.Printf("Error saving session: %v", err)
+		fmt.Printf("Error saving session: %v", err)
 		return err
 	}
-	log.Printf("User session stored for: %s", user.Email)
+	fmt.Printf("User session stored for: %s", user.Email)
 	return nil
 }
 
 func (s *AuthService) RemoveUserSession(w http.ResponseWriter, r *http.Request) {
 	session, err := s.Store.Get(r, SessionName)
 	if err != nil {
-		log.Printf("Error getting session for removal: %v", err)
+		fmt.Printf("Error getting session for removal: %v", err)
 		return
 	}
 	delete(session.Values, "user")
 	session.Options.MaxAge = -1
 	err = session.Save(r, w)
 	if err != nil {
-		log.Printf("Error saving session after removal: %v", err)
+		fmt.Printf("Error saving session after removal: %v", err)
 	} else {
-		log.Println("User session removed successfully")
+		fmt.Println("User session removed successfully")
 	}
 }
 
@@ -85,13 +84,13 @@ func RequireAuth(handlerFunc http.HandlerFunc, auth *AuthService, dao *dao.UserD
 	return func(w http.ResponseWriter, r *http.Request) {
 		user, err := auth.GetSessionUser(r)
 		if err != nil {
-			log.Printf("User is not authenticated: %v", err)
-			http.Redirect(w, r, "/login", http.StatusTemporaryRedirect)
+			fmt.Printf("User is not authenticated: %v", err)
+			http.Redirect(w, r, "/fmtin", http.StatusTemporaryRedirect)
 			return
 		}
 		dbUser, err := dao.GetUserByEmail(user.Email)
 		if err != nil {
-			log.Printf("Error retrieving user from database: %v", err)
+			fmt.Printf("Error retrieving user from database: %v", err)
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}

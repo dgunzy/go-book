@@ -1,7 +1,7 @@
 package auth
 
 import (
-	"log"
+	"fmt"
 
 	"github.com/gorilla/sessions"
 )
@@ -20,7 +20,7 @@ func NewCookieStore(opts SessionOptions) *sessions.CookieStore {
 	store.Options.HttpOnly = opts.HttpOnly
 	store.Options.Secure = opts.Secure
 
-	log.Printf("New CookieStore created with MaxAge: %d, HttpOnly: %v, Secure: %v",
+	fmt.Printf("New CookieStore created with MaxAge: %d, HttpOnly: %v, Secure: %v",
 		opts.MaxAge, opts.HttpOnly, opts.Secure)
 
 	return store
