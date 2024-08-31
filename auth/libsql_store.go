@@ -1,11 +1,13 @@
 package auth
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"encoding/gob"
 	"errors"
+	"log"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/gorilla/securecookie"
@@ -26,23 +28,62 @@ func NewLibsqlStore(db *sql.DB, keyPairs ...[]byte) (*LibsqlStore, error) {
 	if db == nil {
 		return nil, errors.New("db is nil")
 	}
-
 	codecs := securecookie.CodecsFromPairs(keyPairs...)
 	return &LibsqlStore{
 		db:     db,
 		Codecs: codecs,
 		Options: &sessions.Options{
-			Path:   "/",
-			MaxAge: 86400 * 7,
+			Path:     "/",
+			MaxAge:   86400 * 7,
+			HttpOnly: true,
+			Secure:   true, // Set to true if using HTTPS
 		},
 	}, nil
 }
 
 func (s *LibsqlStore) Get(r *http.Request, name string) (*sessions.Session, error) {
-	return sessions.GetRegistry(r).Get(s, name)
+	log.Printf("Attempting to get session: %s", name)
+	cookie, err := r.Cookie(name)
+	if err != nil {
+		if err == http.ErrNoCookie {
+			log.Printf("No cookie found for session: %s", name)
+			return s.New(r, name)
+		}
+		log.Printf("Error getting cookie: %v", err)
+		return nil, err
+	}
+
+	session := sessions.NewSession(s, name)
+	err = securecookie.DecodeMulti(name, cookie.Value, &session.Values, s.Codecs...)
+	if err != nil {
+		log.Printf("Error decoding cookie: %v", err)
+		return s.New(r, name)
+	}
+
+	// Verify and load session from database
+	var dbData string
+	err = s.db.QueryRow("SELECT data FROM sessions WHERE id = ? AND expiry > ?", session.ID, time.Now().UTC()).Scan(&dbData)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("Session not found in database or expired: %v", err)
+			return s.New(r, name)
+		}
+		log.Printf("Error querying database: %v", err)
+		return nil, err
+	}
+
+	err = securecookie.DecodeMulti(name, dbData, &session.Values, s.Codecs...)
+	if err != nil {
+		log.Printf("Error decoding database data: %v", err)
+		return s.New(r, name)
+	}
+
+	log.Printf("Session retrieved for ID: %s", session.ID)
+	return session, nil
 }
 
 func (s *LibsqlStore) New(r *http.Request, name string) (*sessions.Session, error) {
+	log.Printf("Creating new session: %s", name)
 	session := sessions.NewSession(s, name)
 	opts := *s.Options
 	session.Options = &opts
@@ -51,29 +92,41 @@ func (s *LibsqlStore) New(r *http.Request, name string) (*sessions.Session, erro
 }
 
 func (s *LibsqlStore) Save(r *http.Request, w http.ResponseWriter, session *sessions.Session) error {
+	log.Printf("Saving session: %s", session.Name())
 	if session.ID == "" {
 		session.ID = generateSessionID()
 	}
+
 	encoded, err := securecookie.EncodeMulti(session.Name(), session.Values, s.Codecs...)
 	if err != nil {
+		log.Printf("Error encoding session: %v", err)
 		return err
 	}
-	expiryTime := time.Now().Add(time.Duration(session.Options.MaxAge) * time.Second).UTC().Format("2006-01-02 15:04:05")
+
+	expiryTime := time.Now().Add(time.Duration(session.Options.MaxAge) * time.Second).UTC()
 	_, err = s.db.Exec("INSERT OR REPLACE INTO sessions (id, data, expiry) VALUES (?, ?, ?)",
 		session.ID, encoded, expiryTime)
-	return err
-}
-
-func (s *LibsqlStore) load(session *sessions.Session) error {
-	var data string
-	err := s.db.QueryRow("SELECT data FROM sessions WHERE id = ?", session.ID).Scan(&data)
 	if err != nil {
+		log.Printf("Error saving session to database: %v", err)
 		return err
 	}
-	return securecookie.DecodeMulti(session.Name(), data, &session.Values, s.Codecs...)
+
+	encoded, err = securecookie.EncodeMulti(session.Name(), session.ID, s.Codecs...)
+	if err != nil {
+		log.Printf("Error encoding session ID for cookie: %v", err)
+		return err
+	}
+
+	http.SetCookie(w, sessions.NewCookie(session.Name(), encoded, session.Options))
+	log.Printf("Session saved and cookie set for ID: %s", session.ID)
+	return nil
 }
 
 func generateSessionID() string {
-
-	return os.Getenv("SESSION")
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		log.Printf("Error generating session ID: %v", err)
+		return ""
+	}
+	return base64.URLEncoding.EncodeToString(b)
 }
