@@ -89,9 +89,19 @@ func main() {
 	router.HandleFunc("/props", auth.RequireAuth(handler.GetPropBets, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/parlay", auth.RequireAuth(handler.GetAllBets, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/transactions", auth.RequireAuth(handler.ReadUserTransactions, authService, dao.NewUserDAO(db))).Methods("GET")
-	router.HandleFunc("/wager", auth.RequireAuth(handler.PlaceWager, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/wager", auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		handler.PlaceWager(w, r)
+		if err := syncDatabase(); err != nil {
+			fmt.Println("Error syncing database:", err)
+		}
+	}, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/userbets/{betflag}", auth.RequireAuth(handler.GetUserBets, authService, dao.NewUserDAO(db))).Methods("POST")
-	router.HandleFunc("/delete-user-bet/{betid}", auth.RequireAuth(handler.DeleteUserBet, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/delete-user-bet/{betid}", auth.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		handler.DeleteUserBet(w, r)
+		if err := syncDatabase(); err != nil {
+			fmt.Println("Error syncing database:", err)
+		}
+	}, authService, dao.NewUserDAO(db))).Methods("POST")
 
 	// router.HandleFunc("/test", auth.RequireAuth(handler.Test, authService)).Methods("GET")
 
@@ -118,17 +128,42 @@ func main() {
 	router.HandleFunc("/adminbetedit/{bettype}", auth.RequireAdmin(handler.AdminBetEdit, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/adminbeteditdelete/{bettype}", auth.RequireAdmin(handler.AdminBetToggle, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/createUserTransaction/{email}", auth.RequireAdmin(handler.AdminTransactionEdit, authService, dao.NewUserDAO(db))).Methods("POST")
-	router.HandleFunc("/create-transaction", auth.RequireAdmin(handler.CreateTransaction, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/create-transaction", auth.RequireAdmin(func(w http.ResponseWriter, r *http.Request) {
+		handler.CreateTransaction(w, r)
+		if err := syncDatabase(); err != nil {
+			fmt.Println("Error syncing database:", err)
+		}
+	}, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/canceluseredit/{email}", auth.RequireAdmin(handler.CancelUserEdit, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/create-new-bet-form", auth.RequireAdmin(handler.GetNewBetPage, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/view-bannable-users", auth.RequireAdmin(handler.GetBannableUsers, authService, dao.NewUserDAO(db))).Methods("GET")
 	router.HandleFunc("/cancel-view-bannable-users", auth.RequireAdmin(handler.CancelViewBannableUser, authService, dao.NewUserDAO(db))).Methods("POST")
-	router.HandleFunc("/create-new-bet", auth.RequireAdmin(handler.CreateNewBet, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/create-new-bet", auth.RequireAdmin(func(w http.ResponseWriter, r *http.Request) {
+		handler.CreateNewBet(w, r)
+		if err := syncDatabase(); err != nil {
+			fmt.Println("Error syncing database:", err)
+		}
+	}, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/deletebet/{betID}", auth.RequireAdmin(handler.MoveBetToClosed, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/editbet/{betID}", auth.RequireAdmin(handler.EditBetForm, authService, dao.NewUserDAO(db))).Methods("GET")
-	router.HandleFunc("/update-bet/{betID}", auth.RequireAdmin(handler.UpdateBet, authService, dao.NewUserDAO(db))).Methods("PUT")
-	router.HandleFunc("/approve-user-bet/{betid}", auth.RequireAdmin(handler.ApproveUserBet, authService, dao.NewUserDAO(db))).Methods("POST")
-	router.HandleFunc("/grade-user-bet/{betid}/{result}", auth.RequireAdmin(handler.GradeUserBet, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/update-bet/{betID}", auth.RequireAdmin(func(w http.ResponseWriter, r *http.Request) {
+		handler.UpdateBet(w, r)
+		if err := syncDatabase(); err != nil {
+			fmt.Println("Error syncing database:", err)
+		}
+	}, authService, dao.NewUserDAO(db))).Methods("PUT")
+	router.HandleFunc("/approve-user-bet/{betid}", auth.RequireAdmin(func(w http.ResponseWriter, r *http.Request) {
+		handler.ApproveUserBet(w, r)
+		if err := syncDatabase(); err != nil {
+			fmt.Println("Error syncing database:", err)
+		}
+	}, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/grade-user-bet/{betid}/{result}", auth.RequireAdmin(func(w http.ResponseWriter, r *http.Request) {
+		handler.GradeUserBet(w, r)
+		if err := syncDatabase(); err != nil {
+			fmt.Println("Error syncing database:", err)
+		}
+	}, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/get-all-bets-admin", auth.RequireAdmin(handler.AdminBetForm, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/admin-wager", auth.RequireAdmin(handler.PlaceWagerForUser, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/create-custom-userbet", auth.RequireAdmin(handler.GetCustomBetForm, authService, dao.NewUserDAO(db))).Methods("POST")
