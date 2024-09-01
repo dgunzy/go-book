@@ -128,12 +128,7 @@ func main() {
 	router.HandleFunc("/adminbetedit/{bettype}", auth.RequireAdmin(handler.AdminBetEdit, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/adminbeteditdelete/{bettype}", auth.RequireAdmin(handler.AdminBetToggle, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/createUserTransaction/{email}", auth.RequireAdmin(handler.AdminTransactionEdit, authService, dao.NewUserDAO(db))).Methods("POST")
-	router.HandleFunc("/create-transaction", auth.RequireAdmin(func(w http.ResponseWriter, r *http.Request) {
-		handler.CreateTransaction(w, r)
-		if err := syncDatabase(); err != nil {
-			fmt.Println("Error syncing database:", err)
-		}
-	}, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/create-transaction", auth.RequireAdmin(handler.CreateTransaction, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/canceluseredit/{email}", auth.RequireAdmin(handler.CancelUserEdit, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/create-new-bet-form", auth.RequireAdmin(handler.GetNewBetPage, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/view-bannable-users", auth.RequireAdmin(handler.GetBannableUsers, authService, dao.NewUserDAO(db))).Methods("GET")
