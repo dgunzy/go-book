@@ -1,23 +1,25 @@
 <section id="user-bets" class="py-12">
   <h2 class="text-3xl font-bold text-center mb-6 text-gray-800">User Bets</h2>
   <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-    {{ range.UserBets }}
-    <div class="w-full p-4" id="betcard-{{ .UserID }}">
+    {{ range.BetsWithUsers }}
+    <div class="w-full p-4" id="betcard-{{ .Bet.UserBetID }}">
       <div class="bg-white rounded-lg shadow-md p-6">
         <h3 class="text-xl font-semibold mb-2">Bet Details</h3>
-        <p class="text-gray-600 mb-4">{{ .BetDescription }}</p>
+        <p class="text-gray-600 mb-4">{{ .Bet.BetDescription }}</p>
         <div class="mb-4">
+          <p class="text-gray-800 font-semibold">User: {{ .User.Name }}</p>
+          <p class="text-gray-800 font-semibold">Email: {{ .User.Email }}</p>
           <p class="text-gray-800 font-semibold">
-            Amount: ${{ printf "%.2f" .Amount }}
+            Amount: ${{ printf "%.2f" .Bet.Amount }}
           </p>
           <p class="text-gray-800 font-semibold">
-            Placed At: {{ .PlacedAt.Format "January 2, 2006, 15:04" }}
+            Placed At: {{ .Bet.PlacedAt.Format "January 2, 2006, 15:04" }}
           </p>
           <p class="text-gray-800 font-semibold">
             Status:
-            {{if eq .Result "ungraded"}}
+            {{if eq .Bet.Result "ungraded"}}
             <span class="text-yellow-500">Pending</span>
-            {{else if eq .Result "win"}}
+            {{else if eq .Bet.Result "win"}}
             <span class="text-green-500">Win</span>
             {{else}}
             <span class="text-red-500">Loss</span>
@@ -25,44 +27,44 @@
           </p>
           <p class="text-gray-800 font-semibold">
             Approval:
-            {{if .Approved}}
+            {{if .Bet.Approved}}
             <span class="text-green-500">Approved</span>
             {{else}}
             <span class="text-yellow-500">Pending Approval</span>
             {{ end }}
           </p>
           <p class="text-gray-800 font-semibold">
-            Odds: {{ printf "%.2f" .Odds }}
+            Odds: {{ printf "%.2f" .Bet.Odds }}
           </p>
         </div>
         <div class="flex justify-between mt-4">
-          {{if or (eq $.User.Role "admin") (eq $.User.Role "root")}}
-          {{if not .Approved}}
+          {{if or (eq $.CurrentUser.Role "admin") (eq $.CurrentUser.Role "root")}}
+          {{if not .Bet.Approved}}
           <button
-            hx-post="/approve-user-bet/{{ .UserBetID }}"
+            hx-post="/approve-user-bet/{{ .Bet.UserBetID }}"
             hx-swap="outerHTML"
-            hx-target="#betcard-{{ .UserID }}"
+            hx-target="#betcard-{{ .Bet.UserBetID }}"
             class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded"
           >
             Approve
           </button>
           {{ end }}
-          {{if not (and (not .Approved) (eq .UserID $.User.UserID))}}
+          {{if not (and (not .Bet.Approved) (eq .Bet.UserID $.CurrentUser.UserID))}}
           <button
-            hx-post="/delete-user-bet/{{ .UserBetID }}"
+            hx-post="/delete-user-bet/{{ .Bet.UserBetID }}"
             hx-swap="outerHTML"
-            hx-target="#betcard-{{ .UserID }}"
+            hx-target="#betcard-{{ .Bet.UserBetID }}"
             class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
           >
             Cancel
           </button>
           {{ end }}
           {{ end }}
-          {{if and (not .Approved) (eq .UserID $.User.UserID)}}
+          {{if and (not .Bet.Approved) (eq .Bet.UserID $.CurrentUser.UserID)}}
           <button
-            hx-post="/delete-user-bet/{{ .UserBetID }}"
+            hx-post="/delete-user-bet/{{ .Bet.UserBetID }}"
             hx-swap="outerHTML"
-            hx-target="#betcard-{{ .UserID }}"
+            hx-target="#betcard-{{ .Bet.UserBetID }}"
             class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
           >
             Cancel My Bet

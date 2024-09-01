@@ -1,35 +1,41 @@
 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-  {{ range.UserBets }}
-  <div class="w-full p-4" id="betcard-{{.UserID}}">
+  {{ range.BetsWithUsers }}
+  <div class="w-full p-4" id="betcard-{{.Bet.UserBetID}}">
     <div class="bg-white rounded-lg shadow-md p-6">
       <h3 class="text-xl font-semibold mb-2">Bet Details</h3>
-      <p class="text-gray-600 mb-4">{{.BetDescription}}</p>
+      <p class="text-gray-600 mb-4">{{.Bet.BetDescription}}</p>
       <div class="mb-4">
+        <p class="text-gray-800 font-semibold">User: {{.User.Name}}</p>
+        <p class="text-gray-800 font-semibold">Email: {{.User.Email}}</p>
         <p class="text-gray-800 font-semibold">
-          Amount: ${{printf "%.2f" .Amount}}
+          Amount: ${{printf "%.2f" .Bet.Amount}}
         </p>
         <p class="text-gray-800 font-semibold">
-          Placed At: {{.PlacedAt.Format "January 2, 2006, 15:04"}}
+          Placed At: {{.Bet.PlacedAt.Format "January 2, 2006, 15:04"}}
         </p>
-        <p class="text-gray-800 font-semibold">Result: {{.Result}}</p>
+        <p class="text-gray-800 font-semibold">Result: {{.Bet.Result}}</p>
         <p class="text-gray-800 font-semibold">
-          Approval: {{if .Approved}}Approved{{else}}Pending Approval{{ end }}
+          Approval: {{if .Bet.Approved}}Approved{{else}}Pending Approval{{
+            end
+          }}
         </p>
-        <p class="text-gray-800 font-semibold">Odds: {{printf "%.2f" .Odds}}</p>
+        <p class="text-gray-800 font-semibold">
+          Odds: {{printf "%.2f" .Bet.Odds}}
+        </p>
       </div>
       <div class="flex justify-between mt-4">
         <button
-          hx-post="/grade-user-bet/{{.UserBetID}}/win"
+          hx-post="/grade-user-bet/{{.Bet.UserBetID}}/win"
           hx-swap="outerHTML"
-          hx-target="#betcard-{{.UserID}}"
+          hx-target="#betcard-{{.Bet.UserBetID}}"
           class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded"
         >
           Win
         </button>
         <button
-          hx-post="/grade-user-bet/{{.UserBetID}}/lose"
+          hx-post="/grade-user-bet/{{.Bet.UserBetID}}/lose"
           hx-swap="outerHTML"
-          hx-target="#betcard-{{.UserID}}"
+          hx-target="#betcard-{{.Bet.UserBetID}}"
           class="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
         >
           Loss

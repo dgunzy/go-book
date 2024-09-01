@@ -139,7 +139,6 @@ func (handler *Handler) respondWithMessage(w http.ResponseWriter, message string
 
 // betFlag is a string that can be either "pending" or "approved" or "all". All displays unapproved bets only.
 func (handler *Handler) GetUserBets(w http.ResponseWriter, r *http.Request) {
-
 	betFlag := strings.TrimPrefix(r.URL.Path, "/userbets/")
 	// Get the current user from the session
 	user, err := handler.auth.GetSessionUser(r)
@@ -147,14 +146,12 @@ func (handler *Handler) GetUserBets(w http.ResponseWriter, r *http.Request) {
 		handler.respondWithMessage(w, "Error retrieving user session")
 		return
 	}
-
 	// Get the user from the database
 	dbUser, err := handler.dao.GetUserByEmail(user.Email)
 	if err != nil {
 		handler.respondWithMessage(w, "Error retrieving user data")
 		return
 	}
-
 	// Get all user bets from the database
 	userBets, err := handler.dao.GetAllUserBets()
 	if err != nil {
@@ -165,76 +162,81 @@ func (handler *Handler) GetUserBets(w http.ResponseWriter, r *http.Request) {
 		handler.respondWithMessage(w, "No bets found")
 		return
 	}
-	betsToDisplay := []*models.UserBet{}
-	// Filter the user bets based on the betFlag
 
-	type PageData struct {
-		UserBets []*models.UserBet
-		User     *models.User
+	type BetWithUser struct {
+		Bet  *models.UserBet
+		User *models.User
 	}
-	data := PageData{}
+
+	betsWithUsers := []BetWithUser{}
+
+	// Filter the user bets based on the betFlag
+	type PageData struct {
+		BetsWithUsers []BetWithUser
+		CurrentUser   *models.User
+	}
+	data := PageData{CurrentUser: dbUser}
 
 	if betFlag == "pending" {
 		for _, bet := range userBets {
 			if bet.UserID == dbUser.UserID && !bet.Approved {
-				betsToDisplay = append(betsToDisplay, bet)
+				user, err := handler.dao.GetUserByID(bet.UserID)
+				if err != nil {
+					handler.respondWithMessage(w, "Error retrieving user data")
+					return
+				}
+				betsWithUsers = append(betsWithUsers, BetWithUser{Bet: bet, User: user})
 			}
 		}
-		data = PageData{
-			UserBets: betsToDisplay,
-			User:     dbUser,
-		}
-	}
-	if betFlag == "approved" {
+		data.BetsWithUsers = betsWithUsers
+	} else if betFlag == "approved" {
 		for _, bet := range userBets {
 			if bet.UserID == dbUser.UserID && bet.Approved {
-				betsToDisplay = append(betsToDisplay, bet)
+				user, err := handler.dao.GetUserByID(bet.UserID)
+				if err != nil {
+					handler.respondWithMessage(w, "Error retrieving user data")
+					return
+				}
+				betsWithUsers = append(betsWithUsers, BetWithUser{Bet: bet, User: user})
 			}
 		}
-		data = PageData{
-			UserBets: betsToDisplay,
-			User:     dbUser,
-		}
-	}
-
-	if betFlag == "all" {
+		data.BetsWithUsers = betsWithUsers
+	} else if betFlag == "all" {
 		for _, bet := range userBets {
 			if !bet.Approved {
-				betsToDisplay = append(betsToDisplay, bet)
+				user, err := handler.dao.GetUserByID(bet.UserID)
+				if err != nil {
+					handler.respondWithMessage(w, "Error retrieving user data")
+					return
+				}
+				betsWithUsers = append(betsWithUsers, BetWithUser{Bet: bet, User: user})
 			}
 		}
-		data = PageData{
-			UserBets: betsToDisplay,
-			User:     dbUser,
-		}
-
-	}
-
-	if betFlag == "allgrade" {
-
+		data.BetsWithUsers = betsWithUsers
+	} else if betFlag == "allgrade" {
 		if dbUser.Role != "admin" && dbUser.Role != "root" {
 			handler.respondWithMessage(w, "You do not have permission to view this page")
 			return
 		}
 		for _, bet := range userBets {
 			if bet.Result == "ungraded" {
-				betsToDisplay = append(betsToDisplay, bet)
+				user, err := handler.dao.GetUserByID(bet.UserID)
+				if err != nil {
+					handler.respondWithMessage(w, "Error retrieving user data")
+					return
+				}
+				betsWithUsers = append(betsWithUsers, BetWithUser{Bet: bet, User: user})
 			}
 		}
-		data = PageData{
-			UserBets: betsToDisplay,
-			User:     dbUser,
-		}
+		data.BetsWithUsers = betsWithUsers
 		tmpl := template.Must(template.ParseFiles("static/templates/fragments/userbetgrade.gohtml"))
 		err = tmpl.Execute(w, data)
 		if err != nil {
 			fmt.Println("Error executing template:", err)
 		}
 		return
-
-	}
-	if data.User == nil {
-		handler.respondWithMessage(w, "Internal Server Error")
+	} else {
+		handler.respondWithMessage(w, "Invalid bet flag")
 		return
 	}
 
@@ -244,7 +246,6 @@ func (handler *Handler) GetUserBets(w http.ResponseWriter, r *http.Request) {
 		fmt.Println("Error executing template:", err)
 		return
 	}
-
 }
 
 // DeleteBet handles the deletion of a bet
