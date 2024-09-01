@@ -54,22 +54,29 @@ func (dao *UserDAO) GetAllUserBets() ([]*models.UserBet, error) {
 		return nil, err
 	}
 	defer rows.Close()
-
 	for rows.Next() {
 		var ub models.UserBet
-		err := rows.Scan(&ub.UserBetID, &ub.Amount, &ub.PlacedAt, &ub.Result, &ub.BetDescription, &ub.Odds, &ub.UserID, &ub.Approved)
+		var placedAtStr string
+		err := rows.Scan(&ub.UserBetID, &ub.Amount, &placedAtStr, &ub.Result, &ub.BetDescription, &ub.Odds, &ub.UserID, &ub.Approved)
 		if err != nil {
 			fmt.Println("Error scanning user bet row:", err)
 			return nil, err
 		}
+
+		// Convert the placedAtStr to time.Time
+		placedAt, err := utils.SQLiteToGo(placedAtStr)
+		if err != nil {
+			fmt.Printf("Error parsing PlacedAt time: %v\n", err)
+			return nil, err
+		}
+		ub.PlacedAt = placedAt
+
 		userBets = append(userBets, &ub)
 	}
-
 	if err = rows.Err(); err != nil {
 		fmt.Println("Error after iterating user bet rows:", err)
 		return nil, err
 	}
-
 	return userBets, nil
 }
 
@@ -129,11 +136,32 @@ func (dao *UserDAO) GradeUserBet(userBetID int, result string) (models.UserBet, 
 
 func (dao *UserDAO) GetUserBetID(userBetId int) (*models.UserBet, error) {
 	gradedBet := new(models.UserBet)
+	var placedAtStr string
 	query := `SELECT UserBetID, Amount, PlacedAt, Result, BetDescription, Odds, UserID, Approved FROM UserBets WHERE UserBetID = ?`
-	err := dao.db.QueryRow(query, userBetId).Scan(&gradedBet.UserBetID, &gradedBet.Amount, &gradedBet.PlacedAt, &gradedBet.Result, &gradedBet.BetDescription, &gradedBet.Odds, &gradedBet.UserID, &gradedBet.Approved)
+
+	err := dao.db.QueryRow(query, userBetId).Scan(
+		&gradedBet.UserBetID,
+		&gradedBet.Amount,
+		&placedAtStr,
+		&gradedBet.Result,
+		&gradedBet.BetDescription,
+		&gradedBet.Odds,
+		&gradedBet.UserID,
+		&gradedBet.Approved,
+	)
+
 	if err != nil {
 		fmt.Println("Error retrieving user bet:", err)
 		return nil, err
 	}
+
+	// Convert the placedAtStr to time.Time
+	placedAt, err := utils.SQLiteToGo(placedAtStr)
+	if err != nil {
+		fmt.Printf("Error parsing PlacedAt time: %v\n", err)
+		return nil, err
+	}
+	gradedBet.PlacedAt = placedAt
+
 	return gradedBet, nil
 }
