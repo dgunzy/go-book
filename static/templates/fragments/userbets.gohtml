@@ -7,7 +7,7 @@
         <h3 class="text-xl font-semibold mb-2">Bet Details</h3>
         <p class="text-gray-600 mb-4">{{ .Bet.BetDescription }}</p>
         <div class="mb-4">
-          <p class="text-gray-800 font-semibold">User: {{ .User.Name }}</p>
+          <p class="text-gray-800 font-semibold">User: {{ .User.Username }}</p>
           <p class="text-gray-800 font-semibold">Email: {{ .User.Email }}</p>
           <p class="text-gray-800 font-semibold">
             Amount: ${{ printf "%.2f" .Bet.Amount }}
