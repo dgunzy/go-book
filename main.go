@@ -131,6 +131,7 @@ func main() {
 	router.HandleFunc("/grade-user-bet/{betid}/{result}", auth.RequireAdmin(handler.GradeUserBet, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/get-all-bets-admin", auth.RequireAdmin(handler.AdminBetForm, authService, dao.NewUserDAO(db))).Methods("POST")
 	router.HandleFunc("/admin-wager", auth.RequireAdmin(handler.PlaceWagerForUser, authService, dao.NewUserDAO(db))).Methods("POST")
+	router.HandleFunc("/create-custom-userbet", auth.RequireAdmin(handler.GetCustomBetForm, authService, dao.NewUserDAO(db))).Methods("POST")
 
 	// Root protected routes
 

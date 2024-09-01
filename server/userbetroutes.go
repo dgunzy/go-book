@@ -470,3 +470,41 @@ func (handler *Handler) PlaceWagerForUser(w http.ResponseWriter, r *http.Request
 	// Respond with a success message
 	handler.respondWithMessage(w, fmt.Sprintf("Wager placed successfully for user %s! Amount: $%.2f, Outcome: %s", dbUser.Username, amount, outcomeDescription))
 }
+
+func (handler *Handler) GetCustomBetForm(w http.ResponseWriter, r *http.Request) {
+	// Get the current user from the session
+	user, err := handler.auth.GetSessionUser(r)
+	if err != nil {
+		handler.respondWithMessage(w, "Error retrieving user session")
+		return
+	}
+
+	// Get the user from the database
+	dbUser, err := handler.dao.GetUserByEmail(user.Email)
+	if err != nil {
+		handler.respondWithMessage(w, "Error retrieving user data")
+		return
+	}
+	if dbUser.Role == "user" {
+		handler.respondWithMessage(w, "You do not have permission to view this page")
+		return
+
+	}
+	allUsers, err := handler.dao.GetAllUsers()
+	if err != nil {
+		handler.respondWithMessage(w, "Error retrieving user data")
+		return
+	}
+
+	type TemplateData struct {
+		Users []*models.User
+	}
+
+	data := TemplateData{
+		Users: allUsers,
+	}
+
+	tmpl := template.Must(template.ParseFiles("static/templates/fragments/customuserbet.gohtml"))
+	err = tmpl.Execute(w, data)
+
+}

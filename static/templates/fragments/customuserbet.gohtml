@@ -1,0 +1,61 @@
+<div class="mb-4 border-t pt-4">
+  <input
+    type="text"
+    class="text-gray-800 break-words w-full border rounded p-2 mb-2"
+    value="{{ .Description }}"
+    placeholder="Description"
+  />
+  <div class="flex items-center mb-2">
+    <span class="text-gray-800 mr-2">Odds:</span>
+    <input
+      type="text"
+      class="text-gray-800 border rounded p-2"
+      value="{{ .Odds }}"
+      placeholder="Odds"
+    />
+  </div>
+  <form hx-post="/admin-wager" hx-trigger="submit" class="mt-2">
+    <input type="hidden" name="bet_id" value="{{ .BetID }}" />
+    <input
+      type="text"
+      name="outcome_description"
+      class="w-full border rounded p-2 mb-2"
+      value="{{ .Description }} - with bet description: {{ .BetDescription }} placed by an Admin."
+      placeholder="Outcome description"
+    />
+    <input
+      type="text"
+      name="odds"
+      class="w-full border rounded p-2 mb-2"
+      value="{{ .Odds }}"
+      placeholder="Odds"
+    />
+    <div class="flex flex-col space-y-2">
+      <select name="user_id" class="border rounded p-2 w-full" required>
+        <option value="">Select a user</option>
+        {{
+          range.Users
+        }}
+        <option value="{{ .UserID }}">{{ .Username }} ({{ .Email }})</option>
+        {{
+          end
+        }}
+      </select>
+      <input
+        type="number"
+        name="wager_amount"
+        placeholder="Enter wager amount"
+        class="border rounded p-2 w-full"
+        required
+        min="0.01"
+        step="0.01"
+      />
+      <button
+        type="submit"
+        class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 w-full"
+      >
+        Place Bet for User
+      </button>
+    </div>
+  </form>
+</div>
