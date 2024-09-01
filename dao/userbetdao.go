@@ -1,6 +1,7 @@
 package dao
 
 import (
+	"database/sql"
 	"fmt"
 
 	"github.com/dgunzy/go-book/models"
@@ -17,7 +18,6 @@ func (dao *UserDAO) PlaceBet(userBet models.UserBet) error {
 
 	dbTime := utils.GoToSQLite(userBet.PlacedAt)
 
-	// Insert the new bet into the UserBets table
 	insertQuery := `INSERT INTO UserBets (UserID, Amount, BetDescription, Odds, Result, PlacedAt, Approved) VALUES (?, ?, ?, ?, 'ungraded', ?, ?)`
 	_, err = tx.Exec(insertQuery, userBet.UserID, userBet.Amount, userBet.BetDescription, userBet.Odds, dbTime, userBet.Approved)
 	if err != nil {
@@ -25,14 +25,7 @@ func (dao *UserDAO) PlaceBet(userBet models.UserBet) error {
 		return err
 	}
 
-	// Commit the transaction
-	err = tx.Commit()
-	if err != nil {
-		fmt.Println(err)
-		return err
-	}
-
-	return nil
+	return tx.Commit()
 }
 
 func (dao *UserDAO) GetAllUserBets() ([]*models.UserBet, error) {
@@ -54,6 +47,7 @@ func (dao *UserDAO) GetAllUserBets() ([]*models.UserBet, error) {
 		return nil, err
 	}
 	defer rows.Close()
+
 	for rows.Next() {
 		var ub models.UserBet
 		var placedAtStr string
@@ -63,20 +57,20 @@ func (dao *UserDAO) GetAllUserBets() ([]*models.UserBet, error) {
 			return nil, err
 		}
 
-		// Convert the placedAtStr to time.Time
-		placedAt, err := utils.SQLiteToGo(placedAtStr)
+		ub.PlacedAt, err = utils.SQLiteToGo(placedAtStr)
 		if err != nil {
 			fmt.Printf("Error parsing PlacedAt time: %v\n", err)
 			return nil, err
 		}
-		ub.PlacedAt = placedAt
 
 		userBets = append(userBets, &ub)
 	}
+
 	if err = rows.Err(); err != nil {
 		fmt.Println("Error after iterating user bet rows:", err)
 		return nil, err
 	}
+
 	return userBets, nil
 }
 
@@ -101,8 +95,7 @@ func (dao *UserDAO) ApproveUserBet(betID int) error {
 }
 
 func (dao *UserDAO) GradeUserBet(userBetID int, result string) (models.UserBet, error) {
-
-	gradedBet := models.UserBet{}
+	var gradedBet models.UserBet
 	if result != "win" && result != "lose" {
 		return gradedBet, fmt.Errorf("invalid result: must be 'win' or 'lose'")
 	}
@@ -124,14 +117,13 @@ func (dao *UserDAO) GradeUserBet(userBetID int, result string) (models.UserBet, 
 		return gradedBet, fmt.Errorf("no ungraded bet found with ID %d", userBetID)
 	}
 
-	query = `SELECT UserBetID, Amount, PlacedAt, Result, BetDescription, Odds, UserID, Approved FROM UserBets WHERE UserBetID = ?`
-	err = dao.db.QueryRow(query, userBetID).Scan(&gradedBet.UserBetID, &gradedBet.Amount, &gradedBet.PlacedAt, &gradedBet.Result, &gradedBet.BetDescription, &gradedBet.Odds, &gradedBet.UserID, &gradedBet.Approved)
+	userBet, err := dao.GetUserBetID(userBetID)
 	if err != nil {
-		fmt.Println("Error getting graded bet:", err)
+		fmt.Println("Error getting user bet:", err)
 		return gradedBet, err
 	}
 
-	return gradedBet, nil
+	return *userBet, nil
 }
 
 func (dao *UserDAO) GetUserBetID(userBetId int) (*models.UserBet, error) {
@@ -151,17 +143,18 @@ func (dao *UserDAO) GetUserBetID(userBetId int) (*models.UserBet, error) {
 	)
 
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("no bet found with ID %d", userBetId)
+		}
 		fmt.Println("Error retrieving user bet:", err)
 		return nil, err
 	}
 
-	// Convert the placedAtStr to time.Time
-	placedAt, err := utils.SQLiteToGo(placedAtStr)
+	gradedBet.PlacedAt, err = utils.SQLiteToGo(placedAtStr)
 	if err != nil {
 		fmt.Printf("Error parsing PlacedAt time: %v\n", err)
 		return nil, err
 	}
-	gradedBet.PlacedAt = placedAt
 
 	return gradedBet, nil
 }
