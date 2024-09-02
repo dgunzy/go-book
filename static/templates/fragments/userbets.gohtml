@@ -21,6 +21,8 @@
             <span class="text-yellow-500">Pending</span>
             {{else if eq .Bet.Result "win"}}
             <span class="text-green-500">Win</span>
+            {{else if eq .Bet.Result "tie"}}
+            <span class="text-blue-500">Tie</span>
             {{else}}
             <span class="text-red-500">Loss</span>
             {{ end }}
