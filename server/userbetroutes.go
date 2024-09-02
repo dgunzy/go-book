@@ -349,8 +349,8 @@ func (handler *Handler) GradeUserBet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if result != "win" && result != "lose" {
-		handler.respondWithMessage(w, "Invalid result: must be 'win' or 'lose'")
+	if result != "win" && result != "lose" && result != "tie" {
+		handler.respondWithMessage(w, "Invalid result: must be 'win' or 'lose' or 'tie'")
 		return
 	}
 
@@ -384,6 +384,20 @@ func (handler *Handler) GradeUserBet(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+	}
+	if result == "tie" {
+		transaction := models.Transaction{
+			Amount:          gradedBet.Amount,
+			Type:            "credit",
+			Description:     fmt.Sprintf("Refund for tied bet on %s", gradedBet.BetDescription),
+			TransactionDate: time.Now(),
+		}
+		_, err := handler.dao.CreateTransaction(*dbUser, transaction)
+		if err != nil {
+			log.Printf("Error creating transaction for tie: %v", err)
+			handler.respondWithMessage(w, "Error processing tie refund")
+			return
+		}
 	}
 
 	handler.respondWithMessage(w, fmt.Sprintf("Bet with ID %d graded as %s successfully", betID, result))

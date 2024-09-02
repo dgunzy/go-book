@@ -8,6 +8,7 @@ require (
 	github.com/gorilla/mux v1.6.2
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/sessions v1.4.0
+	github.com/joho/godotenv v1.5.1
 	github.com/markbates/goth v1.79.0
 	github.com/tursodatabase/go-libsql v0.0.0-20240322134723-08771dcdd2f1
 )

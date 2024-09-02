@@ -96,8 +96,8 @@ func (dao *UserDAO) ApproveUserBet(betID int) error {
 
 func (dao *UserDAO) GradeUserBet(userBetID int, result string) (models.UserBet, error) {
 	var gradedBet models.UserBet
-	if result != "win" && result != "lose" {
-		return gradedBet, fmt.Errorf("invalid result: must be 'win' or 'lose'")
+	if result != "win" && result != "lose" && result != "tie" {
+		return gradedBet, fmt.Errorf("invalid result: must be 'win' or 'lose' or 'tie'")
 	}
 
 	query := `UPDATE UserBets SET Result = ? WHERE UserBetID = ? AND Result = 'ungraded'`
