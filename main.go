@@ -37,6 +37,7 @@ func main() {
 		fmt.Println(err)
 		return
 	}
+	//Test
 
 	sessionKey := os.Getenv("SESSION_KEY")
 	if sessionKey == "" {
