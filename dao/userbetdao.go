@@ -158,3 +158,49 @@ func (dao *UserDAO) GetUserBetID(userBetId int) (*models.UserBet, error) {
 
 	return gradedBet, nil
 }
+
+func (dao *UserDAO) GetAllUserGradedBets(userid int) ([]*models.UserBet, error) {
+	var userBets []*models.UserBet
+	query := `
+		SELECT UserBetID, Amount, PlacedAt, Result, BetDescription, Odds, UserID, Approved 
+		FROM UserBets
+		WHERE UserID = ? AND Result != 'ungraded'
+		ORDER BY 
+			CASE 
+				WHEN Result = 'win' THEN 0
+				WHEN Result = 'loss' THEN 1
+				ELSE 2
+			END
+	`
+	rows, err := dao.db.Query(query, userid)
+	if err != nil {
+		fmt.Println("Error querying all user bets:", err)
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var ub models.UserBet
+		var placedAtStr string
+		err := rows.Scan(&ub.UserBetID, &ub.Amount, &placedAtStr, &ub.Result, &ub.BetDescription, &ub.Odds, &ub.UserID, &ub.Approved)
+		if err != nil {
+			fmt.Println("Error scanning user bet row:", err)
+			return nil, err
+		}
+
+		ub.PlacedAt, err = utils.SQLiteToGo(placedAtStr)
+		if err != nil {
+			fmt.Printf("Error parsing PlacedAt time: %v\n", err)
+			return nil, err
+		}
+
+		userBets = append(userBets, &ub)
+	}
+
+	if err = rows.Err(); err != nil {
+		fmt.Println("Error after iterating user bet rows:", err)
+		return nil, err
+	}
+
+	return userBets, nil
+}

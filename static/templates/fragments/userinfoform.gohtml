@@ -1,0 +1,28 @@
+<div class="mb-4 border-t pt-4" id="user-bets-transactions">
+  <form
+    hx-post="/get-user-bets-transactions"
+    hx-trigger="submit"
+    class="mt-2"
+    hx-target="#user-bets-transactions"
+  >
+    <div class="flex flex-col space-y-2">
+      <select name="user_id" class="border rounded p-2 w-full" required>
+        <option value="">Select a user</option>
+        {{
+          range.Users
+        }}
+        <option value="{{ .UserID }}">{{ .Username }} ({{ .Email }})</option>
+        {{
+          end
+        }}
+      </select>
+
+      <button
+        type="submit"
+        class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 w-full"
+      >
+        Get Users Bets and Transitions
+      </button>
+    </div>
+  </form>
+</div>
