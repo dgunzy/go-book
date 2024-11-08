@@ -3,7 +3,11 @@ FROM golang:1.23-alpine AS builder
 WORKDIR /app
 
 # Install build dependencies
-RUN apk add --no-cache gcc musl-dev sqlite-dev
+RUN apk add --no-cache \
+    gcc \
+    musl-dev \
+    sqlite-dev \
+    build-base
 
 # Copy go mod and sum files first for better caching
 COPY go.mod go.sum ./
@@ -13,7 +17,9 @@ RUN go mod download
 COPY . .
 
 # Build the application with platform specification
-RUN go build -o go-book
+RUN CGO_ENABLED=1 \
+    GOOS=linux \
+    go build -ldflags '-linkmode external -extldflags "-static"' -o go-book
 
 # Run stage
 FROM alpine:3.19
