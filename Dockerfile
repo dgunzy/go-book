@@ -13,7 +13,7 @@ RUN go mod download
 COPY . .
 
 # Build the application with platform specification
-RUN GOOS=linux CGO_ENABLED=1 go build -o go-book
+RUN go build -o go-book
 
 # Run stage
 FROM alpine:3.19
