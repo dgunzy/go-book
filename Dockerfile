@@ -1,35 +1,40 @@
 # Build stage
-FROM golang:1.23-alpine AS builder
+FROM golang:1.23 AS builder
+
 WORKDIR /app
 
 # Install build dependencies
-RUN apk add --no-cache \
-    gcc \
-    musl-dev \
-    sqlite-dev \
-    build-base
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    pkg-config \
+    libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy go mod and sum files first for better caching
+# Copy go mod files first for better caching
 COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy the rest of the source code
 COPY . .
 
-# Build the application with platform specification
+# Build the application
 RUN CGO_ENABLED=1 \
     GOOS=linux \
-    go build -ldflags '-linkmode external -extldflags "-static"' -o go-book
+    go build -o go-book
 
 # Run stage
-FROM alpine:3.19
+FROM debian:bookworm-slim
+
 WORKDIR /app
 
 # Install runtime dependencies
-RUN apk add --no-cache sqlite-dev
+RUN apt-get update && apt-get install -y \
+    libsqlite3-0 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy everything from builder stage
-COPY --from=builder /app .
+# Copy binary from builder stage
+COPY --from=builder /app/go-book .
 
 # Expose port
 EXPOSE 8080
