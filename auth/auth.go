@@ -7,6 +7,7 @@ import (
 
 	"github.com/dgunzy/go-book/dao"
 	"github.com/gorilla/sessions"
+	"github.com/joho/godotenv"
 	"github.com/markbates/goth"
 	"github.com/markbates/goth/gothic"
 	"github.com/markbates/goth/providers/google"
@@ -19,6 +20,11 @@ type AuthService struct {
 }
 
 func NewAuthService(store sessions.Store) *AuthService {
+	isLocalDev := os.Getenv("ENV") == "local"
+
+	if isLocalDev {
+		godotenv.Load()
+	}
 	gothic.Store = store
 	googleClientID := os.Getenv("GOOGLE_CLIENT_ID")
 	googleClientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")

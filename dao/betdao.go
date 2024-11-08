@@ -236,7 +236,7 @@ func (dao *UserDAO) GetBetsByCategory(category string) (*[]models.Bet, error) {
 	query := `
 		SELECT b.BetID, b.Title, b.Description, b.OddsMultiplier, b.Status, b.Category, b.CreatedBy, b.CreatedAt, b.ExpiryTime
 		FROM Bets b
-		WHERE b.Category = ? AND b.Status != 'closed'
+		WHERE b.Category = ? 
 	`
 	rows, err := dao.db.Query(query, category)
 	if err != nil {
