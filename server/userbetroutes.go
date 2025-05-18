@@ -73,22 +73,22 @@ func (handler *Handler) PlaceWager(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	MAXWAGER := 500.0
-	americanOdds := int(odds)
-	decimalOdds := utils.AmericanToDecimal(americanOdds)
-	potentialWin := amount*decimalOdds - amount
-	if americanOdds < 0 { // Negative odds (favorites like -200)
-		if potentialWin > MAXWAGER {
-			maxBet := MAXWAGER / (decimalOdds - 1)
-			handler.respondWithMessage(w, fmt.Sprintf("Maximum potential win is $%.2f. For odds of %d, maximum bet is $%.2f", MAXWAGER, americanOdds, maxBet))
-			return
-		}
-	} else { // Positive odds (underdogs like +150)
-		if amount > MAXWAGER {
-			handler.respondWithMessage(w, fmt.Sprintf("Maximum bet amount is $%.2f for positive odds bets", MAXWAGER))
-			return
-		}
-	}
+	// MAXWAGER := 500.0
+	// americanOdds := int(odds)
+	// decimalOdds := utils.AmericanToDecimal(americanOdds)
+	// potentialWin := amount*decimalOdds - amount
+	// if americanOdds < 0 { // Negative odds (favorites like -200)
+	// 	if potentialWin > MAXWAGER {
+	// 		maxBet := MAXWAGER / (decimalOdds - 1)
+	// 		handler.respondWithMessage(w, fmt.Sprintf("Maximum potential win is $%.2f. For odds of %d, maximum bet is $%.2f", MAXWAGER, americanOdds, maxBet))
+	// 		return
+	// 	}
+	// } else { // Positive odds (underdogs like +150)
+	// 	if amount > MAXWAGER {
+	// 		handler.respondWithMessage(w, fmt.Sprintf("Maximum bet amount is $%.2f for positive odds bets", MAXWAGER))
+	// 		return
+	// 	}
+	// }
 
 	var approvalState bool
 	if dbUser.AutoApproveLimit <= int(amount) {
