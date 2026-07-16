@@ -87,23 +87,18 @@ jobs:
         shell: bash
         run: echo "tag=$(date -u +%Y%m%dT%H%M%SZ)-sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
-      - name: Generate image metadata
-        id: metadata
-        uses: docker/metadata-action@v6
-        with:
-          images: ghcr.io/dgunzy/cabot-cup
-          tags: |
-            type=raw,value=${{ steps.image.outputs.tag }}
-            type=sha,prefix=sha-
-            type=raw,value=latest
-
       - name: Build and push image
         uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.metadata.outputs.tags }}
-          labels: ${{ steps.metadata.outputs.labels }}
+          tags: |
+            ghcr.io/dgunzy/cabot-cup:${{ steps.image.outputs.tag }}
+            ghcr.io/dgunzy/cabot-cup:sha-${{ github.sha }}
+            ghcr.io/dgunzy/cabot-cup:latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

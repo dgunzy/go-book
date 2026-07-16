@@ -72,5 +72,5 @@ make build
 ```
 
 CI also runs the race detector, applies and rolls back the migration on PostgreSQL 18,
-builds the application, and publishes `ghcr.io/dgunzy/cabot-cup` with immutable SHA
-tags on pushes to `main`.
+builds the application, and publishes `ghcr.io/dgunzy/cabot-cup` with immutable
+timestamped SHA tags on pushes to `main`.
