@@ -7,12 +7,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/dgunzy/go-book/internal/config"
+	"github.com/dgunzy/go-book/internal/migration/publicseed"
+	"github.com/dgunzy/go-book/internal/migration/schema"
 	"github.com/dgunzy/go-book/internal/platform/httpmiddleware"
 	"github.com/dgunzy/go-book/internal/platform/httpserver"
 	publicweb "github.com/dgunzy/go-book/internal/web"
+	"github.com/jackc/pgx/v5"
 )
 
 func main() {
@@ -24,7 +28,26 @@ func main() {
 }
 
 func run(logger *slog.Logger) error {
-	applicationConfig, err := config.Load(os.LookupEnv)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return runCommand(ctx, logger, os.Args[1:], os.LookupEnv)
+}
+
+type lookupFunc func(string) (string, bool)
+
+func runCommand(ctx context.Context, logger *slog.Logger, arguments []string, lookup lookupFunc) error {
+	switch {
+	case len(arguments) == 0:
+		return runServer(ctx, logger, lookup)
+	case len(arguments) == 1 && arguments[0] == "migrate":
+		return runMigrations(ctx, logger, lookup)
+	default:
+		return fmt.Errorf("usage: cabot-cup [migrate]")
+	}
+}
+
+func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) error {
+	applicationConfig, err := config.Load(lookup)
 	if err != nil {
 		return fmt.Errorf("load configuration: %w", err)
 	}
@@ -41,14 +64,54 @@ func run(logger *slog.Logger) error {
 		ShutdownTimeout: applicationConfig.ShutdownTimeout,
 	}, handler, logger)
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	logger.Info("starting Cabot Cup",
 		"environment", applicationConfig.Environment,
 		"public_base_url", applicationConfig.PublicBaseURL.String(),
 	)
 	return server.Run(ctx)
+}
+
+func runMigrations(ctx context.Context, logger *slog.Logger, lookup lookupFunc) error {
+	databaseURL, ok := lookup("DATABASE_URL")
+	if !ok || strings.TrimSpace(databaseURL) == "" {
+		return fmt.Errorf("DATABASE_URL is required for migrations")
+	}
+
+	connection, err := pgx.Connect(ctx, strings.TrimSpace(databaseURL))
+	if err != nil {
+		return fmt.Errorf("connect for migrations: %w", err)
+	}
+	defer func() { _ = connection.Close(context.Background()) }()
+
+	schemaReport, err := schema.Apply(ctx, connection)
+	if err != nil {
+		return fmt.Errorf("apply schema migrations: %w", err)
+	}
+
+	tx, err := connection.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin public seed: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	seedReport, err := publicseed.Apply(ctx, tx)
+	if err != nil {
+		return fmt.Errorf("seed public snapshot: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit public seed: %w", err)
+	}
+
+	logger.Info("database migration complete",
+		"schema_applied", schemaReport.Applied,
+		"schema_skipped", schemaReport.Skipped,
+		"players", seedReport.Players,
+		"events", seedReport.Events,
+		"stat_snapshots", seedReport.StatSnapshots,
+		"media_assets", seedReport.MediaAssets,
+		"media_player_links", seedReport.MediaPlayerLinks,
+		"remote_event_photos_skipped", seedReport.SkippedEventPhotos,
+	)
+	return nil
 }
 
 func buildHandler(publicHandler http.Handler, logger *slog.Logger, production bool) http.Handler {

@@ -1,5 +1,3 @@
-BEGIN;
-
 DROP TABLE IF EXISTS event_receipts;
 DROP TABLE IF EXISTS outbox_events;
 DROP TRIGGER IF EXISTS audit_entries_immutable ON audit_entries;
@@ -45,5 +43,3 @@ DROP TABLE IF EXISTS invitations;
 DROP TABLE IF EXISTS memberships;
 DROP TABLE IF EXISTS auth_identities;
 DROP TABLE IF EXISTS users;
-
-COMMIT;

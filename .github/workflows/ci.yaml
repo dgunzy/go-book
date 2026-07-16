@@ -51,14 +51,29 @@ jobs:
 
       - name: Verify PostgreSQL migrations
         env:
+          DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/cabot_test?sslmode=disable
           PGHOST: 127.0.0.1
           PGPORT: "5432"
           PGDATABASE: cabot_test
           PGUSER: postgres
           PGPASSWORD: postgres
         run: |
-          psql -v ON_ERROR_STOP=1 -f migrations/000001_initial.up.sql
-          psql -v ON_ERROR_STOP=1 -f migrations/000001_initial.down.sql
+          psql -1 -v ON_ERROR_STOP=1 -f migrations/000001_initial.up.sql
+          psql -1 -v ON_ERROR_STOP=1 -f migrations/000001_initial.down.sql
+          go run ./cmd/cabot migrate
+          go run ./cmd/cabot migrate
+          test "$(psql -Atqc "
+            SELECT
+              (SELECT count(*) FROM schema_migrations) || '|' ||
+              (SELECT count(*) FROM players) || '|' ||
+              (SELECT count(*) FROM events) || '|' ||
+              (SELECT count(*) FROM legacy_stat_snapshots) || '|' ||
+              (SELECT count(*) FROM media_assets) || '|' ||
+              (SELECT count(*) FROM media_player_links) || '|' ||
+              (SELECT count(*) FROM legacy_import_records)
+          ")" = "1|23|6|23|22|23|74"
+          psql -1 -v ON_ERROR_STOP=1 -f migrations/000001_initial.down.sql
+          psql -v ON_ERROR_STOP=1 -c 'DROP TABLE schema_migrations'
 
   container:
     runs-on: ubuntu-latest

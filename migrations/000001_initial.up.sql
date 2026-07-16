@@ -1,5 +1,3 @@
-BEGIN;
-
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE users (
@@ -662,5 +660,3 @@ CREATE TABLE event_receipts (
     result jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(result) = 'object'),
     PRIMARY KEY (consumer, event_id)
 );
-
-COMMIT;

@@ -52,15 +52,17 @@ Open `http://localhost:8080`. Public routes are:
 
 ## Database
 
-The initial migration targets PostgreSQL 18 and is intentionally explicit SQL:
+The application image embeds its ordered migrations and public legacy seed. Apply
+them through the same command used by the versioned Kubernetes migration Job:
 
 ```sh
-psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f migrations/000001_initial.up.sql
+DATABASE_URL="$DATABASE_URL" go run ./cmd/cabot migrate
 ```
 
-Do not run the down migration against an environment containing data. Production
-migrations will be executed by a controlled release Job before the application is
-scaled up.
+The command takes a PostgreSQL advisory lock, verifies immutable migration checksums,
+and is safe to retry. It imports reliable public legacy records idempotently while
+leaving aggregate-only history labeled as a snapshot. Do not run the down migration
+against an environment containing data.
 
 ## Repository checks
 

@@ -1,12 +1,37 @@
 package main
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+func TestRunCommandRejectsUnknownCommand(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	err := runCommand(context.Background(), logger, []string{"unknown"}, func(string) (string, bool) {
+		return "", false
+	})
+	if err == nil || err.Error() != "usage: cabot-cup [migrate]" {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestRunMigrationsRequiresDatabaseURL(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	err := runCommand(context.Background(), logger, []string{"migrate"}, func(string) (string, bool) {
+		return "", false
+	})
+	if err == nil || err.Error() != "DATABASE_URL is required for migrations" {
+		t.Fatalf("error = %v", err)
+	}
+}
 
 func TestHealthEndpoints(t *testing.T) {
 	t.Parallel()
