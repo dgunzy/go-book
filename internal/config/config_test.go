@@ -36,7 +36,6 @@ func TestLoadProduction(t *testing.T) {
 		"HOST":             "127.0.0.1",
 		"PORT":             "9090",
 		"PUBLIC_BASE_URL":  "https://cabotcup.ca/",
-		"DATABASE_URL":     "postgres://redacted",
 		"SHUTDOWN_TIMEOUT": "25s",
 	}))
 	if err != nil {
@@ -52,6 +51,9 @@ func TestLoadProduction(t *testing.T) {
 	if config.ShutdownTimeout != 25*time.Second {
 		t.Errorf("ShutdownTimeout = %s", config.ShutdownTimeout)
 	}
+	if config.DatabaseURL != "" {
+		t.Errorf("DatabaseURL = %q, want empty for public mode", config.DatabaseURL)
+	}
 }
 
 func TestLoadRejectsInvalidConfiguration(t *testing.T) {
@@ -65,9 +67,7 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 		{name: "environment", env: map[string]string{"APP_ENV": "preview"}, want: "APP_ENV"},
 		{name: "port", env: map[string]string{"PORT": "70000"}, want: "PORT"},
 		{name: "base URL", env: map[string]string{"PUBLIC_BASE_URL": "/relative"}, want: "PUBLIC_BASE_URL"},
-		{name: "production HTTP", env: map[string]string{"APP_ENV": "production", "PUBLIC_BASE_URL": "http://cabotcup.ca", "DATABASE_URL": "postgres://redacted"}, want: "https"},
-		{name: "production database", env: map[string]string{"APP_ENV": "production", "PUBLIC_BASE_URL": "https://cabotcup.ca"}, want: "DATABASE_URL"},
-		{name: "staging database", env: map[string]string{"APP_ENV": "staging", "PUBLIC_BASE_URL": "https://next.cabotcup.ca"}, want: "DATABASE_URL"},
+		{name: "production HTTP", env: map[string]string{"APP_ENV": "production", "PUBLIC_BASE_URL": "http://cabotcup.ca"}, want: "https"},
 		{name: "duration", env: map[string]string{"SHUTDOWN_TIMEOUT": "0s"}, want: "SHUTDOWN_TIMEOUT"},
 	}
 

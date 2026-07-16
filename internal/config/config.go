@@ -60,9 +60,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 
 	databaseURL, _ := lookup("DATABASE_URL")
-	if isDeployed(environment) && strings.TrimSpace(databaseURL) == "" {
-		return Config{}, fmt.Errorf("DATABASE_URL is required in staging and production")
-	}
+	databaseURL = strings.TrimSpace(databaseURL)
 
 	return Config{
 		Environment:     environment,
