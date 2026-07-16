@@ -1,0 +1,32 @@
+{{define "content"}}
+<header class="page-header section-shell">
+  <p class="eyebrow dark">2019&ndash;2024</p>
+  <h1>Cup history</h1>
+  <p>Six competitions, twelve teams, and a growing collection of stories from the team era.</p>
+</header>
+
+<section class="section-shell timeline" aria-label="Cabot Cup events">
+  {{range .Events}}
+  <article class="event-row">
+    <a class="event-image" href="/history/{{.Year}}" tabindex="-1" aria-hidden="true">
+      <img src="{{(index .Photos 0).URL}}" alt="" loading="lazy">
+    </a>
+    <div class="event-year">{{.Year}}</div>
+    <div class="event-copy">
+      <p class="event-result"><span>{{.Winner}}</span> defeated {{.RunnerUp}}</p>
+      <h2><a href="/history/{{.Year}}">{{.Year}} Cabot Cup</a></h2>
+      <p>{{.Summary}}</p>
+      <dl class="event-meta">
+        <div><dt>Final</dt><dd>{{.Score}}</dd></div>
+        <div><dt>Venue</dt><dd>{{.Venue}}</dd></div>
+      </dl>
+    </div>
+  </article>
+  {{end}}
+</section>
+
+<aside class="section-shell archive-note" aria-label="Data source note">
+  <strong>{{.SnapshotLabel}}</strong>
+  <p>{{.SnapshotNote}}</p>
+</aside>
+{{end}}

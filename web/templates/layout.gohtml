@@ -1,0 +1,41 @@
+{{define "layout"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="{{.Description}}">
+  <title>{{if eq .Title "Cabot Cup"}}Cabot Cup{{else}}{{.Title}} | Cabot Cup{{end}}</title>
+  <link rel="icon" href="/assets/favicon.ico" sizes="any">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+  <header class="site-header">
+    <nav class="nav-shell" aria-label="Primary navigation">
+      <a class="wordmark" href="/" aria-label="Cabot Cup home">
+        <span class="wordmark-mark" aria-hidden="true">CC</span>
+        <span>Cabot Cup</span>
+      </a>
+      <div class="nav-links">
+        <a href="/history" {{if eq .Current "history"}}aria-current="page"{{end}}>History</a>
+        <a href="/players" {{if eq .Current "players"}}aria-current="page"{{end}}>Players</a>
+        <a href="/stats" {{if eq .Current "stats"}}aria-current="page"{{end}}>Stats</a>
+      </div>
+    </nav>
+  </header>
+  <main id="main-content">
+    {{template "content" .}}
+  </main>
+  <footer class="site-footer">
+    <div>
+      <strong>Cabot Cup</strong>
+      <p>Team golf, kept for the record.</p>
+    </div>
+    <div class="footer-links">
+      <a href="/history">2019&ndash;2024 archive</a>
+      <a href="/players">Player records</a>
+      <span>{{.SnapshotLabel}}</span>
+    </div>
+  </footer>
+</body>
+</html>{{end}}

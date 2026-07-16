@@ -1,0 +1,49 @@
+{{define "content"}}
+<header class="page-header section-shell page-header-split">
+  <div>
+    <p class="eyebrow dark">{{.TotalPlayers}} recorded golfers</p>
+    <h1>Players</h1>
+    <p>Aggregate singles, doubles, and cup records from the former public site.</p>
+  </div>
+  <form class="sort-form" action="/players" method="get">
+    <label for="player-sort">Sort players</label>
+    <select id="player-sort" name="sort">
+      <option value="name" {{if eq .Sort "name"}}selected{{end}}>Name</option>
+      <option value="cups" {{if eq .Sort "cups"}}selected{{end}}>Cups played</option>
+      <option value="record" {{if eq .Sort "record"}}selected{{end}}>Winning percentage</option>
+    </select>
+    <button type="submit">Apply</button>
+  </form>
+</header>
+
+<aside class="section-shell archive-note compact" aria-label="Data source note">
+  <strong>{{.SnapshotLabel}}</strong>
+  <p>{{.SnapshotNote}}</p>
+</aside>
+
+<section class="section-shell player-grid" aria-label="Player records">
+  {{range .Players}}
+  <article class="player-card" id="{{.Slug}}">
+    <div class="player-heading">
+      <img src="{{.Image}}" alt="Portrait of {{.Name}}" loading="lazy" width="112" height="112">
+      <div>
+        <h2>{{.Name}}</h2>
+        <p><strong>{{.WinningPercentage}}%</strong> match points won</p>
+        <span>{{.CupsPlayed}} cups &middot; {{.MatchesPlayed}} matches</span>
+      </div>
+    </div>
+    <div class="record-table-wrap">
+      <table class="record-table">
+        <caption class="visually-hidden">{{.Name}} match record</caption>
+        <thead><tr><th scope="col">Format</th><th scope="col">W</th><th scope="col">L</th><th scope="col">T</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Singles</th><td>{{.SinglesWins}}</td><td>{{.SinglesLosses}}</td><td>{{.SinglesTies}}</td></tr>
+          <tr><th scope="row">Doubles</th><td>{{.DoublesWins}}</td><td>{{.DoublesLosses}}</td><td>{{.DoublesTies}}</td></tr>
+          <tr class="record-total"><th scope="row">Total</th><td>{{.MatchWins}}</td><td>{{.MatchLosses}}</td><td>{{.MatchTies}}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </article>
+  {{end}}
+</section>
+{{end}}

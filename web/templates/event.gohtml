@@ -1,0 +1,44 @@
+{{define "content"}}
+{{$event := .Event}}
+<article>
+  <header class="event-hero">
+    <img src="{{(index $event.Photos 0).URL}}" alt="{{(index $event.Photos 0).Alt}}" fetchpriority="high">
+    <div class="hero-shade" aria-hidden="true"></div>
+    <div class="event-hero-content">
+      <a class="back-link" href="/history"><span aria-hidden="true">&larr;</span> Cup history</a>
+      <p class="eyebrow">{{$event.Venue}}</p>
+      <h1>{{$event.Year}} Cabot Cup</h1>
+      <p class="event-score"><strong>{{$event.Winner}}</strong> {{$event.Score}} <span>{{$event.RunnerUp}}</span></p>
+    </div>
+  </header>
+
+  <section class="section-shell story-grid">
+    <div>
+      <p class="eyebrow dark">The story</p>
+      <h2>{{$event.Winner}} take the cup</h2>
+    </div>
+    <div class="prose lead-prose">
+      <p>{{$event.Summary}}</p>
+      <p class="snapshot-note"><strong>Archive note.</strong> This narrative and its result were migrated from the former public site. It is historical editorial content, not a newly verified match record.</p>
+    </div>
+  </section>
+
+  <section class="photo-band" aria-label="{{$event.Year}} photo gallery">
+    <div class="section-shell photo-grid">
+      {{range $event.Photos}}
+      <figure>
+        <img src="{{.URL}}" alt="{{.Alt}}" loading="lazy">
+        <figcaption>{{.Caption}}</figcaption>
+      </figure>
+      {{end}}
+    </div>
+  </section>
+
+  <nav class="section-shell year-nav" aria-label="Other cup years">
+    <strong>More from the archive</strong>
+    <div>
+      {{range .Events}}{{if ne .Year $event.Year}}<a href="/history/{{.Year}}">{{.Year}}</a>{{end}}{{end}}
+    </div>
+  </nav>
+</article>
+{{end}}

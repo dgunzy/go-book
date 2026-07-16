@@ -1,34 +1,21 @@
-# Build stage
-FROM golang:1.23 AS builder
-WORKDIR /app
-# Install build dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    pkg-config \
-    libsqlite3-dev \
-    && rm -rf /var/lib/apt/lists/*
-# Copy go mod files first for better caching
+# syntax=docker/dockerfile:1
+FROM golang:1.26.5-bookworm AS build
+
+WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-# Copy the rest of the source code
+
 COPY . .
-# Build the application
-RUN CGO_ENABLED=1 \
-    GOOS=linux \
-    go build -o go-book
+ARG TARGETOS=linux
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} \
+    go build -trimpath -ldflags="-s -w" -o /out/cabot-cup ./cmd/cabot
 
-# Run stage
-FROM debian:bookworm-slim
+FROM gcr.io/distroless/static-debian12:nonroot
+
 WORKDIR /app
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    libsqlite3-0 \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-# Copy everything from builder stage
-COPY --from=builder /app/ ./
+COPY --from=build --chown=nonroot:nonroot /out/cabot-cup /app/cabot-cup
 
-# Expose port
 EXPOSE 8080
-# Run the binary
-CMD ["./go-book"]
+USER nonroot:nonroot
+ENTRYPOINT ["/app/cabot-cup"]

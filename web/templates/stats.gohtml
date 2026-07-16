@@ -1,0 +1,46 @@
+{{define "content"}}
+<header class="page-header section-shell">
+  <p class="eyebrow dark">The record book</p>
+  <h1>Statistics</h1>
+  <p>Legacy aggregate results across singles and doubles match play.</p>
+</header>
+
+<section class="stat-strip section-shell" aria-label="Dataset summary">
+  <div><span>Players</span><strong>{{.TotalPlayers}}</strong></div>
+  <div><span>Cup appearances</span><strong>{{.CupAppearances}}</strong></div>
+  <div><span>Player-match entries</span><strong>{{.MatchEntries}}</strong></div>
+  {{with .Leader}}<div><span>Highest points won</span><strong>{{.Name}} &middot; {{.WinningPercentage}}%</strong></div>{{end}}
+</section>
+
+<aside class="section-shell archive-note compact" aria-label="Data source note">
+  <strong>{{.SnapshotLabel}}</strong>
+  <p>Player-match entries count both participants in a match and cannot be converted into verified match events. {{.SnapshotNote}}</p>
+</aside>
+
+<section class="section-shell leaderboard">
+  <div class="leaderboard-heading">
+    <div>
+      <p class="eyebrow dark">Leaderboard</p>
+      <h2>Individual match record</h2>
+    </div>
+    <p>Ties count as half a win, matching the legacy site's calculation.</p>
+  </div>
+  <div class="wide-table-wrap">
+    <table class="wide-table">
+      <thead>
+        <tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Played</th><th scope="col">Wins</th><th scope="col">Losses</th><th scope="col">Ties</th><th scope="col">Points won</th><th scope="col">Cup record</th></tr>
+      </thead>
+      <tbody>
+        {{range $index, $player := .Players}}
+        <tr>
+          <td class="rank">{{add1 $index}}</td>
+          <th scope="row"><a href="/players#{{$player.Slug}}">{{$player.Name}}</a></th>
+          <td>{{$player.MatchesPlayed}}</td><td>{{$player.MatchWins}}</td><td>{{$player.MatchLosses}}</td><td>{{$player.MatchTies}}</td>
+          <td><strong>{{$player.WinningPercentage}}%</strong></td><td>{{$player.TeamWins}}&ndash;{{$player.TeamLosses}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}

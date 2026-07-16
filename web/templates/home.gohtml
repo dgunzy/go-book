@@ -1,0 +1,60 @@
+{{define "content"}}
+<section class="hero">
+  <img src="https://d18fc2989jrcic.cloudfront.net/2024_cup.jpg" alt="The Lumberjacks and Cabanas at the 2024 Cabot Cup" fetchpriority="high">
+  <div class="hero-shade" aria-hidden="true"></div>
+  <div class="hero-content">
+    <p class="eyebrow">Est. 2019 &middot; Team competition</p>
+    <h1>Cabot Cup</h1>
+    <p class="hero-copy">Six years of matches, comebacks, questionable uniforms, and one cup worth playing for.</p>
+    <a class="primary-link" href="/history">Explore the archive <span aria-hidden="true">&rarr;</span></a>
+  </div>
+  <p class="hero-caption">The 2024 teams at Fox Harb'r Resort</p>
+</section>
+
+<section class="scoreband" aria-label="Archive summary">
+  <div><strong>{{.TotalEvents}}</strong><span>team-era cups</span></div>
+  <div><strong>{{.TotalPlayers}}</strong><span>player records</span></div>
+  <div><strong>2019&ndash;24</strong><span>public archive</span></div>
+</section>
+
+<section class="section-shell intro-grid">
+  <div>
+    <p class="eyebrow dark">The competition</p>
+    <h2>A friendly cup. A serious record.</h2>
+  </div>
+  <div class="prose">
+    <p>The Cabot Cup grew from individual stroke play into a team match-play week inspired by the Ryder Cup. The public archive brings its stories, photographs, and player records together in one place.</p>
+    <p class="snapshot-note"><strong>{{.SnapshotLabel}}.</strong> {{.SnapshotNote}}</p>
+  </div>
+</section>
+
+<section class="feature-band">
+  <div class="section-shell feature-grid">
+    <figure class="feature-photo feature-photo-main">
+      <img src="https://d18fc2989jrcic.cloudfront.net/16_cliffs.jpg" alt="Sunset over the 16th hole at Cabot Cliffs" loading="lazy">
+      <figcaption>Sunset at the 16th on Cabot Cliffs</figcaption>
+    </figure>
+    <div class="feature-copy">
+      <p class="eyebrow">From the archive</p>
+      <h2>Every cup has a turning point.</h2>
+      <p>From the Sharks' inaugural singles comeback to the Bears clinching before Sunday, follow the competition year by year.</p>
+      <a class="text-link" href="/history">Read the cup stories <span aria-hidden="true">&rarr;</span></a>
+    </div>
+    <figure class="feature-photo">
+      <img src="https://d18fc2989jrcic.cloudfront.net/hum_cup.jpg" alt="Hum drinking from the Cabot Cup" loading="lazy">
+      <figcaption>A well-earned drink from the cup</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="section-shell records-callout">
+  <div>
+    <p class="eyebrow dark">Legacy records</p>
+    <h2>See who made their mark.</h2>
+  </div>
+  <div class="record-actions">
+    <a href="/players"><strong>Player profiles</strong><span>Portraits, appearances, and match records &rarr;</span></a>
+    <a href="/stats"><strong>Leaderboard</strong><span>Compare aggregate singles and doubles results &rarr;</span></a>
+  </div>
+</section>
+{{end}}
