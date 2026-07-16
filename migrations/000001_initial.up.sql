@@ -299,7 +299,11 @@ CREATE TABLE player_stat_projections (
 
 CREATE TABLE media_assets (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    object_key text NOT NULL UNIQUE CHECK (object_key ~ '^[A-Za-z0-9][A-Za-z0-9._/-]{0,1023}$' AND object_key !~ '(^|/)\.\.(/|$)'),
+    object_key text NOT NULL UNIQUE CHECK (
+        length(object_key) BETWEEN 1 AND 1024 AND
+        object_key ~ '^[A-Za-z0-9][A-Za-z0-9._/-]*$' AND
+        object_key !~ '(^|/)\.\.(/|$)'
+    ),
     content_type text NOT NULL CHECK (content_type IN ('image/jpeg', 'image/png', 'image/webp', 'image/avif')),
     byte_size bigint NOT NULL CHECK (byte_size > 0 AND byte_size <= 52428800),
     checksum_sha256 text NOT NULL CHECK (checksum_sha256 ~ '^[a-f0-9]{64}$'),
