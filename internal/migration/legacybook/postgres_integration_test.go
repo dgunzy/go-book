@@ -99,7 +99,7 @@ func TestPostgresPromotionIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("promotion run %d: %v", run, err)
 		}
-		if result.Users != 2 || result.Transactions != 2 || result.Wagers != 1 {
+		if result.Users != 2 || result.SettledBalances != 2 || result.Transactions != 2 || result.Wagers != 1 {
 			t.Fatalf("promotion run %d result = %+v", run, result)
 		}
 	}
@@ -125,7 +125,9 @@ func TestPostgresPromotionIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if users != 2 || mappings != 2 || transactions != 2 || wagers != 1 || ledgerTransactions != 2 || postings != 4 || audits != 1 || postingTotal != 0 || cashTotal != 500 || differenceTotal != 200 || batchState != "promoted" {
+	// Opening balances plus season settlements: the settlement pair must leave
+	// every migrated user_cash account at exactly zero for the new season.
+	if users != 2 || mappings != 2 || transactions != 2 || wagers != 1 || ledgerTransactions != 4 || postings != 8 || audits != 1 || postingTotal != 0 || cashTotal != 0 || differenceTotal != 200 || batchState != "promoted" {
 		t.Fatalf("promotion aggregates users=%d mappings=%d transactions=%d wagers=%d ledger=%d postings=%d audits=%d posting_total=%d cash=%d difference=%d state=%s",
 			users, mappings, transactions, wagers, ledgerTransactions, postings, audits, postingTotal, cashTotal, differenceTotal, batchState)
 	}

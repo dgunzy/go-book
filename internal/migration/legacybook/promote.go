@@ -32,11 +32,26 @@ type OpeningBalanceInput struct {
 	ActorUserID         string
 }
 
+// SeasonSettlementInput records that a legacy closing balance was settled in
+// cash outside the application after the season ended. The settlement posts the
+// exact inverse of the opening balance so the account provably returns to zero.
+type SeasonSettlementInput struct {
+	LegacyUserID   int64
+	UserID         string
+	AccountType    string
+	Currency       string
+	SettledCents   int64
+	IdempotencyKey string
+	Reason         string
+	ActorUserID    string
+}
+
 // Repository methods must be idempotent. Existing rows keyed by the same
 // migration batch/source user or idempotency key must be verified, not changed.
 type Repository interface {
 	EnsureApprovedUser(context.Context, string, UserInput) (string, error)
 	EnsureOpeningBalance(context.Context, string, OpeningBalanceInput) error
+	EnsureSeasonSettlement(context.Context, string, SeasonSettlementInput) error
 	EnsureLegacyTransaction(context.Context, string, string, TransactionRecord) error
 	EnsureLegacyWager(context.Context, string, string, WagerRecord) error
 	CompletePromotion(context.Context, string, CompletionInput) error
@@ -58,6 +73,7 @@ type PromotionResult struct {
 	Memberships      int `json:"memberships"`
 	CashBalances     int `json:"cash_balances"`
 	FreePlayBalances int `json:"free_play_balances"`
+	SettledBalances  int `json:"settled_balances"`
 	Transactions     int `json:"transactions"`
 	Wagers           int `json:"wagers"`
 }
@@ -66,6 +82,7 @@ type CompletionInput struct {
 	ActorUserID              string
 	SourceChecksum           string
 	Users                    int
+	SettledBalances          int
 	Transactions             int
 	Wagers                   int
 	ClosingCashTotalCents    int64
@@ -140,6 +157,21 @@ func Promote(ctx context.Context, store Store, report Report, options PromoteOpt
 				} else {
 					result.FreePlayBalances++
 				}
+
+				settlementKey := fmt.Sprintf("legacy-book:%s:settlement:%d:%s", options.BatchID, user.LegacyUserID, balance.accountType)
+				settlementReason := fmt.Sprintf(
+					"2025 Cabot Book season closed: %s balance of %d cents was settled in full outside the application after the season ended; account reset to zero so the 2026 season starts at 0",
+					balance.accountType, balance.amount,
+				)
+				err = repo.EnsureSeasonSettlement(ctx, options.BatchID, SeasonSettlementInput{
+					LegacyUserID: user.LegacyUserID, UserID: userID, AccountType: balance.accountType,
+					Currency: options.Currency, SettledCents: balance.amount,
+					IdempotencyKey: settlementKey, Reason: settlementReason, ActorUserID: options.ActorUserID,
+				})
+				if err != nil {
+					return fmt.Errorf("settle %s balance for legacy user %d: %w", balance.accountType, user.LegacyUserID, err)
+				}
+				result.SettledBalances++
 			}
 		}
 		for _, transaction := range report.Transactions {
@@ -164,7 +196,8 @@ func Promote(ctx context.Context, store Store, report Report, options PromoteOpt
 		}
 		if err := repo.CompletePromotion(ctx, options.BatchID, CompletionInput{
 			ActorUserID: options.ActorUserID, SourceChecksum: options.SourceVersion,
-			Users: report.UserCount, Transactions: report.TransactionCount, Wagers: report.WagerCount,
+			Users: report.UserCount, SettledBalances: result.SettledBalances,
+			Transactions: report.TransactionCount, Wagers: report.WagerCount,
 			ClosingCashTotalCents:    report.ClosingCashTotalCents,
 			TransactionNetTotalCents: report.TransactionNetTotalCents,
 			DifferenceTotalCents:     report.DifferenceTotalCents,

@@ -308,6 +308,116 @@ func (r postgresRepository) EnsureOpeningBalance(ctx context.Context, batchID st
 	return r.verifyOpeningBalance(ctx, batchID, input, userAccountID, equityAccountID)
 }
 
+// EnsureSeasonSettlement posts the exact inverse of the user's opening balance so
+// the migrated account provably closes at zero: the 2025 season was settled in
+// cash outside the application and the 2026 season starts from nothing.
+func (r postgresRepository) EnsureSeasonSettlement(ctx context.Context, batchID string, input SeasonSettlementInput) error {
+	userPosting, equityPosting, err := settlementPostings(input.SettledCents)
+	if err != nil {
+		return err
+	}
+	var userAccountID, equityAccountID string
+	err = r.tx.QueryRow(ctx, `
+		SELECT id::text FROM ledger_accounts
+		WHERE owner_user_id = $1::uuid AND account_type = $2 AND currency = $3`,
+		input.UserID, input.AccountType, input.Currency).Scan(&userAccountID)
+	if err != nil {
+		return fmt.Errorf("season settlement requires the opening balance account: %w", err)
+	}
+	err = r.tx.QueryRow(ctx, `
+		SELECT id::text FROM ledger_accounts
+		WHERE owner_user_id IS NULL AND account_type = 'migration_equity' AND currency = $1`,
+		input.Currency).Scan(&equityAccountID)
+	if err != nil {
+		return fmt.Errorf("season settlement requires the migration equity account: %w", err)
+	}
+
+	var transactionID string
+	err = r.tx.QueryRow(ctx, `
+		INSERT INTO ledger_transactions
+		(transaction_type, currency, idempotency_key, source_type, actor_user_id, reason, expected_posting_count, occurred_at)
+		VALUES ('migration_adjustment', $1, $2, $3, nullif($4, '')::uuid, $5, 2, now())
+		ON CONFLICT (currency, idempotency_key) DO NOTHING
+		RETURNING id::text`, input.Currency, input.IdempotencyKey, SourceSystem, input.ActorUserID, input.Reason).Scan(&transactionID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return r.verifySeasonSettlement(ctx, batchID, input, userAccountID, equityAccountID)
+	}
+	if err != nil {
+		return err
+	}
+	_, err = r.tx.Exec(ctx, `INSERT INTO ledger_postings (transaction_id, account_id, amount_cents) VALUES ($1::uuid, $2::uuid, $3), ($1::uuid, $4::uuid, $5)`, transactionID, userAccountID, userPosting, equityAccountID, equityPosting)
+	if err != nil {
+		return err
+	}
+
+	checksum, err := checksum(input)
+	if err != nil {
+		return err
+	}
+	_, err = r.tx.Exec(ctx, `
+		INSERT INTO legacy_import_records
+		(migration_batch_id, source_table, source_primary_key, target_table, target_id, source_checksum, import_state, imported_at)
+		VALUES ($1::uuid, 'UserBalanceSettlements', $2, 'ledger_transactions', $3::uuid, $4, 'imported', now())
+		ON CONFLICT (migration_batch_id, source_table, source_primary_key) DO NOTHING`, batchID,
+		fmt.Sprintf("%d:%s", input.LegacyUserID, input.AccountType), transactionID, checksum)
+	if err != nil {
+		return err
+	}
+	return r.verifySeasonSettlement(ctx, batchID, input, userAccountID, equityAccountID)
+}
+
+func (r postgresRepository) verifySeasonSettlement(ctx context.Context, batchID string, input SeasonSettlementInput, userAccountID, equityAccountID string) error {
+	var count int
+	var userAmount, equityAmount int64
+	var transactionID, transactionType, sourceType, actorUserID, reason string
+	var expectedPostingCount int
+	err := r.tx.QueryRow(ctx, `
+		SELECT t.id::text, t.transaction_type, t.source_type, coalesce(t.actor_user_id::text, ''),
+		       coalesce(t.reason, ''), t.expected_posting_count, count(*),
+		       coalesce(sum(p.amount_cents) FILTER (WHERE p.account_id = $3::uuid), 0),
+		       coalesce(sum(p.amount_cents) FILTER (WHERE p.account_id = $4::uuid), 0)
+		FROM ledger_transactions t JOIN ledger_postings p ON p.transaction_id = t.id
+		WHERE t.currency = $1 AND t.idempotency_key = $2
+		  AND p.account_id IN ($3::uuid, $4::uuid)
+		GROUP BY t.id`, input.Currency, input.IdempotencyKey, userAccountID, equityAccountID).
+		Scan(&transactionID, &transactionType, &sourceType, &actorUserID, &reason,
+			&expectedPostingCount, &count, &userAmount, &equityAmount)
+	if err != nil {
+		return err
+	}
+	if transactionType != "migration_adjustment" || sourceType != SourceSystem || actorUserID != input.ActorUserID ||
+		reason != input.Reason || expectedPostingCount != 2 || count != 2 ||
+		userAmount != -input.SettledCents || equityAmount != input.SettledCents {
+		return errors.New("existing season settlement does not match requested balanced postings")
+	}
+	expectedChecksum, err := checksum(input)
+	if err != nil {
+		return err
+	}
+	var storedChecksum, targetTable, targetID string
+	err = r.tx.QueryRow(ctx, `
+		SELECT source_checksum, coalesce(target_table, ''), coalesce(target_id::text, '')
+		FROM legacy_import_records
+		WHERE migration_batch_id = $1::uuid AND source_table = 'UserBalanceSettlements' AND source_primary_key = $2`,
+		batchID,
+		fmt.Sprintf("%d:%s", input.LegacyUserID, input.AccountType)).Scan(&storedChecksum, &targetTable, &targetID)
+	if err != nil {
+		return err
+	}
+	if storedChecksum != expectedChecksum || targetTable != "ledger_transactions" || targetID != transactionID {
+		return errors.New("existing season settlement import record does not match requested migration")
+	}
+	return nil
+}
+
+func settlementPostings(settledCents int64) (user int64, equity int64, err error) {
+	userPosting, equityPosting, err := openingPostings(settledCents)
+	if err != nil {
+		return 0, 0, err
+	}
+	return -userPosting, -equityPosting, nil
+}
+
 func openingPostings(amountCents int64) (user int64, equity int64, err error) {
 	if amountCents == 0 {
 		return 0, 0, errors.New("opening balance must be non-zero")
@@ -414,6 +524,7 @@ func (r postgresRepository) CompletePromotion(ctx context.Context, batchID strin
 	if !alreadyPromoted {
 		afterData, err := json.Marshal(map[string]any{
 			"users": input.Users, "transactions": input.Transactions, "wagers": input.Wagers,
+			"settled_balances":            input.SettledBalances,
 			"closing_cash_total_cents":    input.ClosingCashTotalCents,
 			"transaction_net_total_cents": input.TransactionNetTotalCents,
 			"difference_total_cents":      input.DifferenceTotalCents,

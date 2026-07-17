@@ -153,6 +153,7 @@ type fakeState struct {
 	users        map[int64]string
 	roles        map[string]string
 	balances     map[string]fakeBalance
+	settlements  map[string]fakeBalance
 	transactions map[int64]TransactionRecord
 	wagers       map[int64]WagerRecord
 }
@@ -162,11 +163,11 @@ type fakeStore struct {
 }
 
 func newFakeStore() *fakeStore {
-	return &fakeStore{state: fakeState{users: map[int64]string{}, roles: map[string]string{}, balances: map[string]fakeBalance{}, transactions: map[int64]TransactionRecord{}, wagers: map[int64]WagerRecord{}}}
+	return &fakeStore{state: fakeState{users: map[int64]string{}, roles: map[string]string{}, balances: map[string]fakeBalance{}, settlements: map[string]fakeBalance{}, transactions: map[int64]TransactionRecord{}, wagers: map[int64]WagerRecord{}}}
 }
 
 func (s *fakeStore) WithinTransaction(_ context.Context, operation func(Repository) error) error {
-	clone := fakeState{users: map[int64]string{}, roles: map[string]string{}, balances: map[string]fakeBalance{}, transactions: map[int64]TransactionRecord{}, wagers: map[int64]WagerRecord{}}
+	clone := fakeState{users: map[int64]string{}, roles: map[string]string{}, balances: map[string]fakeBalance{}, settlements: map[string]fakeBalance{}, transactions: map[int64]TransactionRecord{}, wagers: map[int64]WagerRecord{}}
 	for k, v := range s.state.users {
 		clone.users[k] = v
 	}
@@ -175,6 +176,9 @@ func (s *fakeStore) WithinTransaction(_ context.Context, operation func(Reposito
 	}
 	for k, v := range s.state.balances {
 		clone.balances[k] = v
+	}
+	for k, v := range s.state.settlements {
+		clone.settlements[k] = v
 	}
 	for k, v := range s.state.transactions {
 		clone.transactions[k] = v
@@ -218,6 +222,18 @@ func (r *fakeRepository) EnsureOpeningBalance(_ context.Context, _ string, input
 	r.state.balances[input.IdempotencyKey] = requested
 	return nil
 }
+func (r *fakeRepository) EnsureSeasonSettlement(_ context.Context, _ string, input SeasonSettlementInput) error {
+	if input.Reason == "" {
+		return errors.New("season settlement requires a reason")
+	}
+	requested := fakeBalance{userID: input.UserID, accountType: input.AccountType, amount: -input.SettledCents}
+	if existing, ok := r.state.settlements[input.IdempotencyKey]; ok && existing != requested {
+		return errors.New("settlement idempotency collision")
+	}
+	r.state.settlements[input.IdempotencyKey] = requested
+	return nil
+}
+
 func (r *fakeRepository) EnsureLegacyTransaction(_ context.Context, _, _ string, record TransactionRecord) error {
 	if existing, ok := r.state.transactions[record.SourceTransactionID]; ok && !reflect.DeepEqual(existing, record) {
 		return errors.New("transaction collision")
@@ -262,6 +278,9 @@ func TestPromoteIsAtomicBalancedAndIdempotent(t *testing.T) {
 	if len(store.state.balances) != 2 {
 		t.Fatalf("got %d balance entries", len(store.state.balances))
 	}
+	if result.SettledBalances != 2 || len(store.state.settlements) != 2 {
+		t.Fatalf("legacy balances were not settled: result=%+v settlements=%+v", result, store.state.settlements)
+	}
 	var userPostings, equityPostings int64
 	for _, balance := range store.state.balances {
 		userPostings += balance.amount
@@ -270,10 +289,17 @@ func TestPromoteIsAtomicBalancedAndIdempotent(t *testing.T) {
 	if userPostings+equityPostings != 0 {
 		t.Fatalf("opening postings do not balance: %d + %d", userPostings, equityPostings)
 	}
+	var settledUserPostings int64
+	for _, settlement := range store.state.settlements {
+		settledUserPostings += settlement.amount
+	}
+	if userPostings+settledUserPostings != 0 {
+		t.Fatalf("season settlement does not return user accounts to zero: opening %d + settlement %d", userPostings, settledUserPostings)
+	}
 	if _, err = Promote(context.Background(), store, report, options); err != nil {
 		t.Fatal(err)
 	}
-	if len(store.state.users) != 1 || len(store.state.balances) != 2 || len(store.state.transactions) != 1 || len(store.state.wagers) != 1 {
+	if len(store.state.users) != 1 || len(store.state.balances) != 2 || len(store.state.settlements) != 2 || len(store.state.transactions) != 1 || len(store.state.wagers) != 1 {
 		t.Fatalf("rerun duplicated data: %+v", store.state)
 	}
 	changed := report
@@ -318,6 +344,32 @@ func TestOpeningPostingsAlwaysBalance(t *testing.T) {
 	for _, amount := range []int64{0, -9223372036854775807 - 1} {
 		if _, _, err := openingPostings(amount); err == nil {
 			t.Fatalf("openingPostings(%d) accepted an unsafe amount", amount)
+		}
+	}
+}
+
+func TestSettlementPostingsInvertOpeningPostings(t *testing.T) {
+	t.Parallel()
+	for _, amount := range []int64{-9223372036854775807, -500, 500, 9223372036854775807} {
+		openingUser, openingEquity, err := openingPostings(amount)
+		if err != nil {
+			t.Fatalf("openingPostings(%d): %v", amount, err)
+		}
+		settledUser, settledEquity, err := settlementPostings(amount)
+		if err != nil {
+			t.Fatalf("settlementPostings(%d): %v", amount, err)
+		}
+		if settledUser != -openingUser || settledEquity != -openingEquity {
+			t.Fatalf("settlementPostings(%d) = (%d, %d) is not the inverse of opening (%d, %d)",
+				amount, settledUser, settledEquity, openingUser, openingEquity)
+		}
+		if openingUser+settledUser != 0 || settledUser+settledEquity != 0 {
+			t.Fatalf("settlementPostings(%d) does not zero the account or balance the transaction", amount)
+		}
+	}
+	for _, amount := range []int64{0, -9223372036854775807 - 1} {
+		if _, _, err := settlementPostings(amount); err == nil {
+			t.Fatalf("settlementPostings(%d) accepted an unsafe amount", amount)
 		}
 	}
 }
