@@ -131,19 +131,27 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		ShutdownTimeout: applicationConfig.ShutdownTimeout,
 	}, handler, logger)
 
+	if applicationConfig.PrivateAppEnabled && applicationConfig.DatabaseMode == config.DatabaseModeTest {
+		logger.Warn("DATABASE_MODE is test: all reads and writes target TEST_DATABASE_URL, not the real ledger")
+	}
 	logger.Info("starting Cabot Cup",
 		"environment", applicationConfig.Environment,
 		"public_base_url", applicationConfig.PublicBaseURL.String(),
 		"private_app_enabled", applicationConfig.PrivateAppEnabled,
+		"database_mode", applicationConfig.DatabaseMode,
 	)
 	return server.Run(ctx)
 }
 
 func runMigrations(ctx context.Context, logger *slog.Logger, lookup lookupFunc) error {
-	databaseURL, ok := lookup("DATABASE_URL")
-	if !ok || strings.TrimSpace(databaseURL) == "" {
+	databaseMode, databaseURL, err := config.DatabaseSelection(lookup)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(databaseURL) == "" {
 		return fmt.Errorf("DATABASE_URL is required for migrations")
 	}
+	logger.Info("running migrations", "database_mode", databaseMode)
 
 	connection, err := pgx.Connect(ctx, strings.TrimSpace(databaseURL))
 	if err != nil {

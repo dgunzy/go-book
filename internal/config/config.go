@@ -21,6 +21,7 @@ type Config struct {
 	Address           string
 	PublicBaseURL     *url.URL
 	PrivateAppEnabled bool
+	DatabaseMode      string
 	DatabaseURL       string
 	OIDCIssuerURL     string
 	OIDCClientID      string
@@ -66,8 +67,10 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		return Config{}, err
 	}
 
-	databaseURL, _ := lookup("DATABASE_URL")
-	databaseURL = strings.TrimSpace(databaseURL)
+	databaseMode, databaseURL, err := DatabaseSelection(lookup)
+	if err != nil {
+		return Config{}, err
+	}
 	privateEnabled, err := strconv.ParseBool(valueOrDefault(lookup, "PRIVATE_APP_ENABLED", "false"))
 	if err != nil {
 		return Config{}, fmt.Errorf("PRIVATE_APP_ENABLED must be true or false")
@@ -94,6 +97,9 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		if databaseURL == "" {
 			return Config{}, fmt.Errorf("DATABASE_URL is required when PRIVATE_APP_ENABLED is true")
 		}
+		if databaseMode == DatabaseModeTest && environment == "production" {
+			return Config{}, fmt.Errorf("DATABASE_MODE=test is not allowed in production; use staging or an acceptance hostname to rehearse")
+		}
 		if err := validateOIDCConfig(environment, publicBaseURL, oidcIssuerURL, oidcClientID, oidcClientSecret, oidcRedirectURL); err != nil {
 			return Config{}, err
 		}
@@ -104,6 +110,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		Address:           net.JoinHostPort(host, strconv.Itoa(port)),
 		PublicBaseURL:     publicBaseURL,
 		PrivateAppEnabled: privateEnabled,
+		DatabaseMode:      databaseMode,
 		DatabaseURL:       databaseURL,
 		OIDCIssuerURL:     oidcIssuerURL,
 		OIDCClientID:      oidcClientID,
@@ -113,6 +120,35 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		LoginAttemptTTL:   loginAttemptTTL,
 		ShutdownTimeout:   shutdownTimeout,
 	}, nil
+}
+
+const (
+	DatabaseModeReal = "real"
+	DatabaseModeTest = "test"
+)
+
+// DatabaseSelection resolves which PostgreSQL database every command (server,
+// migrate, legacy import) targets. DATABASE_MODE=test flips the whole process
+// onto TEST_DATABASE_URL so workflows can be rehearsed end to end without
+// touching the real ledger; the two URLs must differ so a mislabeled secret
+// cannot silently point "test" at real money.
+func DatabaseSelection(lookup func(string) (string, bool)) (mode string, databaseURL string, err error) {
+	mode = valueOrDefault(lookup, "DATABASE_MODE", DatabaseModeReal)
+	if mode != DatabaseModeReal && mode != DatabaseModeTest {
+		return "", "", fmt.Errorf("DATABASE_MODE must be %q or %q", DatabaseModeReal, DatabaseModeTest)
+	}
+	realURL := strings.TrimSpace(value(lookup, "DATABASE_URL"))
+	testURL := strings.TrimSpace(value(lookup, "TEST_DATABASE_URL"))
+	if mode == DatabaseModeReal {
+		return mode, realURL, nil
+	}
+	if testURL == "" {
+		return "", "", fmt.Errorf("TEST_DATABASE_URL is required when DATABASE_MODE is test")
+	}
+	if testURL == realURL {
+		return "", "", fmt.Errorf("TEST_DATABASE_URL must differ from DATABASE_URL")
+	}
+	return mode, testURL, nil
 }
 
 func value(lookup func(string) (string, bool), key string) string {

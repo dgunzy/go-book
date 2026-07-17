@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/dgunzy/go-book/internal/config"
 	"github.com/dgunzy/go-book/internal/migration/legacybook"
 	"github.com/jackc/pgx/v5"
 )
@@ -40,10 +41,14 @@ type legacyReportOutput struct {
 const legacyMigrationActorEmail = "legacy-public-import@cabotcup.invalid"
 
 func runLegacyBook(ctx context.Context, logger *slog.Logger, lookup lookupFunc, promote bool, output io.Writer) error {
-	databaseURL, ok := lookup("DATABASE_URL")
-	if !ok || strings.TrimSpace(databaseURL) == "" {
+	databaseMode, databaseURL, err := config.DatabaseSelection(lookup)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(databaseURL) == "" {
 		return errors.New("DATABASE_URL is required for legacy book reconciliation")
 	}
+	logger.Info("legacy book command starting", "database_mode", databaseMode, "promote", promote)
 	connection, err := pgx.Connect(ctx, strings.TrimSpace(databaseURL))
 	if err != nil {
 		return fmt.Errorf("connect for legacy book reconciliation: %w", err)
@@ -106,6 +111,7 @@ func runLegacyBook(ctx context.Context, logger *slog.Logger, lookup lookupFunc, 
 	logger.Info("legacy book promotion complete",
 		"batch_id", batchID,
 		"users", result.Users,
+		"settled_balances", result.SettledBalances,
 		"transactions", result.Transactions,
 		"wagers", result.Wagers,
 	)
