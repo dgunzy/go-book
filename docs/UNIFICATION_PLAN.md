@@ -22,8 +22,31 @@ The first foundation milestone is implemented in `go-book` and staged in `gitops
 - GitOps resources stage the CNPG database/role and a zero-replica application without
   changing production traffic. They require the documented AWS secrets before merge.
 
-Authentication, PostgreSQL repositories, command handlers, outbox workers, betting
-workflows, S3 uploads, and historical imports remain follow-on implementation slices.
+The event-driven and betting foundations landed 2026-07-17:
+
+- The transactional outbox dispatcher is implemented (`internal/events` +
+  `internal/eventspg`): `FOR UPDATE SKIP LOCKED` claiming, bounded exponential
+  retries with jitter, terminal-failure retention for operators, stale-lock release,
+  and per-consumer `event_receipts` deduplication, verified by unit tests and
+  PostgreSQL integration tests. Correctness does not depend on LISTEN/NOTIFY.
+- The pure betting domain (`internal/betting`) covers market/wager state machines,
+  odds/terms snapshots at placement, acceptance escrow transactions, and a
+  deterministic settlement engine (win/loss/push/void plus market voids) that emits
+  balanced ledger transactions with reproducible idempotency keys and versioned
+  events; a corrected re-settlement uses the settlement version as the event
+  aggregate version so it is never dropped by outbox uniqueness.
+- Legacy Cabot Book promotion now posts a per-user 2025 season settlement
+  transaction (the exact inverse of the opening balance, with an explanatory
+  reason) so every imported balance provably returns to zero and the 2026 season
+  starts at 0 with fully auditable history.
+- `DATABASE_MODE=real|test` flips the server and every CLI command between
+  `DATABASE_URL` and `TEST_DATABASE_URL` for end-to-end rehearsal; test mode is
+  rejected in production and the two URLs must differ. GitOps stages a disposable
+  `cabot_cup_test` database and the `TEST_DATABASE_URL` secret key.
+
+PostgreSQL repositories for markets/wagers/settlement, the verified-result
+settlement consumer, betting HTTP routes, dispatcher wiring in the server process,
+S3 uploads, and the final Turso import remain follow-on implementation slices.
 
 ## 1. Outcome
 
