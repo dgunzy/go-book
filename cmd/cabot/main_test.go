@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -16,7 +17,7 @@ func TestRunCommandRejectsUnknownCommand(t *testing.T) {
 	err := runCommand(context.Background(), logger, []string{"unknown"}, func(string) (string, bool) {
 		return "", false
 	})
-	if err == nil || err.Error() != "usage: cabot-cup [migrate]" {
+	if err == nil || err.Error() != "usage: cabot-cup [migrate|legacy-book-report|legacy-book-promote]" {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -74,5 +75,19 @@ func TestUnknownRouteUsesPublicHandler(t *testing.T) {
 
 	if response.Code != http.StatusTeapot {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusTeapot)
+	}
+}
+
+func TestReadinessReportsDatabaseFailureWithoutLeakingIt(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	handler := buildHandler(http.NotFoundHandler(), logger, false, func(context.Context) error {
+		return errors.New("postgres password and host details")
+	})
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if response.Code != http.StatusServiceUnavailable || response.Body.String() != "not ready\n" {
+		t.Fatalf("response = %d %q", response.Code, response.Body.String())
 	}
 }

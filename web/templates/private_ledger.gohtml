@@ -1,0 +1,22 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Immutable history</p><h1>Ledger</h1></div>
+  <p>Transactions and account balance after each posting.</p>
+</header>
+
+<section aria-labelledby="ledger-heading">
+  <h2 id="ledger-heading" class="visually-hidden">Ledger entries</h2>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide">
+      <thead><tr><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Account</th><th scope="col">Type</th><th scope="col">Reference</th><th scope="col">Amount</th><th scope="col">Balance</th></tr></thead>
+      <tbody>
+        {{range .LedgerRows}}
+        <tr><td>{{when .OccurredAt}}</td><th scope="row">{{.Description}}</th><td>{{.Account}}</td><td><span class="private-status">{{.TransactionType}}</span></td><td>{{.Reference}}</td><td class="private-money">{{money .Amount}}</td><td class="private-money">{{if .HasRunningBalance}}<strong>{{money .RunningBalance}}</strong>{{else}}&mdash;{{end}}</td></tr>
+        {{else}}
+        <tr><td colspan="7" class="private-empty-cell">No ledger entries yet.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}

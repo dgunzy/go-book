@@ -17,11 +17,18 @@ const (
 // Config contains process-level settings. Secrets remain in their dedicated fields so
 // callers can avoid logging the whole structure.
 type Config struct {
-	Environment     string
-	Address         string
-	PublicBaseURL   *url.URL
-	DatabaseURL     string
-	ShutdownTimeout time.Duration
+	Environment       string
+	Address           string
+	PublicBaseURL     *url.URL
+	PrivateAppEnabled bool
+	DatabaseURL       string
+	OIDCIssuerURL     string
+	OIDCClientID      string
+	OIDCClientSecret  string
+	OIDCRedirectURL   string
+	SessionTTL        time.Duration
+	LoginAttemptTTL   time.Duration
+	ShutdownTimeout   time.Duration
 }
 
 // Load reads and validates configuration using lookup. Passing os.LookupEnv keeps
@@ -61,14 +68,56 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 
 	databaseURL, _ := lookup("DATABASE_URL")
 	databaseURL = strings.TrimSpace(databaseURL)
+	privateEnabled, err := strconv.ParseBool(valueOrDefault(lookup, "PRIVATE_APP_ENABLED", "false"))
+	if err != nil {
+		return Config{}, fmt.Errorf("PRIVATE_APP_ENABLED must be true or false")
+	}
+
+	sessionTTL, err := parseBoundedDuration(
+		"SESSION_TTL", valueOrDefault(lookup, "SESSION_TTL", "12h"), time.Minute, 7*24*time.Hour,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	loginAttemptTTL, err := parseBoundedDuration(
+		"LOGIN_ATTEMPT_TTL", valueOrDefault(lookup, "LOGIN_ATTEMPT_TTL", "10m"), time.Minute, 30*time.Minute,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+
+	oidcIssuerURL := strings.TrimSpace(value(lookup, "OIDC_ISSUER_URL"))
+	oidcClientID := strings.TrimSpace(value(lookup, "OIDC_CLIENT_ID"))
+	oidcClientSecret := strings.TrimSpace(value(lookup, "OIDC_CLIENT_SECRET"))
+	oidcRedirectURL := strings.TrimSpace(value(lookup, "OIDC_REDIRECT_URL"))
+	if privateEnabled {
+		if databaseURL == "" {
+			return Config{}, fmt.Errorf("DATABASE_URL is required when PRIVATE_APP_ENABLED is true")
+		}
+		if err := validateOIDCConfig(environment, publicBaseURL, oidcIssuerURL, oidcClientID, oidcClientSecret, oidcRedirectURL); err != nil {
+			return Config{}, err
+		}
+	}
 
 	return Config{
-		Environment:     environment,
-		Address:         net.JoinHostPort(host, strconv.Itoa(port)),
-		PublicBaseURL:   publicBaseURL,
-		DatabaseURL:     databaseURL,
-		ShutdownTimeout: shutdownTimeout,
+		Environment:       environment,
+		Address:           net.JoinHostPort(host, strconv.Itoa(port)),
+		PublicBaseURL:     publicBaseURL,
+		PrivateAppEnabled: privateEnabled,
+		DatabaseURL:       databaseURL,
+		OIDCIssuerURL:     oidcIssuerURL,
+		OIDCClientID:      oidcClientID,
+		OIDCClientSecret:  oidcClientSecret,
+		OIDCRedirectURL:   oidcRedirectURL,
+		SessionTTL:        sessionTTL,
+		LoginAttemptTTL:   loginAttemptTTL,
+		ShutdownTimeout:   shutdownTimeout,
 	}, nil
+}
+
+func value(lookup func(string) (string, bool), key string) string {
+	result, _ := lookup(key)
+	return result
 }
 
 func valueOrDefault(lookup func(string) (string, bool), key, fallback string) string {
@@ -111,4 +160,36 @@ func parseDuration(name, raw string) (time.Duration, error) {
 		return 0, fmt.Errorf("%s must be a positive duration", name)
 	}
 	return duration, nil
+}
+
+func parseBoundedDuration(name, raw string, minimum, maximum time.Duration) (time.Duration, error) {
+	duration, err := time.ParseDuration(raw)
+	if err != nil || duration < minimum || duration > maximum {
+		return 0, fmt.Errorf("%s must be between %s and %s", name, minimum, maximum)
+	}
+	return duration, nil
+}
+
+func validateOIDCConfig(environment string, publicBaseURL *url.URL, issuer, clientID, clientSecret, redirect string) error {
+	if issuer == "" || clientID == "" || clientSecret == "" || redirect == "" {
+		return fmt.Errorf("OIDC issuer, client ID, client secret, and redirect URL are required when PRIVATE_APP_ENABLED is true")
+	}
+	issuerURL, err := url.Parse(issuer)
+	if err != nil || issuerURL.Scheme == "" || issuerURL.Host == "" || issuerURL.RawQuery != "" || issuerURL.Fragment != "" {
+		return fmt.Errorf("OIDC_ISSUER_URL must be an absolute URL without a query or fragment")
+	}
+	redirectURL, err := url.Parse(redirect)
+	if err != nil || redirectURL.Scheme == "" || redirectURL.Host == "" || redirectURL.RawQuery != "" || redirectURL.Fragment != "" {
+		return fmt.Errorf("OIDC_REDIRECT_URL must be an absolute URL without a query or fragment")
+	}
+	if isDeployed(environment) && (issuerURL.Scheme != "https" || redirectURL.Scheme != "https") {
+		return fmt.Errorf("OIDC issuer and redirect URLs must use https in staging and production")
+	}
+	if !strings.EqualFold(redirectURL.Host, publicBaseURL.Host) {
+		return fmt.Errorf("OIDC_REDIRECT_URL must use the PUBLIC_BASE_URL host")
+	}
+	if redirectURL.Path != "/auth/callback" {
+		return fmt.Errorf("OIDC_REDIRECT_URL path must be /auth/callback")
+	}
+	return nil
 }

@@ -1,0 +1,43 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Account overview</p><h1>Member book</h1></div>
+  <p>Welcome back, {{.Session.DisplayName}}.</p>
+</header>
+
+<section aria-labelledby="balances-heading">
+  <div class="private-section-heading"><h2 id="balances-heading">Balances</h2><a href="/book/ledger">View ledger <span aria-hidden="true">&rarr;</span></a></div>
+  <div class="balance-grid">
+    {{range .Dashboard.Balances}}
+    <article class="balance-card">
+      <span>{{.Label}}</span>
+      <strong>{{money .Amount}}</strong>
+      <small>{{.Account}}</small>
+    </article>
+    {{else}}
+    <p class="private-empty">No balances are available.</p>
+    {{end}}
+  </div>
+</section>
+
+<section class="private-metrics" aria-label="Wager summary">
+  <div><span>Open</span><strong>{{.Dashboard.OpenWagers}}</strong></div>
+  <div><span>Pending approval</span><strong>{{.Dashboard.PendingWagers}}</strong></div>
+  <div><span>Settled</span><strong>{{.Dashboard.SettledWagers}}</strong></div>
+</section>
+
+<section aria-labelledby="activity-heading">
+  <div class="private-section-heading"><h2 id="activity-heading">Recent activity</h2><a href="/book/ledger">All activity <span aria-hidden="true">&rarr;</span></a></div>
+  <div class="private-table-wrap">
+    <table class="private-table">
+      <thead><tr><th scope="col">Date</th><th scope="col">Activity</th><th scope="col">Reference</th><th scope="col">Amount</th></tr></thead>
+      <tbody>
+        {{range .Dashboard.RecentActivity}}
+        <tr><td>{{when .OccurredAt}}</td><th scope="row">{{.Description}}<small>{{.TransactionType}}</small></th><td>{{.Reference}}</td><td class="private-money">{{money .Amount}}</td></tr>
+        {{else}}
+        <tr><td colspan="4" class="private-empty-cell">No ledger activity yet.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}

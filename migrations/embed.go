@@ -19,9 +19,15 @@ type Definition struct {
 //go:embed 000001_initial.up.sql
 var initialSQL string
 
+//go:embed 000002_identity_and_legacy_book.up.sql
+var identityAndLegacyBookSQL string
+
 // All returns migrations in application order.
 func All() []Definition {
-	return []Definition{newDefinition(1, "initial", initialSQL)}
+	return []Definition{
+		newDefinition(1, "initial", initialSQL),
+		newDefinition(2, "identity_and_legacy_book", identityAndLegacyBookSQL),
+	}
 }
 
 func newDefinition(version int64, name, sql string) Definition {

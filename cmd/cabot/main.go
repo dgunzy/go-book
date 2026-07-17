@@ -9,14 +9,24 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
+	"github.com/dgunzy/go-book/internal/authweb"
 	"github.com/dgunzy/go-book/internal/config"
+	"github.com/dgunzy/go-book/internal/identity"
+	"github.com/dgunzy/go-book/internal/identitypg"
 	"github.com/dgunzy/go-book/internal/migration/publicseed"
 	"github.com/dgunzy/go-book/internal/migration/schema"
+	"github.com/dgunzy/go-book/internal/oidcclient"
 	"github.com/dgunzy/go-book/internal/platform/httpmiddleware"
 	"github.com/dgunzy/go-book/internal/platform/httpserver"
+	"github.com/dgunzy/go-book/internal/platform/postgresdb"
+	"github.com/dgunzy/go-book/internal/privatepg"
+	"github.com/dgunzy/go-book/internal/privateweb"
 	publicweb "github.com/dgunzy/go-book/internal/web"
+	"github.com/dgunzy/go-book/migrations"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
@@ -41,8 +51,12 @@ func runCommand(ctx context.Context, logger *slog.Logger, arguments []string, lo
 		return runServer(ctx, logger, lookup)
 	case len(arguments) == 1 && arguments[0] == "migrate":
 		return runMigrations(ctx, logger, lookup)
+	case len(arguments) == 1 && arguments[0] == "legacy-book-report":
+		return runLegacyBook(ctx, logger, lookup, false, os.Stdout)
+	case len(arguments) == 1 && arguments[0] == "legacy-book-promote":
+		return runLegacyBook(ctx, logger, lookup, true, os.Stdout)
 	default:
-		return fmt.Errorf("usage: cabot-cup [migrate]")
+		return fmt.Errorf("usage: cabot-cup [migrate|legacy-book-report|legacy-book-promote]")
 	}
 }
 
@@ -58,7 +72,60 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 	}
 
 	secureDeployment := applicationConfig.Environment == "staging" || applicationConfig.Environment == "production"
-	handler := buildHandler(publicHandler, logger, secureDeployment)
+	applicationHandler := http.NewServeMux()
+	var readiness func(context.Context) error
+	if applicationConfig.PrivateAppEnabled {
+		pool, err := postgresdb.Open(ctx, applicationConfig.DatabaseURL)
+		if err != nil {
+			return fmt.Errorf("open private application database: %w", err)
+		}
+		defer pool.Close()
+		readiness = databaseReadiness(pool)
+
+		provider, err := oidcclient.New(ctx, oidcclient.Config{
+			IssuerURL: applicationConfig.OIDCIssuerURL, ClientID: applicationConfig.OIDCClientID,
+			ClientSecret: applicationConfig.OIDCClientSecret, RedirectURL: applicationConfig.OIDCRedirectURL,
+		})
+		if err != nil {
+			return fmt.Errorf("initialize OIDC provider: %w", err)
+		}
+		sessions, err := identity.NewService(identitypg.Store{Pool: pool}, applicationConfig.SessionTTL)
+		if err != nil {
+			return fmt.Errorf("initialize identity sessions: %w", err)
+		}
+		attempts, err := authweb.NewPostgresAttemptStore(pool)
+		if err != nil {
+			return fmt.Errorf("initialize OIDC login attempts: %w", err)
+		}
+		authHandler, err := authweb.New(authweb.Config{
+			Deployed: secureDeployment, LoginAttemptTTL: applicationConfig.LoginAttemptTTL,
+		}, authweb.Dependencies{
+			Attempts: attempts, OIDC: provider, Sessions: sessions,
+		})
+		if err != nil {
+			return fmt.Errorf("build authentication handler: %w", err)
+		}
+		readers, err := privatepg.New(pool)
+		if err != nil {
+			return fmt.Errorf("build private read models: %w", err)
+		}
+		privateHandler, err := privateweb.New(privateweb.Dependencies{
+			Sessions: authHandler.SessionReader(), Dashboard: readers, Ledger: readers,
+			Wagers: readers, Reconciliation: readers,
+		})
+		if err != nil {
+			return fmt.Errorf("build private web handler: %w", err)
+		}
+		for _, path := range []string{"/login", "/auth/google", "/auth/callback", "/logout"} {
+			applicationHandler.Handle(path, authHandler)
+		}
+		applicationHandler.Handle("/book", privateHandler)
+		applicationHandler.Handle("/book/", privateHandler)
+		applicationHandler.Handle("/admin", privateHandler)
+	}
+	applicationHandler.Handle("/", publicHandler)
+
+	handler := buildHandler(applicationHandler, logger, secureDeployment, readiness)
 	server := httpserver.New(httpserver.Config{
 		Address:         applicationConfig.Address,
 		ShutdownTimeout: applicationConfig.ShutdownTimeout,
@@ -67,6 +134,7 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 	logger.Info("starting Cabot Cup",
 		"environment", applicationConfig.Environment,
 		"public_base_url", applicationConfig.PublicBaseURL.String(),
+		"private_app_enabled", applicationConfig.PrivateAppEnabled,
 	)
 	return server.Run(ctx)
 }
@@ -114,11 +182,11 @@ func runMigrations(ctx context.Context, logger *slog.Logger, lookup lookupFunc) 
 	return nil
 }
 
-func buildHandler(publicHandler http.Handler, logger *slog.Logger, production bool) http.Handler {
+func buildHandler(applicationHandler http.Handler, logger *slog.Logger, production bool, readiness ...func(context.Context) error) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /livez", health)
-	mux.HandleFunc("GET /readyz", health)
-	mux.Handle("/", publicHandler)
+	mux.HandleFunc("GET /readyz", readinessHandler(firstReadiness(readiness)))
+	mux.Handle("/", applicationHandler)
 
 	return httpmiddleware.Chain(
 		mux,
@@ -127,6 +195,52 @@ func buildHandler(publicHandler http.Handler, logger *slog.Logger, production bo
 		httpmiddleware.Recover(logger),
 		httpmiddleware.SecurityHeaders(production),
 	)
+}
+
+func firstReadiness(checks []func(context.Context) error) func(context.Context) error {
+	for _, check := range checks {
+		if check != nil {
+			return check
+		}
+	}
+	return nil
+}
+
+func readinessHandler(check func(context.Context) error) http.HandlerFunc {
+	return func(response http.ResponseWriter, request *http.Request) {
+		if check == nil {
+			health(response, request)
+			return
+		}
+		ctx, cancel := context.WithTimeout(request.Context(), 1500*time.Millisecond)
+		defer cancel()
+		if err := check(ctx); err != nil {
+			http.Error(response, "not ready", http.StatusServiceUnavailable)
+			return
+		}
+		health(response, request)
+	}
+}
+
+func databaseReadiness(pool *pgxpool.Pool) func(context.Context) error {
+	definitions := migrations.All()
+	expectedVersion := definitions[len(definitions)-1].Version
+	return func(ctx context.Context) error {
+		var version int64
+		var identityReady, legacyReady bool
+		err := pool.QueryRow(ctx, `
+			SELECT coalesce(max(version), 0),
+			       to_regclass('public.oidc_login_attempts') IS NOT NULL,
+			       to_regclass('public.legacy_book_user_mappings') IS NOT NULL
+			FROM schema_migrations`).Scan(&version, &identityReady, &legacyReady)
+		if err != nil {
+			return err
+		}
+		if version != expectedVersion || !identityReady || !legacyReady {
+			return fmt.Errorf("database schema is not ready")
+		}
+		return nil
+	}
 }
 
 func health(response http.ResponseWriter, _ *http.Request) {

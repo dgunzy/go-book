@@ -1,0 +1,43 @@
+{{define "private_layout"}}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>{{.Title}} | Cabot Cup</title>
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body class="private-body">
+  <a class="skip-link" href="#private-main">Skip to content</a>
+  <div class="private-shell">
+    <aside class="private-sidebar">
+      <a class="private-wordmark" href="/book"><span aria-hidden="true">CC</span><strong>Cabot Cup</strong></a>
+      <nav class="private-nav" aria-label="Member navigation">
+        <a href="/book" {{if eq .Current "book"}}aria-current="page"{{end}}>Overview</a>
+        <a href="/book/wagers" {{if eq .Current "wagers"}}aria-current="page"{{end}}>Wagers</a>
+        <a href="/book/ledger" {{if eq .Current "ledger"}}aria-current="page"{{end}}>Ledger</a>
+        {{if or (eq .Session.Role "admin") (eq .Session.Role "owner")}}<a href="/admin" {{if eq .Current "admin"}}aria-current="page"{{end}}>Admin</a>{{end}}
+      </nav>
+      <a class="private-public-link" href="/">Public archive <span aria-hidden="true">&rarr;</span></a>
+    </aside>
+    <div class="private-workspace">
+      <header class="private-topbar">
+        <div>
+          <span class="private-context">Member book</span>
+          <strong>{{.Session.DisplayName}}</strong>
+        </div>
+        <div class="private-session-actions">
+          <span class="private-role">{{.Session.Role}}</span>
+          {{if .Session.CSRFToken}}<form method="post" action="/logout">
+            <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+            <button type="submit">Sign out</button>
+          </form>{{end}}
+        </div>
+      </header>
+      <main id="private-main" class="private-main">
+        {{template "private_content" .}}
+      </main>
+    </div>
+  </div>
+</body>
+</html>{{end}}

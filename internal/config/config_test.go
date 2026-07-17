@@ -56,6 +56,27 @@ func TestLoadProduction(t *testing.T) {
 	}
 }
 
+func TestLoadPrivateApplication(t *testing.T) {
+	t.Parallel()
+
+	config, err := Load(mapLookup(map[string]string{
+		"APP_ENV":             "production",
+		"PUBLIC_BASE_URL":     "https://cabotcup.ca",
+		"PRIVATE_APP_ENABLED": "true",
+		"DATABASE_URL":        "postgres://redacted",
+		"OIDC_ISSUER_URL":     "https://accounts.google.com",
+		"OIDC_CLIENT_ID":      "client-id",
+		"OIDC_CLIENT_SECRET":  "client-secret",
+		"OIDC_REDIRECT_URL":   "https://cabotcup.ca/auth/callback",
+	}))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if !config.PrivateAppEnabled || config.SessionTTL != 12*time.Hour || config.LoginAttemptTTL != 10*time.Minute {
+		t.Fatalf("private config = %+v", config)
+	}
+}
+
 func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 	t.Parallel()
 
@@ -68,6 +89,10 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 		{name: "port", env: map[string]string{"PORT": "70000"}, want: "PORT"},
 		{name: "base URL", env: map[string]string{"PUBLIC_BASE_URL": "/relative"}, want: "PUBLIC_BASE_URL"},
 		{name: "production HTTP", env: map[string]string{"APP_ENV": "production", "PUBLIC_BASE_URL": "http://cabotcup.ca"}, want: "https"},
+		{name: "private database", env: map[string]string{"PRIVATE_APP_ENABLED": "true"}, want: "DATABASE_URL"},
+		{name: "private OIDC", env: map[string]string{"PRIVATE_APP_ENABLED": "true", "DATABASE_URL": "postgres://redacted"}, want: "OIDC"},
+		{name: "private redirect host", env: privateConfig(map[string]string{"OIDC_REDIRECT_URL": "https://other.example/auth/callback"}), want: "PUBLIC_BASE_URL host"},
+		{name: "session TTL", env: map[string]string{"SESSION_TTL": "8d"}, want: "SESSION_TTL"},
 		{name: "duration", env: map[string]string{"SHUTDOWN_TIMEOUT": "0s"}, want: "SHUTDOWN_TIMEOUT"},
 	}
 
@@ -81,6 +106,23 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 			}
 		})
 	}
+}
+
+func privateConfig(overrides map[string]string) map[string]string {
+	values := map[string]string{
+		"APP_ENV":             "production",
+		"PUBLIC_BASE_URL":     "https://cabotcup.ca",
+		"PRIVATE_APP_ENABLED": "true",
+		"DATABASE_URL":        "postgres://redacted",
+		"OIDC_ISSUER_URL":     "https://accounts.google.com",
+		"OIDC_CLIENT_ID":      "client-id",
+		"OIDC_CLIENT_SECRET":  "client-secret",
+		"OIDC_REDIRECT_URL":   "https://cabotcup.ca/auth/callback",
+	}
+	for key, value := range overrides {
+		values[key] = value
+	}
+	return values
 }
 
 func mapLookup(values map[string]string) func(string) (string, bool) {

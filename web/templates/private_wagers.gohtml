@@ -1,0 +1,22 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Recorded terms</p><h1>Wagers</h1></div>
+  <p>Accepted selections retain their original odds and stake.</p>
+</header>
+
+<section aria-labelledby="wagers-heading">
+  <h2 id="wagers-heading" class="visually-hidden">Wager history</h2>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide">
+      <thead><tr><th scope="col">Placed</th><th scope="col">Market</th><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Stake</th><th scope="col">To win</th><th scope="col">Status</th></tr></thead>
+      <tbody>
+        {{range .WagerRows}}
+        <tr><td>{{when .PlacedAt}}</td><th scope="row">{{.Market}}</th><td>{{.Selection}}</td><td class="private-odds">{{odds .Odds}}</td><td class="private-money">{{money .Stake}}</td><td class="private-money">{{money .PotentialProfit}}</td><td><span class="private-status">{{.Status}}</span></td></tr>
+        {{else}}
+        <tr><td colspan="7" class="private-empty-cell">No wagers recorded.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}

@@ -1,0 +1,26 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Financial controls</p><h1>Reconciliation</h1></div>
+  <p>Snapshot as of {{when .Reconciliation.AsOf}}.</p>
+</header>
+
+<section class="reconciliation-state {{if .Reconciliation.LedgerBalanced}}is-clear{{else}}is-alert{{end}}" aria-labelledby="ledger-state-heading">
+  <div>
+    <span>Ledger state</span>
+    <h2 id="ledger-state-heading">{{if .Reconciliation.LedgerBalanced}}Balanced{{else}}Review required{{end}}</h2>
+  </div>
+  <dl>
+    <div><dt>Transactions checked</dt><dd>{{.Reconciliation.LedgerTransactions}}</dd></div>
+    <div><dt>Unbalanced</dt><dd>{{.Reconciliation.UnbalancedTransactions}}</dd></div>
+    <div><dt>Migration difference</dt><dd>{{money .Reconciliation.MigrationDifference}}</dd></div>
+  </dl>
+</section>
+
+<section aria-labelledby="operations-heading">
+  <div class="private-section-heading"><h2 id="operations-heading">Operational queues</h2></div>
+  <div class="admin-metric-grid">
+    <article><span>Pending outbox</span><strong>{{.Reconciliation.PendingOutboxEvents}}</strong></article>
+    <article><span>Failed outbox</span><strong>{{.Reconciliation.FailedOutboxEvents}}</strong></article>
+  </div>
+</section>
+{{end}}
