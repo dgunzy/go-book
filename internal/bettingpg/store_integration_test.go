@@ -246,10 +246,14 @@ func accountBalanceFor(t *testing.T, ctx context.Context, pool *pgxpool.Pool, us
 
 func systemAccountBalance(t *testing.T, ctx context.Context, pool *pgxpool.Pool, accountType string, currency ledger.Currency) int64 {
 	t.Helper()
+	// The system account row is created lazily on first use, so a fresh
+	// database legitimately has no row yet: that is a zero balance.
 	var balance int64
 	err := pool.QueryRow(ctx, `
-		SELECT coalesce(balance_cents, 0) FROM ledger_account_balances
-		WHERE owner_user_id IS NULL AND account_type = $1 AND currency = $2`, accountType, string(currency)).Scan(&balance)
+		SELECT coalesce((
+			SELECT balance_cents FROM ledger_account_balances
+			WHERE owner_user_id IS NULL AND account_type = $1 AND currency = $2
+		), 0)`, accountType, string(currency)).Scan(&balance)
 	if err != nil {
 		t.Fatalf("read system balance for %s: %v", accountType, err)
 	}
