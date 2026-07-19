@@ -2,17 +2,22 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/dgunzy/go-book/internal/authweb"
+	"github.com/dgunzy/go-book/internal/bettingpg"
 	"github.com/dgunzy/go-book/internal/config"
+	"github.com/dgunzy/go-book/internal/events"
+	"github.com/dgunzy/go-book/internal/eventspg"
 	"github.com/dgunzy/go-book/internal/identity"
 	"github.com/dgunzy/go-book/internal/identitypg"
 	"github.com/dgunzy/go-book/internal/migration/publicseed"
@@ -74,6 +79,7 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 	secureDeployment := applicationConfig.Environment == "staging" || applicationConfig.Environment == "production"
 	applicationHandler := http.NewServeMux()
 	var readiness func(context.Context) error
+	var dispatcher *events.Dispatcher
 	if applicationConfig.PrivateAppEnabled {
 		pool, err := postgresdb.Open(ctx, applicationConfig.DatabaseURL)
 		if err != nil {
@@ -122,6 +128,11 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		applicationHandler.Handle("/book", privateHandler)
 		applicationHandler.Handle("/book/", privateHandler)
 		applicationHandler.Handle("/admin", privateHandler)
+
+		dispatcher, err = newOutboxDispatcher(pool, logger)
+		if err != nil {
+			return fmt.Errorf("build outbox dispatcher: %w", err)
+		}
 	}
 	applicationHandler.Handle("/", publicHandler)
 
@@ -140,7 +151,58 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		"private_app_enabled", applicationConfig.PrivateAppEnabled,
 		"database_mode", applicationConfig.DatabaseMode,
 	)
-	return server.Run(ctx)
+
+	// The outbox dispatcher runs beside the HTTP server and is stopped only
+	// after the server has drained, so events published by in-flight requests
+	// still get dispatched. Derived from Background deliberately: the signal
+	// context cancelling must drain the server first, then stop the worker.
+	dispatcherCtx, stopDispatcher := context.WithCancel(context.Background())
+	defer stopDispatcher()
+	var dispatcherDone sync.WaitGroup
+	if dispatcher != nil {
+		dispatcherDone.Go(func() {
+			if err := dispatcher.Run(dispatcherCtx); err != nil && !errors.Is(err, context.Canceled) {
+				logger.Error("outbox dispatcher stopped", "error", err)
+			}
+		})
+		logger.Info("outbox dispatcher started", "poll_interval", outboxPollInterval.String())
+	}
+
+	serverErr := server.Run(ctx)
+	stopDispatcher()
+	dispatcherDone.Wait()
+	return serverErr
+}
+
+// Outbox dispatcher tuning. Polling is the correctness mechanism (no
+// LISTEN/NOTIFY dependency); these values trade settlement latency against
+// idle database load for a single-instance deployment.
+const (
+	outboxPollInterval = 2 * time.Second
+	outboxBatchSize    = 25
+	outboxLockLease    = 2 * time.Minute
+	outboxBackoffBase  = 5 * time.Second
+	outboxBackoffCap   = 5 * time.Minute
+)
+
+func newOutboxDispatcher(pool *pgxpool.Pool, logger *slog.Logger) (*events.Dispatcher, error) {
+	hostname, err := os.Hostname()
+	if err != nil || strings.TrimSpace(hostname) == "" {
+		hostname = "cabot"
+	}
+	return events.NewDispatcher(events.DispatcherConfig{
+		Store: eventspg.Store{Pool: pool},
+		Consumers: []events.Consumer{
+			&bettingpg.MatchSettlementConsumer{Store: &bettingpg.Store{DB: pool}, Logger: logger},
+		},
+		PollInterval: outboxPollInterval,
+		BatchSize:    outboxBatchSize,
+		LockLease:    outboxLockLease,
+		WorkerID:     fmt.Sprintf("%s-%d", hostname, os.Getpid()),
+		BackoffBase:  outboxBackoffBase,
+		BackoffCap:   outboxBackoffCap,
+		Logger:       logger,
+	})
 }
 
 func runMigrations(ctx context.Context, logger *slog.Logger, lookup lookupFunc) error {

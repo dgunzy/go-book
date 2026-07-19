@@ -91,3 +91,16 @@ func TestReadinessReportsDatabaseFailureWithoutLeakingIt(t *testing.T) {
 		t.Fatalf("response = %d %q", response.Code, response.Body.String())
 	}
 }
+
+func TestNewOutboxDispatcherConstructsWithConsumers(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	dispatcher, err := newOutboxDispatcher(nil, logger)
+	if err != nil {
+		t.Fatalf("newOutboxDispatcher() error = %v", err)
+	}
+	if dispatcher == nil {
+		t.Fatal("newOutboxDispatcher() = nil dispatcher")
+	}
+}
