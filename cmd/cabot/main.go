@@ -15,6 +15,7 @@ import (
 
 	"github.com/dgunzy/go-book/internal/authweb"
 	"github.com/dgunzy/go-book/internal/bettingpg"
+	"github.com/dgunzy/go-book/internal/bettingweb"
 	"github.com/dgunzy/go-book/internal/config"
 	"github.com/dgunzy/go-book/internal/events"
 	"github.com/dgunzy/go-book/internal/eventspg"
@@ -124,12 +125,28 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		if err != nil {
 			return fmt.Errorf("build private web handler: %w", err)
 		}
+		bettingStore := bettingpg.Store{DB: pool}
+		bettingHandler, err := bettingweb.New(bettingweb.Dependencies{
+			Sessions: authHandler.SessionReader(), Markets: bettingStore, Wagers: bettingStore,
+		})
+		if err != nil {
+			return fmt.Errorf("build betting web handler: %w", err)
+		}
 		for _, path := range []string{"/login", "/auth/google", "/auth/callback", "/logout"} {
 			applicationHandler.Handle(path, authHandler)
 		}
 		applicationHandler.Handle("/book", privateHandler)
 		applicationHandler.Handle("/book/", privateHandler)
 		applicationHandler.Handle("/admin", privateHandler)
+		// The betting UI owns its specific routes; these more-specific
+		// patterns take precedence over privateweb's /book/ subtree.
+		for _, path := range []string{
+			"/book/markets", "/book/wagers",
+			"/admin/markets", "/admin/markets/",
+			"/admin/wagers", "/admin/wagers/",
+		} {
+			applicationHandler.Handle(path, bettingHandler)
+		}
 
 		dispatcher, err = newOutboxDispatcher(pool, logger)
 		if err != nil {

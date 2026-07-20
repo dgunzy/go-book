@@ -1,0 +1,43 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Book administration</p><h1>Settle market</h1></div>
+  <p>{{.Market.Market.Title}} &middot; <span class="private-status">{{.Market.Market.Type}}</span> <span class="private-status">{{.Market.Market.State}}</span> &middot; {{.Market.Market.Currency}}</p>
+</header>
+
+{{if eq .Market.Market.Type "match"}}
+<p class="betting-form-error" role="note">
+  This is a match market: it settles automatically when the match result is verified.
+  Manual grading here is an operator override and requires a reason, which is recorded with the settlement.
+</p>
+{{end}}
+
+{{if .FormError}}<p class="betting-form-error" role="alert">{{.FormError}}</p>{{end}}
+
+<form method="post" action="/admin/markets/{{.Market.Market.ID}}/settle" class="betting-form">
+  <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+
+  <fieldset>
+    <legend>Grade every selection</legend>
+    {{range .Market.Selections}}
+    <div class="betting-selection-slot">
+      <p><strong>{{.DisplayTerms}}</strong> <span class="private-odds">{{odds .OfferedAmericanOdds}}</span></p>
+      <div class="betting-outcome-options">
+        <label><input type="radio" name="outcome_{{.ID}}" value="win" required> Win</label>
+        <label><input type="radio" name="outcome_{{.ID}}" value="loss"> Loss</label>
+        <label><input type="radio" name="outcome_{{.ID}}" value="push"> Push</label>
+      </div>
+    </div>
+    {{end}}
+  </fieldset>
+
+  <label>Reason (required, recorded in the audit trail)
+    <textarea name="reason" rows="3" maxlength="500" required></textarea>
+  </label>
+
+  <div class="betting-form-actions">
+    <button type="submit" name="action" value="settle">Settle with these outcomes</button>
+    <button type="submit" name="action" value="void" class="betting-danger-button" formnovalidate>Void market and refund all wagers</button>
+    <a class="betting-action-link" href="/admin/markets">Cancel</a>
+  </div>
+</form>
+{{end}}

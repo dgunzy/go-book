@@ -1,0 +1,30 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Your positions</p><h1>Wagers</h1></div>
+  <p>Accepted wagers keep the odds and terms they were placed at. <a href="/book/markets">Browse open markets</a>.</p>
+</header>
+
+<section aria-labelledby="my-wagers-heading">
+  <h2 id="my-wagers-heading" class="visually-hidden">Wager history</h2>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide">
+      <thead><tr><th scope="col">Placed</th><th scope="col">Market</th><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Stake</th><th scope="col">To win</th><th scope="col">Status</th></tr></thead>
+      <tbody>
+        {{range .MemberWagers}}
+        <tr>
+          <td>{{when .PlacedAt}}</td>
+          <th scope="row">{{.MarketTitle}}</th>
+          <td>{{.SelectionTerms}}</td>
+          <td class="private-odds">{{odds .Odds}}</td>
+          <td class="private-money">{{money .Stake}}</td>
+          <td class="private-money">{{money .PotentialProfit}}</td>
+          <td><span class="private-status">{{.State}}</span>{{if .RejectionReason}}<small class="betting-reason">{{.RejectionReason}}</small>{{end}}</td>
+        </tr>
+        {{else}}
+        <tr><td colspan="7" class="private-empty-cell">You have not placed any wagers yet.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}

@@ -534,3 +534,44 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
   .private-forbidden { padding-top: 3rem; }
   .private-forbidden h1 { font-size: 2.8rem; }
 }
+
+/* Betting slice */
+.betting-market-card { background: var(--white); border: 1px solid #d8ddd8; margin-bottom: 1.1rem; padding: 1rem; }
+.betting-market-card .private-table-wrap { border: 0; border-top: 1px solid #e1e5e1; }
+.betting-market-card .private-table { min-width: 520px; }
+.betting-market-head h2 { font-size: 1.02rem; margin: 0 0 .2rem; }
+.betting-market-meta { color: #5b6760; font-size: .72rem; margin: 0 0 .8rem; }
+.betting-place-form { align-items: center; display: flex; flex-wrap: wrap; gap: .45rem; }
+.betting-place-form input[name="stake"] { border: 1px solid #b8c1bb; border-radius: 4px; font: inherit; font-size: .8rem; padding: .35rem .5rem; width: 6.5rem; }
+.betting-place-form button, .betting-inline-form button, .betting-form button { background: var(--green); border: 1px solid var(--green); border-radius: 4px; color: var(--white); cursor: pointer; font: inherit; font-size: .74rem; font-weight: 800; padding: .35rem .7rem; }
+.betting-place-form button:hover, .betting-inline-form button:hover, .betting-form button:hover { background: var(--green-dark); }
+.betting-inline-form { align-items: center; display: inline-flex; flex-wrap: wrap; gap: .4rem; margin: .1rem .35rem .1rem 0; }
+.betting-inline-form input { border: 1px solid #b8c1bb; border-radius: 4px; font: inherit; font-size: .78rem; padding: .3rem .5rem; width: 9rem; }
+.betting-danger-button { background: #8c2f2f; border-color: #8c2f2f; }
+.betting-place-form .betting-danger-button:hover, .betting-inline-form .betting-danger-button:hover, .betting-form .betting-danger-button:hover { background: #6f2222; }
+.betting-actions-cell { white-space: normal; }
+.betting-action-link { color: var(--green); font-size: .76rem; font-weight: 800; }
+.betting-primary-link { color: var(--green); font-weight: 800; }
+.betting-selection-chip { background: #f3f5f2; border: 1px solid #d8ddd8; border-radius: 4px; display: inline-block; font-size: .7rem; margin: .1rem .25rem .1rem 0; padding: .15rem .4rem; }
+.betting-reason { color: #7c2d26; display: block; font-size: .68rem; margin-top: .25rem; }
+.betting-form-error { background: #f9edec; border: 1px solid #d8a7a3; color: #7c2d26; font-size: .8rem; margin-bottom: 1rem; padding: .6rem .8rem; }
+.betting-action-result { background: #eef4ef; border: 1px solid #b8c1bb; border-radius: 4px; display: inline-block; font-size: .78rem; padding: .5rem .7rem; }
+.betting-action-result a { color: var(--green); font-weight: 800; }
+.betting-action-error { background: #f9edec; border-color: #d8a7a3; color: #7c2d26; }
+.betting-form { background: var(--white); border: 1px solid #d8ddd8; display: grid; gap: .9rem; max-width: 680px; padding: 1.1rem; }
+.betting-form label { display: grid; font-size: .74rem; font-weight: 700; gap: .3rem; }
+.betting-form input, .betting-form select, .betting-form textarea { border: 1px solid #b8c1bb; border-radius: 4px; font: inherit; font-size: .82rem; padding: .45rem .55rem; }
+.betting-form fieldset { border: 1px solid #d8ddd8; border-radius: 4px; display: grid; gap: .8rem; padding: .9rem; }
+.betting-form legend { font-size: .74rem; font-weight: 800; padding: 0 .3rem; text-transform: uppercase; }
+.betting-selection-slot { border-top: 1px dashed #d8ddd8; display: grid; gap: .6rem; padding-top: .8rem; }
+.betting-selection-slot:first-of-type { border-top: 0; padding-top: 0; }
+.betting-selection-slot p { margin: 0; }
+.betting-outcome-options { display: flex; flex-wrap: wrap; gap: .9rem; font-size: .78rem; }
+.betting-outcome-options label { align-items: center; display: inline-flex; font-weight: 600; gap: .3rem; }
+.betting-form-actions { align-items: center; display: flex; flex-wrap: wrap; gap: .7rem; }
+@media (max-width: 700px) {
+  .betting-place-form { justify-content: flex-start; }
+  .betting-place-form input[name="stake"] { width: 5.5rem; }
+  .betting-form { padding: .85rem; }
+  .betting-inline-form input { width: 100%; }
+}

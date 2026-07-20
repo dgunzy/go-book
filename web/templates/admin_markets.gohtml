@@ -1,0 +1,48 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Book administration</p><h1>Markets</h1></div>
+  <p><a class="betting-primary-link" href="/admin/markets/new">Create a market</a> &middot; <a href="/admin/wagers">Review pending wagers</a></p>
+</header>
+
+<section aria-labelledby="admin-markets-heading">
+  <h2 id="admin-markets-heading" class="visually-hidden">All markets</h2>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide">
+      <thead><tr><th scope="col">Market</th><th scope="col">Type</th><th scope="col">State</th><th scope="col">Currency</th><th scope="col">Closes</th><th scope="col">Selections</th><th scope="col">Actions</th></tr></thead>
+      <tbody>
+        {{range .Markets}}
+        <tr>
+          <th scope="row">{{.Market.Title}}</th>
+          <td><span class="private-status">{{.Market.Type}}</span></td>
+          <td><span class="private-status">{{.Market.State}}</span></td>
+          <td>{{.Market.Currency}}</td>
+          <td>{{when .Market.ClosesAt}}</td>
+          <td>
+            {{range .Selections}}<span class="betting-selection-chip">{{.DisplayTerms}} <span class="private-odds">{{odds .OfferedAmericanOdds}}</span></span>{{end}}
+          </td>
+          <td class="betting-actions-cell">
+            {{if eq .Market.State "draft"}}
+            <form method="post" action="/admin/markets/{{.Market.ID}}/open" class="betting-inline-form" hx-post="/admin/markets/{{.Market.ID}}/open" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <button type="submit">Open</button>
+            </form>
+            {{end}}
+            {{if eq .Market.State "open"}}
+            <form method="post" action="/admin/markets/{{.Market.ID}}/close" class="betting-inline-form" hx-post="/admin/markets/{{.Market.ID}}/close" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <button type="submit">Close</button>
+            </form>
+            {{end}}
+            {{if or (eq .Market.State "open") (eq .Market.State "closed") (eq .Market.State "settlement_pending")}}
+            <a class="betting-action-link" href="/admin/markets/{{.Market.ID}}/settle">Settle / void</a>
+            {{end}}
+          </td>
+        </tr>
+        {{else}}
+        <tr><td colspan="7" class="private-empty-cell">No markets exist yet.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}

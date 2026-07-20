@@ -1,0 +1,8 @@
+{{define "private_content"}}
+<section class="private-forbidden">
+  <p class="private-kicker">{{.Notice}}</p>
+  <h1>{{.Title}}</h1>
+  {{if .FormError}}<p>{{.FormError}}</p>{{end}}
+  {{if .BackLink}}<a href="{{.BackLink}}">Go back <span aria-hidden="true">&rarr;</span></a>{{end}}
+</section>
+{{end}}

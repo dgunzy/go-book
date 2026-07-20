@@ -1,0 +1,71 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Book administration</p><h1>New market</h1></div>
+  <p>The market is created in draft state; open it from the <a href="/admin/markets">market list</a> when the line is ready.</p>
+</header>
+
+{{if .FormError}}<p class="betting-form-error" role="alert">{{.FormError}}</p>{{end}}
+
+<form method="post" action="/admin/markets" class="betting-form">
+  <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+  <input type="hidden" name="market_id" value="{{.NewMarketID}}">
+
+  <label>Market type
+    <select name="market_type" required>
+      {{$type := .Form.Get "market_type"}}
+      <option value="future" {{if eq $type "future"}}selected{{end}}>Future</option>
+      <option value="prop" {{if eq $type "prop"}}selected{{end}}>Prop</option>
+      <option value="match" {{if eq $type "match"}}selected{{end}}>Match</option>
+    </select>
+  </label>
+
+  <label>Match ID (UUID, match markets only)
+    <input name="match_id" value="{{.Form.Get "match_id"}}" autocomplete="off" placeholder="Leave blank for futures and props">
+  </label>
+
+  <label>Title
+    <input name="title" value="{{.Form.Get "title"}}" maxlength="200" required>
+  </label>
+
+  <label>Currency
+    {{$currency := .Form.Get "currency"}}
+    <select name="currency" required>
+      <option value="CAD" {{if or (eq $currency "") (eq $currency "CAD")}}selected{{end}}>CAD</option>
+      <option value="USD" {{if eq $currency "USD"}}selected{{end}}>USD</option>
+    </select>
+  </label>
+
+  <label>Opens at (UTC, optional)
+    <input type="datetime-local" name="opens_at" value="{{.Form.Get "opens_at"}}">
+  </label>
+
+  <label>Closes at (UTC)
+    <input type="datetime-local" name="closes_at" value="{{.Form.Get "closes_at"}}" required>
+  </label>
+
+  <fieldset class="betting-selection-slots">
+    <legend>Selections (fill at least one row)</legend>
+    {{range .SelectionSlots}}
+    <div class="betting-selection-slot">
+      <label>Key {{.}}
+        <input name="selection_key_{{.}}" value="{{$.Form.Get (printf "selection_key_%d" .)}}" autocomplete="off" placeholder="team-a" pattern="[a-z0-9]+([._-][a-z0-9]+)*">
+      </label>
+      <label>Display terms {{.}}
+        <input name="selection_terms_{{.}}" value="{{$.Form.Get (printf "selection_terms_%d" .)}}" maxlength="500" placeholder="Team A to win">
+      </label>
+      <label>American odds {{.}}
+        <input name="selection_odds_{{.}}" value="{{$.Form.Get (printf "selection_odds_%d" .)}}" inputmode="numeric" placeholder="-110">
+      </label>
+      <label>Semantic result key {{.}} (optional, e.g. side:&lt;side-uuid&gt; or tie)
+        <input name="selection_semantic_{{.}}" value="{{$.Form.Get (printf "selection_semantic_%d" .)}}" autocomplete="off">
+      </label>
+    </div>
+    {{end}}
+  </fieldset>
+
+  <div class="betting-form-actions">
+    <button type="submit">Create draft market</button>
+    <a class="betting-action-link" href="/admin/markets">Cancel</a>
+  </div>
+</form>
+{{end}}

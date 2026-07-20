@@ -1,0 +1,42 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Book administration</p><h1>Pending wagers</h1></div>
+  <p>Accepting a wager moves the member's stake into escrow at the recorded odds. <a href="/admin/markets">Manage markets</a>.</p>
+</header>
+
+<section aria-labelledby="pending-wagers-heading">
+  <h2 id="pending-wagers-heading" class="visually-hidden">Pending wagers</h2>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide">
+      <thead><tr><th scope="col">Placed</th><th scope="col">Member</th><th scope="col">Market</th><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Stake</th><th scope="col">To win</th><th scope="col">Actions</th></tr></thead>
+      <tbody>
+        {{range .AdminWagers}}
+        <tr>
+          <td>{{when .PlacedAt}}</td>
+          <th scope="row">{{.UserDisplayName}}</th>
+          <td>{{.MarketTitle}}</td>
+          <td>{{.SelectionTerms}}</td>
+          <td class="private-odds">{{odds .Odds}}</td>
+          <td class="private-money">{{money .Stake}}</td>
+          <td class="private-money">{{money .PotentialProfit}}</td>
+          <td class="betting-actions-cell">
+            <form method="post" action="/admin/wagers/{{.ID}}/accept" class="betting-inline-form" hx-post="/admin/wagers/{{.ID}}/accept" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <button type="submit">Accept</button>
+            </form>
+            <form method="post" action="/admin/wagers/{{.ID}}/reject" class="betting-inline-form" hx-post="/admin/wagers/{{.ID}}/reject" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <label class="visually-hidden" for="reject-reason-{{.ID}}">Rejection reason</label>
+              <input id="reject-reason-{{.ID}}" name="reason" maxlength="500" placeholder="Reason" required>
+              <button type="submit" class="betting-danger-button">Reject</button>
+            </form>
+          </td>
+        </tr>
+        {{else}}
+        <tr><td colspan="8" class="private-empty-cell">No wagers are waiting for review.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}

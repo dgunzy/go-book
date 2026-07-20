@@ -1,0 +1,1 @@
+{{define "betting_action_result"}}<div class="betting-action-result{{if .IsError}} betting-action-error{{end}}" role="status"><strong>{{.Message}}</strong>{{if .Detail}} <span>{{.Detail}}</span>{{end}}{{if not .IsError}} <a href="/book/wagers">View wagers</a>{{end}}</div>{{end}}

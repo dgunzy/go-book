@@ -1,0 +1,48 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Open board</p><h1>Markets</h1></div>
+  <p>Place a wager on any open selection. Wagers stay pending until an admin accepts them at the odds shown.</p>
+</header>
+
+{{if .FormError}}<p class="betting-form-error" role="alert">{{.FormError}}</p>{{end}}
+
+{{range .Markets}}
+<section class="betting-market-card" aria-label="{{.Market.Title}}">
+  <div class="betting-market-head">
+    <h2>{{.Market.Title}}</h2>
+    <p class="betting-market-meta">
+      <span class="private-status">{{.Market.Type}}</span>
+      Closes {{when .Market.ClosesAt}} &middot; {{.Market.Currency}}
+    </p>
+  </div>
+  <div class="private-table-wrap">
+    <table class="private-table">
+      <thead><tr><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Place a wager</th></tr></thead>
+      <tbody>
+        {{range .Selections}}
+        <tr>
+          <th scope="row">{{.DisplayTerms}}</th>
+          <td class="private-odds">{{odds .OfferedAmericanOdds}}</td>
+          <td>
+            <form method="post" action="/book/wagers" class="betting-place-form" hx-post="/book/wagers" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <input type="hidden" name="market_id" value="{{.MarketID}}">
+              <input type="hidden" name="selection_id" value="{{.ID}}">
+              <input type="hidden" name="idempotency_key" value="{{.PlaceKey}}">
+              <label class="visually-hidden" for="stake-{{.ID}}">Stake for {{.DisplayTerms}}</label>
+              <input id="stake-{{.ID}}" name="stake" inputmode="decimal" autocomplete="off" placeholder="0.00" required>
+              <button type="submit">Place</button>
+            </form>
+          </td>
+        </tr>
+        {{else}}
+        <tr><td colspan="3" class="private-empty-cell">No selections are available.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{else}}
+<p class="private-empty">No markets are open right now. Check back once the book posts new lines.</p>
+{{end}}
+{{end}}

@@ -1,0 +1,222 @@
+package bettingpg
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/dgunzy/go-book/internal/betting"
+	"github.com/dgunzy/go-book/internal/events"
+	"github.com/dgunzy/go-book/internal/eventspg"
+	"github.com/dgunzy/go-book/internal/ledger"
+	"github.com/jackc/pgx/v5"
+)
+
+// CreateMarketSelection is one bettable outcome supplied with a new market.
+type CreateMarketSelection struct {
+	Key                 string
+	DisplayTerms        string
+	OfferedAmericanOdds int32
+	SemanticResultKey   string
+}
+
+// CreateMarketRequest inserts a draft market with its selections in one
+// transaction. MarketID is a caller-supplied UUID (generated server-side per
+// form render) that doubles as the idempotency token: a retried request with
+// the same MarketID is a no-op returning the stored market, and a reused
+// MarketID describing a different market returns ErrIdempotencyConflict.
+// ActorUserID is the creating admin and is recorded as markets.created_by.
+type CreateMarketRequest struct {
+	MarketID    string
+	Type        betting.MarketType
+	MatchID     string
+	Title       string
+	Currency    ledger.Currency
+	OpensAt     time.Time
+	ClosesAt    time.Time
+	Selections  []CreateMarketSelection
+	ActorUserID string
+}
+
+// maxSelectionsPerMarket bounds the selection list on one market so a
+// malformed request cannot insert an unbounded number of rows.
+const maxSelectionsPerMarket = 20
+
+// CreateMarket validates the market and its selections through the domain
+// rules in internal/betting, then persists them atomically together with a
+// MarketCreated outbox event. The market is created in draft state; wagers
+// are only possible after OpenMarket.
+func (s Store) CreateMarket(ctx context.Context, req CreateMarketRequest) (betting.Market, error) {
+	if !isUUID(req.ActorUserID) {
+		return betting.Market{}, fmt.Errorf("%w: market creation requires an acting admin user", betting.ErrUnauthorized)
+	}
+	if !isUUID(req.MarketID) {
+		return betting.Market{}, fmt.Errorf("%w: market creation requires a UUID market ID", betting.ErrInvalid)
+	}
+	market := betting.Market{
+		ID:       betting.ID(req.MarketID),
+		Type:     req.Type,
+		MatchID:  betting.ID(strings.TrimSpace(req.MatchID)),
+		Title:    strings.TrimSpace(req.Title),
+		State:    betting.MarketDraft,
+		Currency: req.Currency,
+		OpensAt:  req.OpensAt,
+		ClosesAt: req.ClosesAt,
+	}
+	if err := market.Validate(); err != nil {
+		return betting.Market{}, err
+	}
+	if len(req.Selections) == 0 || len(req.Selections) > maxSelectionsPerMarket {
+		return betting.Market{}, fmt.Errorf("%w: a market requires between 1 and %d selections", betting.ErrInvalid, maxSelectionsPerMarket)
+	}
+	selections := make([]betting.Selection, 0, len(req.Selections))
+	seenKeys := make(map[string]bool, len(req.Selections))
+	for _, request := range req.Selections {
+		selectionID, err := betting.NewEventID()
+		if err != nil {
+			return betting.Market{}, err
+		}
+		selection := betting.Selection{
+			ID:                  selectionID,
+			MarketID:            market.ID,
+			Key:                 strings.TrimSpace(request.Key),
+			DisplayTerms:        strings.TrimSpace(request.DisplayTerms),
+			OfferedAmericanOdds: ledger.AmericanOdds(request.OfferedAmericanOdds),
+			SemanticResultKey:   strings.TrimSpace(request.SemanticResultKey),
+			Active:              true,
+		}
+		if err := selection.Validate(); err != nil {
+			return betting.Market{}, err
+		}
+		if seenKeys[selection.Key] {
+			return betting.Market{}, fmt.Errorf("%w: selection key %q is duplicated", betting.ErrInvalid, selection.Key)
+		}
+		seenKeys[selection.Key] = true
+		selections = append(selections, selection)
+	}
+
+	tx, err := s.begin(ctx)
+	if err != nil {
+		return betting.Market{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var insertedID string
+	err = tx.QueryRow(ctx, `
+		INSERT INTO markets (id, market_type, match_id, title, state, currency, opens_at, closes_at, created_by)
+		VALUES ($1::uuid, $2, nullif($3, '')::uuid, $4, 'draft', $5, $6, $7, $8::uuid)
+		ON CONFLICT (id) DO NOTHING
+		RETURNING id::text`,
+		string(market.ID), string(market.Type), string(market.MatchID), market.Title,
+		string(market.Currency), nullableTime(market.OpensAt), market.ClosesAt.UTC(), req.ActorUserID).Scan(&insertedID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		existing, err := loadMarket(ctx, tx, string(market.ID))
+		if err != nil {
+			return betting.Market{}, err
+		}
+		if existing.Type != market.Type || existing.MatchID != market.MatchID ||
+			existing.Title != market.Title || existing.Currency != market.Currency ||
+			!existing.ClosesAt.Equal(market.ClosesAt.UTC()) {
+			return betting.Market{}, fmt.Errorf("%w: market %s already exists with different terms", ErrIdempotencyConflict, market.ID)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return betting.Market{}, fmt.Errorf("commit idempotent market creation: %w", err)
+		}
+		return existing, nil
+	}
+	if err != nil {
+		return betting.Market{}, fmt.Errorf("insert market %s: %w", market.ID, err)
+	}
+
+	for _, selection := range selections {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO selections (id, market_id, selection_key, display_terms, offered_american_odds, semantic_result_key, active)
+			VALUES ($1::uuid, $2::uuid, $3, $4, $5, nullif($6, ''), true)`,
+			string(selection.ID), string(selection.MarketID), selection.Key, selection.DisplayTerms,
+			int32(selection.OfferedAmericanOdds), selection.SemanticResultKey); err != nil {
+			return betting.Market{}, fmt.Errorf("insert selection %q for market %s: %w", selection.Key, market.ID, err)
+		}
+	}
+
+	if err := publishMarketEvent(ctx, tx, events.MarketCreated, string(market.ID), map[string]string{
+		"market_id": string(market.ID), "market_type": string(market.Type),
+		"currency": string(market.Currency), "actor_user_id": req.ActorUserID,
+	}); err != nil {
+		return betting.Market{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return betting.Market{}, fmt.Errorf("commit create market: %w", err)
+	}
+	return market, nil
+}
+
+// OpenMarket transitions a draft market to open, mirroring CloseMarket. It
+// is idempotent: a market already open is a no-op. Actor is the admin user
+// performing the action and is recorded on the MarketOpened event.
+func (s Store) OpenMarket(ctx context.Context, marketID, actor string) error {
+	if strings.TrimSpace(actor) == "" {
+		return fmt.Errorf("%w: opening a market requires an acting user", betting.ErrUnauthorized)
+	}
+	tx, err := s.begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	market, err := loadMarketForUpdate(ctx, tx, marketID)
+	if err != nil {
+		return err
+	}
+	if market.State == betting.MarketOpen {
+		return tx.Commit(ctx)
+	}
+	if !market.State.CanTransitionTo(betting.MarketOpen) {
+		return fmt.Errorf("%w: market %s state %s cannot open", ErrMarketNotOpenable, marketID, market.State)
+	}
+
+	tag, err := tx.Exec(ctx, `UPDATE markets SET state = 'open', updated_at = now() WHERE id = $1::uuid AND state = 'draft'`, marketID)
+	if err != nil {
+		return fmt.Errorf("open market %s: %w", marketID, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("open market %s: market was not draft", marketID)
+	}
+
+	if err := publishMarketEvent(ctx, tx, events.MarketOpened, marketID, map[string]string{
+		"market_id": marketID, "actor_user_id": actor,
+	}); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
+func publishMarketEvent(ctx context.Context, tx pgx.Tx, eventType events.Type, marketID string, payload map[string]string) error {
+	eventID, err := betting.NewEventID()
+	if err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal %s payload: %w", eventType, err)
+	}
+	envelope := events.Envelope{
+		ID:               string(eventID),
+		AggregateType:    "market",
+		AggregateID:      marketID,
+		AggregateVersion: 1,
+		Type:             eventType,
+		Payload:          encoded,
+		OccurredAt:       time.Now().UTC(),
+	}
+	return eventspg.Publish(ctx, tx, envelope, maxOutboxAttempts)
+}
+
+func nullableTime(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value.UTC()
+}

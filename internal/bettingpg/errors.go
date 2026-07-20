@@ -9,6 +9,9 @@ var (
 	// ErrMarketNotSettleable is returned when SettleMarket or VoidMarket is
 	// asked to grade a market outside its allowed source states.
 	ErrMarketNotSettleable = errors.New("bettingpg: market is not in a settleable state")
+	// ErrMarketNotOpenable is returned when OpenMarket is asked to open a
+	// market that is not in draft state.
+	ErrMarketNotOpenable = errors.New("bettingpg: market cannot be opened from its current state")
 	// ErrIdempotencyConflict is returned when a repeated request with the
 	// same idempotency key describes a different command than the one
 	// already recorded.

@@ -14,9 +14,14 @@
       <a class="private-wordmark" href="/book"><span aria-hidden="true">CC</span><strong>Cabot Cup</strong></a>
       <nav class="private-nav" aria-label="Member navigation">
         <a href="/book" {{if eq .Current "book"}}aria-current="page"{{end}}>Overview</a>
+        <a href="/book/markets" {{if eq .Current "markets"}}aria-current="page"{{end}}>Markets</a>
         <a href="/book/wagers" {{if eq .Current "wagers"}}aria-current="page"{{end}}>Wagers</a>
         <a href="/book/ledger" {{if eq .Current "ledger"}}aria-current="page"{{end}}>Ledger</a>
-        {{if or (eq .Session.Role "admin") (eq .Session.Role "owner")}}<a href="/admin" {{if eq .Current "admin"}}aria-current="page"{{end}}>Admin</a>{{end}}
+        {{if or (eq .Session.Role "admin") (eq .Session.Role "owner")}}
+        <a href="/admin" {{if eq .Current "admin"}}aria-current="page"{{end}}>Admin</a>
+        <a href="/admin/markets" {{if eq .Current "admin-markets"}}aria-current="page"{{end}}>Manage markets</a>
+        <a href="/admin/wagers" {{if eq .Current "admin-wagers"}}aria-current="page"{{end}}>Review wagers</a>
+        {{end}}
       </nav>
       <a class="private-public-link" href="/">Public archive <span aria-hidden="true">&rarr;</span></a>
     </aside>
