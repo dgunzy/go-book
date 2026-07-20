@@ -29,7 +29,10 @@ func futureCreateRequest(actor, marketID string) CreateMarketRequest {
 		Type:     betting.MarketFuture,
 		Title:    "Tournament winner",
 		Currency: ledger.CAD,
-		ClosesAt: time.Now().UTC().Add(48 * time.Hour),
+		// Truncated to microseconds so the value round-trips through Postgres
+		// timestamptz unchanged; the idempotency verify compares ClosesAt
+		// exactly, and real callers supply minute-precision form times.
+		ClosesAt: time.Now().UTC().Add(48 * time.Hour).Truncate(time.Microsecond),
 		Selections: []CreateMarketSelection{
 			{Key: "team-a", DisplayTerms: "Team A wins the cup", OfferedAmericanOdds: -110},
 			{Key: "team-b", DisplayTerms: "Team B wins the cup", OfferedAmericanOdds: 150},
