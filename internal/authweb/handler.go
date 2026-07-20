@@ -83,6 +83,10 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /auth/google", h.startGoogle)
 	h.mux.HandleFunc("GET /auth/callback", h.callback)
 	h.mux.HandleFunc("POST /logout", h.logout)
+	// registerDevRoutes adds a password-free dev-login only in binaries built
+	// with the `dev` build tag; the production build compiles a no-op, so the
+	// route does not exist in the shipped image at all.
+	h.registerDevRoutes()
 }
 
 func (h *Handler) SessionReader() *SessionReader {

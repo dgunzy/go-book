@@ -17,7 +17,7 @@ func TestRunCommandRejectsUnknownCommand(t *testing.T) {
 	err := runCommand(context.Background(), logger, []string{"unknown"}, func(string) (string, bool) {
 		return "", false
 	})
-	if err == nil || err.Error() != "usage: cabot-cup [migrate|legacy-book-report|legacy-book-promote|bootstrap-owner]" {
+	if err == nil || err.Error() != "usage: cabot-cup [migrate|legacy-book-report|legacy-book-promote|bootstrap-owner|mock-seed]" {
 		t.Fatalf("error = %v", err)
 	}
 }
@@ -142,5 +142,35 @@ func TestBootstrapOwnerValidatesInputBeforeConnecting(t *testing.T) {
 				t.Fatalf("error = %v, want %q", err, testCase.want)
 			}
 		})
+	}
+}
+
+func TestMockSeedRefusedInProduction(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	err := runCommand(context.Background(), logger, []string{"mock-seed"}, func(key string) (string, bool) {
+		switch key {
+		case "APP_ENV":
+			return "production", true
+		case "DATABASE_URL":
+			return "postgres://ignored", true
+		}
+		return "", false
+	})
+	if err == nil || err.Error() != "mock-seed is not allowed when APP_ENV=production" {
+		t.Fatalf("error = %v, want production refusal", err)
+	}
+}
+
+func TestMockSeedRequiresDatabaseURL(t *testing.T) {
+	t.Parallel()
+
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	err := runCommand(context.Background(), logger, []string{"mock-seed"}, func(string) (string, bool) {
+		return "", false
+	})
+	if err == nil || err.Error() != "DATABASE_URL is required for mock-seed" {
+		t.Fatalf("error = %v, want DATABASE_URL requirement", err)
 	}
 }

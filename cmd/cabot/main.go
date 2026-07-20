@@ -63,8 +63,10 @@ func runCommand(ctx context.Context, logger *slog.Logger, arguments []string, lo
 		return runLegacyBook(ctx, logger, lookup, true, os.Stdout)
 	case len(arguments) == 1 && arguments[0] == "bootstrap-owner":
 		return runBootstrapOwner(ctx, logger, lookup, os.Stdout)
+	case len(arguments) == 1 && arguments[0] == "mock-seed":
+		return runMockSeed(ctx, logger, lookup, os.Stdout)
 	default:
-		return fmt.Errorf("usage: cabot-cup [migrate|legacy-book-report|legacy-book-promote|bootstrap-owner]")
+		return fmt.Errorf("usage: cabot-cup [migrate|legacy-book-report|legacy-book-promote|bootstrap-owner|mock-seed]")
 	}
 }
 
@@ -132,7 +134,10 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		if err != nil {
 			return fmt.Errorf("build betting web handler: %w", err)
 		}
-		for _, path := range []string{"/login", "/auth/google", "/auth/callback", "/logout"} {
+		// /dev/login is served only by binaries built with the `dev` build
+		// tag; the production image returns 404 for it because authweb does
+		// not register the route there.
+		for _, path := range []string{"/login", "/auth/google", "/auth/callback", "/logout", "/dev/login"} {
 			applicationHandler.Handle(path, authHandler)
 		}
 		applicationHandler.Handle("/book", privateHandler)
