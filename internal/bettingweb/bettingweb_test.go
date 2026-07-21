@@ -438,3 +438,57 @@ func TestAdminCreateMarketParsesDynamicPricing(t *testing.T) {
 		t.Fatalf("PricingLiquidityCents = %d, want 150000", req.PricingLiquidityCents)
 	}
 }
+
+func TestPlaceWagerAutoApprovesUnderThreshold(t *testing.T) {
+	wagers := &fakeWagers{}
+	h, err := New(Dependencies{
+		Sessions: fakeSessions{session: memberSession()},
+		Markets:  &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}},
+		Wagers:   wagers, AutoApproveMaxCents: 10_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := url.Values{
+		"csrf_token": {testCSRF}, "market_id": {testMarketID}, "selection_id": {testSelID},
+		"idempotency_key": {testIdem}, "stake": {"25.00"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/book/wagers", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d body=%q", w.Code, w.Body.String())
+	}
+	if len(wagers.acceptCalls) != 1 {
+		t.Fatalf("AcceptWager calls = %d, want 1 (auto-approved)", len(wagers.acceptCalls))
+	}
+}
+
+func TestPlaceWagerOverThresholdStaysPending(t *testing.T) {
+	wagers := &fakeWagers{}
+	h, err := New(Dependencies{
+		Sessions: fakeSessions{session: memberSession()},
+		Markets:  &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}},
+		Wagers:   wagers, AutoApproveMaxCents: 1_000, // $10 threshold
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := url.Values{
+		"csrf_token": {testCSRF}, "market_id": {testMarketID}, "selection_id": {testSelID},
+		"idempotency_key": {testIdem}, "stake": {"25.00"}, // $25 > $10
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/book/wagers", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d", w.Code)
+	}
+	if len(wagers.acceptCalls) != 0 {
+		t.Fatalf("AcceptWager calls = %d, want 0 (over threshold, manual)", len(wagers.acceptCalls))
+	}
+}

@@ -2,6 +2,7 @@ package bettingpg
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -198,6 +199,87 @@ func TestPricingConsumerMovesLine(t *testing.T) {
 	// Redelivery is safe.
 	if err := consumer.Handle(ctx, envelope); err != nil {
 		t.Fatalf("consumer redelivery error = %v", err)
+	}
+}
+
+func TestAutoApproveAcceptsWithSystemActor(t *testing.T) {
+	pool := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	store := Store{DB: pool}
+
+	f := buildFixture(t, ctx, pool, 200_000)
+	wagerID := mustNewUUID(t, ctx, store)
+	wager, err := store.PlaceWager(ctx, PlaceWagerRequest{
+		WagerID: wagerID, UserID: f.UserA, MarketID: f.MarketID, SelectionID: f.SelectionAID,
+		FundingAccountType: betting.FundingUserCash, StakeCents: 2_500, Currency: f.Currency,
+		IdempotencyKey: "auto-approve:" + f.Suffix,
+	})
+	if err != nil {
+		t.Fatalf("PlaceWager() error = %v", err)
+	}
+
+	accepted, err := store.AcceptWager(ctx, string(wager.ID), AutoApproveActor)
+	if err != nil {
+		t.Fatalf("AcceptWager(system) error = %v", err)
+	}
+	if accepted.State != betting.WagerAccepted {
+		t.Fatalf("state = %v, want accepted", accepted.State)
+	}
+	var acceptedByNull bool
+	if err := pool.QueryRow(ctx, `SELECT accepted_by IS NULL FROM wagers WHERE id = $1::uuid`, string(wager.ID)).Scan(&acceptedByNull); err != nil {
+		t.Fatal(err)
+	}
+	if !acceptedByNull {
+		t.Fatal("auto-approved wager should record accepted_by NULL for the system actor")
+	}
+}
+
+func TestAcceptInvalidatesWagerWhenLineMovedWhilePending(t *testing.T) {
+	pool := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	store := Store{DB: pool}
+
+	marketID, users, selections := buildPricedMarket(t, ctx, pool, store, 500_000, 200_000)
+	north := selections[0]
+	admin := makeUser(t, ctx, pool, "Invalidate Admin")
+
+	// Bettor A places on north and is left pending (quoted the opening -110).
+	wagerAID := mustNewUUID(t, ctx, store)
+	wagerA, err := store.PlaceWager(ctx, PlaceWagerRequest{
+		WagerID: wagerAID, UserID: users[0], MarketID: marketID, SelectionID: north,
+		FundingAccountType: betting.FundingUserCash, StakeCents: 1_000, Currency: ledger.CAD,
+		IdempotencyKey: "invalidate-a:" + wagerAID,
+	})
+	if err != nil {
+		t.Fatalf("PlaceWager(A) error = %v", err)
+	}
+	if wagerA.State != betting.WagerPending {
+		t.Fatalf("A state = %v, want pending", wagerA.State)
+	}
+
+	// Bettor B's accepted action then moves the line while A is still pending.
+	wagerB := placeAndAcceptSelection(t, ctx, store, marketID, users[1], north, 100_000, "invalidate-b")
+	_ = wagerB
+	changed, err := store.RepriceMarketAfterWager(ctx, marketID, wagerAID)
+	if err != nil {
+		t.Fatalf("RepriceMarketAfterWager() error = %v", err)
+	}
+	if !changed {
+		t.Fatal("line did not move; cannot exercise the stale-wager path")
+	}
+
+	// Accepting A's now-stale wager must be refused and the wager invalidated.
+	if _, err := store.AcceptWager(ctx, string(wagerA.ID), admin); !errors.Is(err, betting.ErrOddsMoved) {
+		t.Fatalf("AcceptWager(stale A) error = %v, want ErrOddsMoved", err)
+	}
+	assertWagerState(t, ctx, pool, string(wagerA.ID), "rejected")
+
+	// No escrow moved for the rejected wager: A keeps their full balance.
+	balanceA := accountBalanceFor(t, ctx, pool, users[0], "user_cash", ledger.CAD)
+	if balanceA != 200_000 {
+		t.Fatalf("A balance after invalidation = %d, want 200000 (untouched)", balanceA)
 	}
 }
 

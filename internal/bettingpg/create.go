@@ -50,6 +50,10 @@ type CreateMarketRequest struct {
 // malformed request cannot insert an unbounded number of rows.
 const maxSelectionsPerMarket = 20
 
+// DefaultPricingLiquidityCents is the line-movement sensitivity ("b") applied
+// when dynamic pricing is enabled without an explicit value: $500.
+const DefaultPricingLiquidityCents = 50_000
+
 // CreateMarket validates the market and its selections through the domain
 // rules in internal/betting, then persists them atomically together with a
 // MarketCreated outbox event. The market is created in draft state; wagers
@@ -79,7 +83,9 @@ func (s Store) CreateMarket(ctx context.Context, req CreateMarketRequest) (betti
 	}
 	if req.DynamicPricing {
 		if req.PricingLiquidityCents <= 0 {
-			return betting.Market{}, fmt.Errorf("%w: dynamic pricing requires a positive liquidity", betting.ErrInvalid)
+			// Default the line-movement sensitivity so admins never have to
+			// enter it: $500 moves the line a moderate amount per bet.
+			req.PricingLiquidityCents = DefaultPricingLiquidityCents
 		}
 		if len(req.Selections) < 2 {
 			return betting.Market{}, fmt.Errorf("%w: dynamic pricing requires at least two selections", betting.ErrInvalid)

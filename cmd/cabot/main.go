@@ -133,6 +133,7 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		bettingStore := bettingpg.Store{DB: pool}
 		bettingHandler, err := bettingweb.New(bettingweb.Dependencies{
 			Sessions: authHandler.SessionReader(), Markets: bettingStore, Wagers: bettingStore,
+			AutoApproveMaxCents: applicationConfig.WagerAutoApproveMaxCents,
 		})
 		if err != nil {
 			return fmt.Errorf("build betting web handler: %w", err)
@@ -159,6 +160,7 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 			"/book/markets", "/book/wagers",
 			"/admin/markets", "/admin/markets/",
 			"/admin/wagers", "/admin/wagers/",
+			"/admin/help",
 		} {
 			applicationHandler.Handle(path, bettingHandler)
 		}

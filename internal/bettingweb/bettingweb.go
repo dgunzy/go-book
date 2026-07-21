@@ -79,13 +79,18 @@ type Dependencies struct {
 	Sessions SessionReader
 	Markets  MarketStore
 	Wagers   WagerStore
+	// AutoApproveMaxCents is the largest stake accepted automatically on
+	// placement; larger wagers stay pending for manual approval. Zero disables
+	// auto-approval.
+	AutoApproveMaxCents int64
 }
 
 type Handler struct {
-	mux       *http.ServeMux
-	deps      Dependencies
-	templates map[string]*template.Template
-	newID     func() (string, error)
+	mux                 *http.ServeMux
+	deps                Dependencies
+	templates           map[string]*template.Template
+	newID               func() (string, error)
+	autoApproveMaxCents int64
 }
 
 func New(deps Dependencies) (*Handler, error) {
@@ -98,6 +103,7 @@ func New(deps Dependencies) (*Handler, error) {
 	}
 	handler := &Handler{
 		mux: http.NewServeMux(), deps: deps, templates: templates,
+		autoApproveMaxCents: deps.AutoApproveMaxCents,
 		newID: func() (string, error) {
 			id, err := betting.NewEventID()
 			return string(id), err
@@ -127,6 +133,21 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /admin/wagers", h.adminWagers)
 	h.mux.HandleFunc("POST /admin/wagers/{id}/accept", h.adminAcceptWager)
 	h.mux.HandleFunc("POST /admin/wagers/{id}/reject", h.adminRejectWager)
+	h.mux.HandleFunc("GET /admin/help", h.adminHelp)
+}
+
+// adminHelp renders the static how-to guide for admins and owners. When any
+// user-facing behavior changes, update templates/admin_help.gohtml to match
+// (see AGENTS.md).
+func (h *Handler) adminHelp(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	h.render(w, "admin_help", pageData{
+		Title: "How to run the book", Current: "admin-help", Session: session,
+		AutoApproveDollars: formatCentsDollars(h.autoApproveMaxCents),
+	})
 }
 
 // --- view models -----------------------------------------------------------
@@ -156,6 +177,18 @@ type pageData struct {
 	Form           url.Values
 	NewMarketID    string
 	SelectionSlots []int
+	// AutoApproveDollars is the human-readable auto-approve threshold shown on
+	// the help page.
+	AutoApproveDollars string
+}
+
+// formatCentsDollars renders an integer-cents amount as a plain dollar string
+// (no currency symbol), e.g. 10000 -> "100.00".
+func formatCentsDollars(cents int64) string {
+	if cents < 0 {
+		cents = 0
+	}
+	return fmt.Sprintf("%d.%02d", cents/100, cents%100)
 }
 
 type fragmentData struct {
@@ -256,9 +289,21 @@ func (h *Handler) placeWager(w http.ResponseWriter, r *http.Request) {
 		h.failPost(w, r, session, status, message, "/book/markets")
 		return
 	}
+
+	// Auto-approve small wagers immediately; larger ones wait for an admin. A
+	// failed auto-accept (e.g. insufficient funds) simply leaves the wager
+	// pending for manual review rather than surfacing an error to the bettor.
+	message := "Wager placed."
 	detail := fmt.Sprintf("%s at %s for %s. It is pending admin approval.",
 		wager.AcceptedTerms, formatOdds(wager.AcceptedOdds), formatMoney(wager.Stake))
-	h.completePost(w, r, redirectBookWagers, "Wager placed.", detail)
+	if h.autoApproveMaxCents > 0 && stakeCents <= h.autoApproveMaxCents {
+		if accepted, acceptErr := h.deps.Wagers.AcceptWager(r.Context(), string(wager.ID), bettingpg.AutoApproveActor); acceptErr == nil {
+			message = "Wager accepted."
+			detail = fmt.Sprintf("%s at %s for %s. Auto-approved and held in escrow.",
+				accepted.AcceptedTerms, formatOdds(accepted.AcceptedOdds), formatMoney(accepted.Stake))
+		}
+	}
+	h.completePost(w, r, redirectBookWagers, message, detail)
 }
 
 // --- admin routes ----------------------------------------------------------
@@ -290,7 +335,7 @@ func (h *Handler) adminMarketNew(w http.ResponseWriter, r *http.Request) {
 	}
 	h.render(w, "admin_market_new", pageData{
 		Title: "New market", Current: "admin-markets", Session: session,
-		NewMarketID: marketID, Form: url.Values{}, SelectionSlots: selectionSlots(),
+		NewMarketID: marketID, Form: defaultMarketForm(), SelectionSlots: selectionSlots(),
 	})
 }
 
@@ -699,6 +744,12 @@ func storeErrorStatus(err error) (int, string) {
 
 // --- create-market form parsing --------------------------------------------
 
+// defaultMarketForm pre-fills a fresh create-market form so dynamic pricing is
+// on with a $500 liquidity by default and the admin need not enter it.
+func defaultMarketForm() url.Values {
+	return url.Values{"dynamic_pricing": {"1"}, "pricing_liquidity": {"500.00"}, "currency": {"CAD"}}
+}
+
 func selectionSlots() []int {
 	slots := make([]int, selectionSlot)
 	for i := range slots {
@@ -735,13 +786,18 @@ func parseCreateMarketForm(form url.Values) (bettingpg.CreateMarketRequest, stri
 	}
 	request.Currency = currency
 
-	if form.Get("dynamic_pricing") != "" {
-		request.DynamicPricing = true
-		liquidityCents, err := parseStakeCents(form.Get("pricing_liquidity"))
-		if err != nil {
-			return request, "Enter the pricing liquidity as a dollar amount, for example 500 (larger moves the line less)."
+	// Dynamic pricing is enabled by default (the checkbox is pre-checked); an
+	// admin only turns it off by unchecking it. When on, the liquidity is
+	// optional and defaults to $500 in the store, so it never has to be typed.
+	request.DynamicPricing = form.Get("dynamic_pricing") != ""
+	if request.DynamicPricing {
+		if raw := strings.TrimSpace(form.Get("pricing_liquidity")); raw != "" {
+			liquidityCents, err := parseStakeCents(raw)
+			if err != nil {
+				return request, "Enter the pricing liquidity as a dollar amount, for example 500 (larger moves the line less)."
+			}
+			request.PricingLiquidityCents = liquidityCents
 		}
-		request.PricingLiquidityCents = liquidityCents
 	}
 
 	closesAt, err := parseFormTime(form.Get("closes_at"))
@@ -863,6 +919,7 @@ func parseTemplates() (map[string]*template.Template, error) {
 		"admin_market_new":    "templates/admin_market_new.gohtml",
 		"admin_market_settle": "templates/admin_market_settle.gohtml",
 		"admin_wagers":        "templates/admin_wagers.gohtml",
+		"admin_help":          "templates/admin_help.gohtml",
 		"message":             "templates/betting_message.gohtml",
 		"forbidden":           "templates/private_forbidden.gohtml",
 	}

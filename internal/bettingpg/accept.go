@@ -2,14 +2,21 @@ package bettingpg
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/dgunzy/go-book/internal/betting"
 	"github.com/dgunzy/go-book/internal/eventspg"
+	"github.com/dgunzy/go-book/internal/ledger"
 	"github.com/jackc/pgx/v5"
 )
+
+// AutoApproveActor is the actor recorded on wagers accepted automatically by
+// the auto-approve policy rather than by a human admin. It is intentionally
+// not a UUID, so accepted_by and the ledger actor are left NULL.
+const AutoApproveActor = "system:auto-approve"
 
 // AcceptWager approves a pending wager, moving its stake from the user's
 // funding account to the shared escrow account. Idempotency is guaranteed by
@@ -67,6 +74,15 @@ func (s Store) AcceptWager(ctx context.Context, wagerID, actorUserID string) (be
 		return betting.Wager{}, ErrInsufficientFunds
 	}
 
+	// The line the wager's selection is offered at right now. If it no longer
+	// matches the odds snapshotted when the wager was placed, the line moved
+	// while the wager was pending; the domain refuses acceptance and the stale
+	// wager is invalidated (rejected) rather than filled at a stale price.
+	currentOdds, err := currentSelectionOdds(ctx, tx, string(wager.SelectionID))
+	if err != nil {
+		return betting.Wager{}, err
+	}
+
 	eventID, err := betting.NewEventID()
 	if err != nil {
 		return betting.Wager{}, err
@@ -74,7 +90,10 @@ func (s Store) AcceptWager(ctx context.Context, wagerID, actorUserID string) (be
 	result, err := betting.AcceptWager(wager, betting.ID(actorUserID), time.Now(), betting.AcceptanceAccountRefs{
 		UserFundingAccountID: userAccountID,
 		EscrowAccountID:      escrowAccountID,
-	}, eventID)
+	}, currentOdds, eventID)
+	if errors.Is(err, betting.ErrOddsMoved) {
+		return s.invalidateStaleWager(ctx, tx, wager, actorUserID)
+	}
 	if err != nil {
 		return betting.Wager{}, err
 	}
@@ -84,11 +103,15 @@ func (s Store) AcceptWager(ctx context.Context, wagerID, actorUserID string) (be
 		return betting.Wager{}, err
 	}
 
+	acceptedBy := actorUserID
+	if !isUUID(acceptedBy) {
+		acceptedBy = "" // a system actor (auto-approve) leaves accepted_by NULL
+	}
 	tag, err := tx.Exec(ctx, `
 		UPDATE wagers
-		SET state = 'accepted', accepted_at = $2, accepted_by = $3::uuid, acceptance_ledger_transaction_id = $4::uuid
+		SET state = 'accepted', accepted_at = $2, accepted_by = nullif($3, '')::uuid, acceptance_ledger_transaction_id = $4::uuid
 		WHERE id = $1::uuid AND state = 'pending'`,
-		wagerID, result.Wager.PlacedAt, actorUserID, transactionID)
+		wagerID, result.Wager.PlacedAt, acceptedBy, transactionID)
 	if err != nil {
 		return betting.Wager{}, fmt.Errorf("update wager to accepted: %w", err)
 	}
@@ -104,6 +127,36 @@ func (s Store) AcceptWager(ctx context.Context, wagerID, actorUserID string) (be
 		return betting.Wager{}, fmt.Errorf("commit accept wager: %w", err)
 	}
 	return result.Wager, nil
+}
+
+func currentSelectionOdds(ctx context.Context, tx pgx.Tx, selectionID string) (ledger.AmericanOdds, error) {
+	var odds int32
+	if err := tx.QueryRow(ctx, `SELECT offered_american_odds FROM selections WHERE id = $1::uuid`, selectionID).Scan(&odds); err != nil {
+		return 0, fmt.Errorf("load current selection odds: %w", err)
+	}
+	return ledger.NewAmericanOdds(odds)
+}
+
+// invalidateStaleWager rejects a pending wager whose quoted line has moved,
+// committing the rejection and returning ErrOddsMoved so the caller can tell
+// the bettor to re-place at the current line. A system (auto-approve) actor
+// cannot be recorded as the rejecter, but auto-approval accepts immediately at
+// placement so the line cannot have moved in that path.
+func (s Store) invalidateStaleWager(ctx context.Context, tx pgx.Tx, wager betting.Wager, actorUserID string) (betting.Wager, error) {
+	if !isUUID(actorUserID) {
+		return betting.Wager{}, betting.ErrOddsMoved
+	}
+	const reason = "line moved since placement"
+	if _, err := tx.Exec(ctx, `
+		UPDATE wagers SET state = 'rejected', rejected_at = now(), rejected_by = $2::uuid, rejection_reason = $3
+		WHERE id = $1::uuid AND state = 'pending'`, string(wager.ID), actorUserID, reason); err != nil {
+		return betting.Wager{}, fmt.Errorf("invalidate stale wager: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return betting.Wager{}, fmt.Errorf("commit stale wager rejection: %w", err)
+	}
+	wager.State = betting.WagerRejected
+	return wager, betting.ErrOddsMoved
 }
 
 // verifyAcceptance checks that an already-accepted wager's acceptance ledger

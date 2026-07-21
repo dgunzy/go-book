@@ -14,6 +14,7 @@ var (
 	ErrAlreadyExists       = errors.New("betting record already exists")
 	ErrIdempotencyConflict = errors.New("idempotency key was reused for a different command")
 
+	ErrOddsMoved           = errors.New("the offered line moved since the wager was placed")
 	ErrMarketNotOpen       = errors.New("market is not open for wagers")
 	ErrSelectionInactive   = errors.New("selection is not active")
 	ErrSelectionMismatch   = errors.New("selection does not belong to the market")

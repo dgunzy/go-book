@@ -635,3 +635,14 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
   padding: 0.1rem 0.4rem; border-radius: 0.4rem;
   background: var(--muted-soft, #f0f0f2); color: var(--muted, #6b7280); vertical-align: middle;
 }
+
+/* Admin help page */
+.help-section { margin: 1.5rem 0; max-width: 60ch; }
+.help-section h2 { margin-bottom: 0.4rem; }
+.help-section ul { margin: 0.4rem 0 0.4rem 1.1rem; }
+.help-section li { margin: 0.25rem 0; }
+.help-callout {
+  background: var(--accent-soft, #e6f0ff);
+  border-left: 3px solid var(--accent-strong, #1f4fd6);
+  padding: 0.6rem 0.9rem; border-radius: 0 0.4rem 0.4rem 0; margin: 0.6rem 0;
+}

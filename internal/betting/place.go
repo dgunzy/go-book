@@ -135,8 +135,13 @@ type AcceptWagerResult struct {
 
 // AcceptWager moves a pending wager to accepted. The stake moves from the
 // user's funding account to a shared escrow account in one balanced
-// transaction. Actor is the approving admin's user ID.
-func AcceptWager(wager Wager, actor ID, occurredAt time.Time, refs AcceptanceAccountRefs, eventID ID) (AcceptWagerResult, error) {
+// transaction. Actor is the approving admin's user ID (or a system actor for
+// auto-approval). currentOdds is the line currently offered for the wager's
+// selection; if it differs from the odds snapshotted when the wager was
+// placed, the line moved while the wager was pending and ErrOddsMoved is
+// returned so the caller can invalidate the stale bet rather than accept it at
+// a price no longer on offer.
+func AcceptWager(wager Wager, actor ID, occurredAt time.Time, refs AcceptanceAccountRefs, currentOdds ledger.AmericanOdds, eventID ID) (AcceptWagerResult, error) {
 	if err := wager.Validate(); err != nil {
 		return AcceptWagerResult{}, err
 	}
@@ -145,6 +150,9 @@ func AcceptWager(wager Wager, actor ID, occurredAt time.Time, refs AcceptanceAcc
 	}
 	if !validID(actor) {
 		return AcceptWagerResult{}, ErrUnauthorized
+	}
+	if wager.AcceptedOdds != currentOdds {
+		return AcceptWagerResult{}, ErrOddsMoved
 	}
 	if err := refs.validate(); err != nil {
 		return AcceptWagerResult{}, err

@@ -1,0 +1,55 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Book administration</p><h1>How to run the book</h1></div>
+  <p>A quick guide to the day-to-day flow. Keep this page open the first few times.</p>
+</header>
+
+<section class="help-section" aria-labelledby="help-roles">
+  <h2 id="help-roles">Who can do what</h2>
+  <ul>
+    <li><strong>Member</strong> — browses open markets and places wagers.</li>
+    <li><strong>Admin</strong> — everything a member can, plus creating markets, accepting/rejecting wagers, settling markets, and inviting members.</li>
+    <li><strong>Owner</strong> — everything an admin can, plus inviting admins and changing or revoking roles on the <a href="/admin/members">Members</a> page.</li>
+  </ul>
+</section>
+
+<section class="help-section" aria-labelledby="help-create">
+  <h2 id="help-create">Creating a market</h2>
+  <p>Go to <a href="/admin/markets/new">Manage markets → Create a market</a>. Choose a type:</p>
+  <ul>
+    <li><strong>Future</strong> or <strong>Prop</strong> — a standalone market (e.g. "Who wins the Cabot Cup?"). <strong>These need no match ID.</strong> Use these for almost everything today.</li>
+    <li><strong>Match</strong> — tied to a specific head-to-head match so it can settle <em>automatically</em> from the verified result.</li>
+  </ul>
+  <p class="help-callout"><strong>Where does the match ID come from?</strong> A match ID is the identifier of a match recorded in the competition system. Creating matches from the admin UI is not built yet, so for now use <strong>Future</strong> or <strong>Prop</strong> markets (which don't ask for a match ID) and settle them by hand. Automatic match settlement will light up once match creation is added.</p>
+  <p>Add at least two <strong>selections</strong> (the bettable outcomes), each with display terms and American odds (e.g. <code>-110</code> or <code>+150</code>). The market is created in <strong>draft</strong>; click <strong>Open</strong> when you're ready to take bets, and <strong>Close</strong> to stop taking them.</p>
+</section>
+
+<section class="help-section" aria-labelledby="help-pricing">
+  <h2 id="help-pricing">Dynamic pricing (the line moves on its own)</h2>
+  <p>New markets have <strong>dynamic pricing on by default</strong>, with a $500 liquidity — you don't need to enter anything. As accepted action comes in, the line automatically shortens on the heavily-backed side and lengthens on the other to balance the book. A larger liquidity moves the line less per bet; uncheck the box to keep a fixed line.</p>
+  <p>A bettor is <strong>locked in at the odds they were shown</strong> when they placed. The move only affects the next bettor. If the line moves while a bet is still pending, that pending bet is <strong>invalidated</strong> when reviewed (it can't be filled at a price no longer offered) and the member must re-place.</p>
+</section>
+
+<section class="help-section" aria-labelledby="help-wagers">
+  <h2 id="help-wagers">Wagers and approval</h2>
+  <p>Members place wagers from <a href="/book/markets">Markets</a>. What happens next depends on the stake:</p>
+  <ul>
+    <li>Stakes up to <strong>${{.AutoApproveDollars}}</strong> are <strong>auto-approved</strong> — accepted immediately and the stake is moved to escrow.</li>
+    <li>Larger stakes stay <strong>pending</strong> and appear under <a href="/admin/wagers">Review wagers</a>, where you <strong>Accept</strong> or <strong>Reject</strong> (with a reason) each one.</li>
+  </ul>
+  <p>The auto-approve threshold is a book-wide setting; ask your operator to change it if needed.</p>
+</section>
+
+<section class="help-section" aria-labelledby="help-settle">
+  <h2 id="help-settle">Settling a market</h2>
+  <ul>
+    <li><strong>Match</strong> markets settle automatically once the match result is verified.</li>
+    <li><strong>Future</strong> and <strong>Prop</strong> markets are settled by hand: open the market's <strong>Settle / void</strong> page, mark each selection win / loss / push (or void the whole market), and give a reason. Winning wagers are paid from escrow; a void refunds every stake.</li>
+  </ul>
+</section>
+
+<section class="help-section" aria-labelledby="help-members">
+  <h2 id="help-members">Adding people</h2>
+  <p>On the <a href="/admin/members">Members</a> page, generate a one-time <strong>invite link</strong> and send it to someone. They open it, sign in with Google, and join automatically — no need to pre-enter their email. Admins can invite members; only an owner can invite admins or change roles.</p>
+</section>
+{{end}}

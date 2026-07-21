@@ -30,6 +30,10 @@ type Config struct {
 	SessionTTL        time.Duration
 	LoginAttemptTTL   time.Duration
 	ShutdownTimeout   time.Duration
+	// WagerAutoApproveMaxCents is the largest stake (in cents) that is accepted
+	// automatically on placement; larger wagers wait for manual admin approval.
+	// Zero disables auto-approval entirely.
+	WagerAutoApproveMaxCents int64
 }
 
 // Load reads and validates configuration using lookup. Passing os.LookupEnv keeps
@@ -63,6 +67,11 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		"SHUTDOWN_TIMEOUT",
 		valueOrDefault(lookup, "SHUTDOWN_TIMEOUT", defaultShutdownTimeout.String()),
 	)
+	if err != nil {
+		return Config{}, err
+	}
+
+	autoApproveMaxCents, err := parseAutoApproveThreshold(valueOrDefault(lookup, "WAGER_AUTO_APPROVE_MAX_CENTS", strconv.FormatInt(defaultAutoApproveMaxCents, 10)))
 	if err != nil {
 		return Config{}, err
 	}
@@ -106,20 +115,32 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 
 	return Config{
-		Environment:       environment,
-		Address:           net.JoinHostPort(host, strconv.Itoa(port)),
-		PublicBaseURL:     publicBaseURL,
-		PrivateAppEnabled: privateEnabled,
-		DatabaseMode:      databaseMode,
-		DatabaseURL:       databaseURL,
-		OIDCIssuerURL:     oidcIssuerURL,
-		OIDCClientID:      oidcClientID,
-		OIDCClientSecret:  oidcClientSecret,
-		OIDCRedirectURL:   oidcRedirectURL,
-		SessionTTL:        sessionTTL,
-		LoginAttemptTTL:   loginAttemptTTL,
-		ShutdownTimeout:   shutdownTimeout,
+		Environment:              environment,
+		Address:                  net.JoinHostPort(host, strconv.Itoa(port)),
+		PublicBaseURL:            publicBaseURL,
+		PrivateAppEnabled:        privateEnabled,
+		DatabaseMode:             databaseMode,
+		DatabaseURL:              databaseURL,
+		OIDCIssuerURL:            oidcIssuerURL,
+		OIDCClientID:             oidcClientID,
+		OIDCClientSecret:         oidcClientSecret,
+		OIDCRedirectURL:          oidcRedirectURL,
+		SessionTTL:               sessionTTL,
+		LoginAttemptTTL:          loginAttemptTTL,
+		ShutdownTimeout:          shutdownTimeout,
+		WagerAutoApproveMaxCents: autoApproveMaxCents,
 	}, nil
+}
+
+// defaultAutoApproveMaxCents is the default largest auto-approved stake: $100.
+const defaultAutoApproveMaxCents = 10_000
+
+func parseAutoApproveThreshold(value string) (int64, error) {
+	cents, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || cents < 0 {
+		return 0, fmt.Errorf("WAGER_AUTO_APPROVE_MAX_CENTS must be a non-negative integer number of cents")
+	}
+	return cents, nil
 }
 
 const (
