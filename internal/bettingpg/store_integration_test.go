@@ -371,6 +371,11 @@ func TestAcceptWagerInsufficientFunds(t *testing.T) {
 	store := Store{DB: pool}
 
 	f := buildFixture(t, ctx, pool, 500)
+	// Remove the default credit line so a stake above the cash balance is
+	// genuinely insufficient rather than covered by credit.
+	if _, err := pool.Exec(ctx, `UPDATE users SET credit_limit_cents = 0 WHERE id = $1::uuid`, f.UserA); err != nil {
+		t.Fatal(err)
+	}
 
 	wagerID, err := betting.NewEventID()
 	if err != nil {
