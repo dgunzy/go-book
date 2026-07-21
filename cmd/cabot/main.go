@@ -21,6 +21,7 @@ import (
 	"github.com/dgunzy/go-book/internal/eventspg"
 	"github.com/dgunzy/go-book/internal/identity"
 	"github.com/dgunzy/go-book/internal/identitypg"
+	"github.com/dgunzy/go-book/internal/membersweb"
 	"github.com/dgunzy/go-book/internal/migration/publicseed"
 	"github.com/dgunzy/go-book/internal/migration/schema"
 	"github.com/dgunzy/go-book/internal/oidcclient"
@@ -136,6 +137,13 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		if err != nil {
 			return fmt.Errorf("build betting web handler: %w", err)
 		}
+		membersHandler, err := membersweb.New(membersweb.Dependencies{
+			Sessions: authHandler.SessionReader(), Members: identitypg.Store{Pool: pool},
+			PublicBaseURL: applicationConfig.PublicBaseURL.String(),
+		})
+		if err != nil {
+			return fmt.Errorf("build members web handler: %w", err)
+		}
 		// /dev/login is served only by binaries built with the `dev` build
 		// tag; the production image returns 404 for it because authweb does
 		// not register the route there.
@@ -154,6 +162,9 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		} {
 			applicationHandler.Handle(path, bettingHandler)
 		}
+		applicationHandler.Handle("/admin/members", membersHandler)
+		applicationHandler.Handle("/admin/members/", membersHandler)
+		applicationHandler.Handle("/invite/", authHandler)
 
 		dispatcher, err = newOutboxDispatcher(pool, logger)
 		if err != nil {

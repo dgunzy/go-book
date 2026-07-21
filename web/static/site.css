@@ -611,3 +611,27 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
   color: var(--muted, #6b7280);
   margin: 0.4rem 0 0;
 }
+
+/* Member management */
+.members-section { margin: 1.5rem 0; }
+.members-notice {
+  background: var(--accent-soft, #e6f0ff);
+  border: 1px solid var(--accent-strong, #1f4fd6);
+  color: var(--accent-strong, #1f4fd6);
+  padding: 0.6rem 0.9rem; border-radius: 0.5rem;
+}
+.members-invite-link { margin: 0.75rem 0; display: grid; gap: 0.35rem; }
+.members-invite-link input {
+  width: 100%; padding: 0.5rem; font-family: ui-monospace, monospace; font-size: 0.9rem;
+}
+.members-invite-form { max-width: 42rem; }
+.members-role-form, .members-revoke-form {
+  display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin: 0.2rem 0;
+}
+.members-role-form input, .members-revoke-form input { width: auto; flex: 1 1 8rem; }
+.members-revoke-button { background: var(--danger, #b42318); color: #fff; }
+.members-pending-badge {
+  font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em;
+  padding: 0.1rem 0.4rem; border-radius: 0.4rem;
+  background: var(--muted-soft, #f0f0f2); color: var(--muted, #6b7280); vertical-align: middle;
+}

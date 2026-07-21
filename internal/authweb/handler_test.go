@@ -57,6 +57,9 @@ type fakeIdentitySessions struct {
 	completeIdentity          identity.VerifiedIdentity
 	completeResult            identity.IssuedSession
 	completeErr               error
+	invitedToken              string
+	invitedResult             identity.IssuedSession
+	invitedErr                error
 	resumeToken               string
 	resumeResult              identity.AuthenticatedSession
 	resumeErr                 error
@@ -66,6 +69,15 @@ type fakeIdentitySessions struct {
 
 func (f *fakeIdentitySessions) CompleteSignIn(_ context.Context, verified identity.VerifiedIdentity) (identity.IssuedSession, error) {
 	f.completeIdentity = verified
+	return f.completeResult, f.completeErr
+}
+
+func (f *fakeIdentitySessions) CompleteSignInWithInvitation(_ context.Context, verified identity.VerifiedIdentity, token string) (identity.IssuedSession, error) {
+	f.completeIdentity = verified
+	f.invitedToken = token
+	if f.invitedErr != nil || f.invitedResult != (identity.IssuedSession{}) {
+		return f.invitedResult, f.invitedErr
+	}
 	return f.completeResult, f.completeErr
 }
 

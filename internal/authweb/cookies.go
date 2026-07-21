@@ -13,6 +13,7 @@ type cookieNames struct {
 	session string
 	csrf    string
 	attempt string
+	invite  string
 	secure  bool
 }
 
@@ -20,10 +21,10 @@ func namesFor(deployed bool) cookieNames {
 	if deployed {
 		return cookieNames{
 			session: "__Host-cabot_session", csrf: "__Host-cabot_csrf",
-			attempt: "__Host-cabot_oidc", secure: true,
+			attempt: "__Host-cabot_oidc", invite: "__Host-cabot_invite", secure: true,
 		}
 	}
-	return cookieNames{session: "cabot_session", csrf: "cabot_csrf", attempt: "cabot_oidc"}
+	return cookieNames{session: "cabot_session", csrf: "cabot_csrf", attempt: "cabot_oidc", invite: "cabot_invite"}
 }
 
 func (h *Handler) setAttemptCookie(w http.ResponseWriter, value string, expires time.Time) {
@@ -32,6 +33,14 @@ func (h *Handler) setAttemptCookie(w http.ResponseWriter, value string, expires 
 
 func (h *Handler) clearAttemptCookie(w http.ResponseWriter) {
 	h.clearCookie(w, h.cookies.attempt)
+}
+
+func (h *Handler) setInviteCookie(w http.ResponseWriter, token string, expires time.Time) {
+	h.setCookie(w, h.cookies.invite, token, expires)
+}
+
+func (h *Handler) clearInviteCookie(w http.ResponseWriter) {
+	h.clearCookie(w, h.cookies.invite)
 }
 
 func (h *Handler) setSessionCookies(w http.ResponseWriter, issued identity.IssuedSession) {

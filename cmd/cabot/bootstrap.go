@@ -136,6 +136,7 @@ func grantBootstrapMembership(ctx context.Context, logger *slog.Logger, lookup l
 		return fmt.Errorf("user with this email has status %q; resolve it before granting a role", status)
 	}
 
+	replace := strings.EqualFold(strings.TrimSpace(valueOrDefaultLookup(lookup, "BOOTSTRAP_REPLACE", "")), "true")
 	var activeRole string
 	err = tx.QueryRow(ctx, `SELECT role FROM memberships WHERE user_id = $1::uuid AND revoked_at IS NULL`, userID).Scan(&activeRole)
 	switch {
@@ -144,7 +145,16 @@ func grantBootstrapMembership(ctx context.Context, logger *slog.Logger, lookup l
 			fmt.Fprintf(output, "%s already holds an active %s membership; nothing to do\n", email, role)
 			return nil
 		}
-		return fmt.Errorf("user already holds an active %q membership; revoke it through the admin flow first", activeRole)
+		if !replace {
+			return fmt.Errorf("user already holds an active %q membership; set BOOTSTRAP_REPLACE=true to change it", activeRole)
+		}
+		// Revoke the prior membership (self-referential actor, since this is a
+		// pre-admin bootstrap) so the new role can be granted.
+		if _, err := tx.Exec(ctx, `
+			UPDATE memberships SET revoked_at = now(), revoked_by = $1::uuid, revocation_reason = $2
+			WHERE user_id = $1::uuid AND revoked_at IS NULL`, userID, reason); err != nil {
+			return fmt.Errorf("revoke prior membership: %w", err)
+		}
 	case !errors.Is(err, pgx.ErrNoRows):
 		return fmt.Errorf("check existing membership: %w", err)
 	}

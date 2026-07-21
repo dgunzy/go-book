@@ -1,0 +1,99 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Book administration</p><h1>Members</h1></div>
+  <p>Invite people with a one-time link. They sign in with Google and join automatically.
+     {{if not .IsOwner}}Only an owner can invite admins or change roles.{{end}}</p>
+</header>
+
+{{if .FormError}}<p class="betting-form-error" role="alert">{{.FormError}}</p>{{end}}
+{{if .Notice}}<p class="members-notice" role="status">{{.Notice}}</p>{{end}}
+{{if .InviteLink}}
+<div class="members-invite-link">
+  <label for="invite-link">Invite link (copy now)</label>
+  <input id="invite-link" type="text" readonly value="{{.InviteLink}}" onclick="this.select()">
+</div>
+{{end}}
+
+<section aria-labelledby="invite-heading" class="members-section">
+  <h2 id="invite-heading">Create an invite link</h2>
+  <form method="post" action="/admin/members/invite" class="betting-form members-invite-form">
+    <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+    <label>Role
+      <select name="role" required>
+        <option value="member" selected>Member</option>
+        {{if .IsOwner}}<option value="admin">Admin</option>{{end}}
+      </select>
+    </label>
+    <label>Restrict to email (optional)
+      <input name="email" type="email" autocomplete="off" placeholder="friend@example.com — leave blank for anyone with the link">
+    </label>
+    <div class="betting-form-actions"><button type="submit">Generate invite link</button></div>
+  </form>
+</section>
+
+{{if .Invitations}}
+<section aria-labelledby="pending-heading" class="members-section">
+  <h2 id="pending-heading">Outstanding invites</h2>
+  <div class="private-table-wrap">
+    <table class="private-table">
+      <thead><tr><th scope="col">Role</th><th scope="col">For</th><th scope="col">Issued by</th><th scope="col">Expires</th><th scope="col"></th></tr></thead>
+      <tbody>
+        {{range .Invitations}}
+        <tr>
+          <td><span class="private-status">{{.Role}}</span></td>
+          <td>{{if .IntendedEmail}}{{.IntendedEmail}}{{else}}anyone with the link{{end}}</td>
+          <td>{{.IssuedByName}}</td>
+          <td>{{when .ExpiresAt}}</td>
+          <td>
+            <form method="post" action="/admin/members/invite/{{.ID}}/revoke" class="betting-inline-form">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <button type="submit">Revoke</button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}
+
+<section aria-labelledby="members-heading" class="members-section">
+  <h2 id="members-heading">Current members</h2>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide">
+      <thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Joined</th>{{if .IsOwner}}<th scope="col">Owner actions</th>{{end}}</tr></thead>
+      <tbody>
+        {{range .Members}}
+        <tr>
+          <th scope="row">{{.DisplayName}}{{if not .IdentityLinked}} <span class="members-pending-badge" title="Approved but has not signed in yet">not signed in</span>{{end}}</th>
+          <td>{{.Email}}</td>
+          <td><span class="private-status">{{.Role}}</span></td>
+          <td>{{.Status}}</td>
+          <td>{{when .GrantedAt}}</td>
+          {{if $.IsOwner}}
+          <td class="betting-actions-cell">
+            <form method="post" action="/admin/members/{{.UserID}}/role" class="members-role-form">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <select name="role" aria-label="New role">
+                <option value="member" {{if eq .Role "member"}}selected{{end}}>member</option>
+                <option value="admin" {{if eq .Role "admin"}}selected{{end}}>admin</option>
+                <option value="owner" {{if eq .Role "owner"}}selected{{end}}>owner</option>
+              </select>
+              <input name="reason" type="text" required maxlength="500" placeholder="reason" aria-label="Reason">
+              <button type="submit">Set role</button>
+            </form>
+            <form method="post" action="/admin/members/{{.UserID}}/revoke" class="members-revoke-form">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <input name="reason" type="text" required maxlength="500" placeholder="reason to revoke" aria-label="Reason to revoke">
+              <button type="submit" class="members-revoke-button">Revoke</button>
+            </form>
+          </td>
+          {{end}}
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}

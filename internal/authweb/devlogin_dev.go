@@ -68,9 +68,17 @@ func (h *Handler) devLogin(w http.ResponseWriter, r *http.Request) {
 		Provider: "google", Subject: "dev|" + email, Email: email,
 		EmailVerified: true, DisplayName: display,
 	}
-	issued, err := h.deps.Sessions.CompleteSignIn(r.Context(), verified)
+	// Honor an invite cookie exactly as the real Google callback does, so the
+	// full invite flow can be exercised on the dev harness without Google.
+	var issued identity.IssuedSession
+	if inviteCookie, cookieErr := r.Cookie(h.cookies.invite); cookieErr == nil && inviteCookie.Value != "" {
+		h.clearInviteCookie(w)
+		issued, err = h.deps.Sessions.CompleteSignInWithInvitation(r.Context(), verified, inviteCookie.Value)
+	} else {
+		issued, err = h.deps.Sessions.CompleteSignIn(r.Context(), verified)
+	}
 	if err != nil {
-		h.authError(w, http.StatusForbidden, "That account is not approved in the connected database. Seed it with `cabot mock-seed` first.")
+		h.authError(w, http.StatusForbidden, "That account is not approved in the connected database. Seed it, or open a valid invite link first.")
 		return
 	}
 	h.setSessionCookies(w, issued)

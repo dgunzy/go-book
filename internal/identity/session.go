@@ -88,6 +88,10 @@ func (d SessionDraft) validate() error {
 // revokes the current session and inserts its replacement in one transaction.
 type Store interface {
 	CreateSessionForIdentity(context.Context, VerifiedIdentity, SessionDraft) (Session, Principal, error)
+	// CreateSessionForInvitedIdentity consumes a valid invitation (identified
+	// by its raw token) to create the account and membership for a first-time
+	// sign-in, then creates the session. The store hashes the token itself.
+	CreateSessionForInvitedIdentity(context.Context, VerifiedIdentity, SessionDraft, string) (Session, Principal, error)
 	UseSession(context.Context, Digest, time.Time) (Session, Principal, error)
 	RotateSession(context.Context, Digest, SessionDraft, time.Time, string) (Session, Principal, error)
 	RevokeSession(context.Context, Digest, time.Time, string) error
@@ -131,6 +135,30 @@ func (s *Service) CompleteSignIn(ctx context.Context, identity VerifiedIdentity)
 		return IssuedSession{}, err
 	}
 	session, principal, err := s.store.CreateSessionForIdentity(ctx, identity, draft)
+	if err != nil {
+		return IssuedSession{}, err
+	}
+	if err := validateStoredSession(session, principal, draft); err != nil {
+		return IssuedSession{}, err
+	}
+	if session.RotatedFrom != "" {
+		return IssuedSession{}, ErrRepositoryContract
+	}
+	return IssuedSession{Session: session, Principal: principal, Token: token, CSRFSecret: csrf}, nil
+}
+
+// CompleteSignInWithInvitation completes a first-time sign-in by consuming an
+// invitation token, creating the invited member and their session. It is used
+// when a user arrives through an invite link rather than a pre-approved email.
+func (s *Service) CompleteSignInWithInvitation(ctx context.Context, identity VerifiedIdentity, inviteToken string) (IssuedSession, error) {
+	if err := identity.Validate(); err != nil {
+		return IssuedSession{}, err
+	}
+	token, csrf, draft, err := s.newDraft()
+	if err != nil {
+		return IssuedSession{}, err
+	}
+	session, principal, err := s.store.CreateSessionForInvitedIdentity(ctx, identity, draft, inviteToken)
 	if err != nil {
 		return IssuedSession{}, err
 	}

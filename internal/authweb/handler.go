@@ -3,6 +3,7 @@ package authweb
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"html/template"
@@ -27,6 +28,7 @@ type OIDCClient interface {
 
 type IdentitySessions interface {
 	CompleteSignIn(context.Context, identity.VerifiedIdentity) (identity.IssuedSession, error)
+	CompleteSignInWithInvitation(context.Context, identity.VerifiedIdentity, string) (identity.IssuedSession, error)
 	Resume(context.Context, string) (identity.AuthenticatedSession, error)
 	Revoke(context.Context, string, string) error
 }
@@ -80,6 +82,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /login", h.showLogin)
+	h.mux.HandleFunc("GET /invite/{token}", h.acceptInvite)
 	h.mux.HandleFunc("GET /auth/google", h.startGoogle)
 	h.mux.HandleFunc("GET /auth/callback", h.callback)
 	h.mux.HandleFunc("POST /logout", h.logout)
@@ -99,6 +102,24 @@ func (h *Handler) showLogin(w http.ResponseWriter, r *http.Request) {
 	if err := h.login.Execute(w, struct{ StartURL string }{StartURL: authStartURL(next)}); err != nil {
 		return
 	}
+}
+
+// acceptInvite stashes an invite token in a short-lived cookie and starts the
+// Google sign-in. The token is validated for real when it is consumed after
+// the OIDC round-trip in callback; here it only needs to be well-formed.
+func (h *Handler) acceptInvite(w http.ResponseWriter, r *http.Request) {
+	token := r.PathValue("token")
+	if !validInviteToken(token) {
+		h.authError(w, http.StatusBadRequest, "This invite link is not valid.")
+		return
+	}
+	h.setInviteCookie(w, token, h.now().UTC().Add(h.config.LoginAttemptTTL))
+	http.Redirect(w, r, authStartURL(defaultReturnPath), http.StatusSeeOther)
+}
+
+func validInviteToken(token string) bool {
+	decoded, err := base64.RawURLEncoding.DecodeString(token)
+	return err == nil && len(decoded) == 32
 }
 
 func (h *Handler) startGoogle(w http.ResponseWriter, r *http.Request) {
@@ -190,9 +211,17 @@ func (h *Handler) callback(w http.ResponseWriter, r *http.Request) {
 		Provider: "google", Subject: claims.Subject, Email: claims.Email,
 		EmailVerified: claims.EmailVerified, DisplayName: normalizedDisplayName(claims.DisplayName, claims.Email),
 	}
-	issued, err := h.deps.Sessions.CompleteSignIn(r.Context(), verified)
+	// If the sign-in was started from an invite link, consume the invitation
+	// to create the member; otherwise require a pre-approved account.
+	var issued identity.IssuedSession
+	if inviteCookie, cookieErr := r.Cookie(h.cookies.invite); cookieErr == nil && inviteCookie.Value != "" {
+		h.clearInviteCookie(w)
+		issued, err = h.deps.Sessions.CompleteSignInWithInvitation(r.Context(), verified, inviteCookie.Value)
+	} else {
+		issued, err = h.deps.Sessions.CompleteSignIn(r.Context(), verified)
+	}
 	if errors.Is(err, identity.ErrSignInNotAllowed) {
-		h.authError(w, http.StatusForbidden, "This account has not been approved for the private book.")
+		h.authError(w, http.StatusForbidden, "This account has not been approved for the private book. If you have an invite link, open it again.")
 		return
 	}
 	if err != nil {

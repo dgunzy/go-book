@@ -15,14 +15,19 @@ const (
 )
 
 type fakeStore struct {
-	create func(context.Context, VerifiedIdentity, SessionDraft) (Session, Principal, error)
-	use    func(context.Context, Digest, time.Time) (Session, Principal, error)
-	rotate func(context.Context, Digest, SessionDraft, time.Time, string) (Session, Principal, error)
-	revoke func(context.Context, Digest, time.Time, string) error
+	create        func(context.Context, VerifiedIdentity, SessionDraft) (Session, Principal, error)
+	createInvited func(context.Context, VerifiedIdentity, SessionDraft, string) (Session, Principal, error)
+	use           func(context.Context, Digest, time.Time) (Session, Principal, error)
+	rotate        func(context.Context, Digest, SessionDraft, time.Time, string) (Session, Principal, error)
+	revoke        func(context.Context, Digest, time.Time, string) error
 }
 
 func (f *fakeStore) CreateSessionForIdentity(ctx context.Context, identity VerifiedIdentity, draft SessionDraft) (Session, Principal, error) {
 	return f.create(ctx, identity, draft)
+}
+
+func (f *fakeStore) CreateSessionForInvitedIdentity(ctx context.Context, identity VerifiedIdentity, draft SessionDraft, inviteToken string) (Session, Principal, error) {
+	return f.createInvited(ctx, identity, draft, inviteToken)
 }
 
 func (f *fakeStore) UseSession(ctx context.Context, hash Digest, at time.Time) (Session, Principal, error) {
