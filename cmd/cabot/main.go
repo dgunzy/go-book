@@ -16,6 +16,8 @@ import (
 	"github.com/dgunzy/go-book/internal/authweb"
 	"github.com/dgunzy/go-book/internal/bettingpg"
 	"github.com/dgunzy/go-book/internal/bettingweb"
+	"github.com/dgunzy/go-book/internal/competitionpg"
+	"github.com/dgunzy/go-book/internal/competitionweb"
 	"github.com/dgunzy/go-book/internal/config"
 	"github.com/dgunzy/go-book/internal/events"
 	"github.com/dgunzy/go-book/internal/eventspg"
@@ -145,6 +147,12 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		if err != nil {
 			return fmt.Errorf("build members web handler: %w", err)
 		}
+		competitionHandler, err := competitionweb.New(competitionweb.Dependencies{
+			Sessions: authHandler.SessionReader(), Competition: competitionpg.Store{Pool: pool},
+		})
+		if err != nil {
+			return fmt.Errorf("build competition web handler: %w", err)
+		}
 		// /dev/login is served only by binaries built with the `dev` build
 		// tag; the production image returns 404 for it because authweb does
 		// not register the route there.
@@ -166,6 +174,10 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		}
 		applicationHandler.Handle("/admin/members", membersHandler)
 		applicationHandler.Handle("/admin/members/", membersHandler)
+		applicationHandler.Handle("/admin/matches", competitionHandler)
+		applicationHandler.Handle("/admin/matches/", competitionHandler)
+		applicationHandler.Handle("/admin/events", competitionHandler)
+		applicationHandler.Handle("/admin/events/", competitionHandler)
 		applicationHandler.Handle("/invite/", authHandler)
 
 		dispatcher, err = newOutboxDispatcher(pool, logger)

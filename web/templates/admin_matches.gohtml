@@ -1,0 +1,93 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Book administration</p><h1>Matches</h1></div>
+  <p>Create matches here to get a <strong>Match ID</strong> for match-type betting markets. Recording a result settles any linked market automatically.</p>
+</header>
+
+{{if .FormError}}<p class="betting-form-error" role="alert">{{.FormError}}</p>{{end}}
+{{if .Notice}}<p class="members-notice" role="status">{{.Notice}}</p>{{end}}
+
+<section class="help-section" aria-labelledby="new-event">
+  <h2 id="new-event">New event</h2>
+  <form method="post" action="/admin/events" class="betting-form members-invite-form">
+    <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+    <label>Name <input name="name" maxlength="160" required placeholder="Cabot Cup"></label>
+    <label>Venue <input name="venue" maxlength="200" required placeholder="Cabot Links"></label>
+    <label>Season year <input name="season_year" type="number" min="2010" max="2200" required value="2026"></label>
+    <div class="betting-form-actions"><button type="submit">Create event</button></div>
+  </form>
+</section>
+
+{{range .Events}}
+<section class="help-section" aria-labelledby="event-{{.ID}}">
+  <h2 id="event-{{.ID}}">{{.Name}} <span class="private-status">{{.SeasonYear}}</span></h2>
+
+  <h3>Teams</h3>
+  <ul>{{range .Teams}}<li>{{.Name}}</li>{{else}}<li>No teams yet.</li>{{end}}</ul>
+  <form method="post" action="/admin/events/{{.ID}}/teams" class="betting-inline-form">
+    <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+    <input name="name" maxlength="120" required placeholder="Team name" aria-label="Team name">
+    <button type="submit">Add team</button>
+  </form>
+
+  {{if ge (len .Teams) 2}}
+  <h3>New match</h3>
+  <form method="post" action="/admin/matches" class="members-role-form">
+    <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+    <input type="hidden" name="event_id" value="{{.ID}}">
+    <label>Side 1
+      <select name="side1_team_id" required>{{range .Teams}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+    </label>
+    <label>Side 2
+      <select name="side2_team_id" required>{{range .Teams}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select>
+    </label>
+    <label>Format
+      <select name="format"><option value="singles">Singles</option><option value="fourball">Fourball</option><option value="foursomes">Foursomes</option><option value="scramble">Scramble</option><option value="other">Other</option></select>
+    </label>
+    <button type="submit">Create match</button>
+  </form>
+  {{end}}
+
+  <h3>Matches</h3>
+  {{if .Matches}}
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide">
+      <thead><tr><th>#</th><th>Matchup</th><th>Format</th><th>State</th><th>IDs (for match markets)</th><th>Record result</th></tr></thead>
+      <tbody>
+        {{range .Matches}}
+        <tr>
+          <th scope="row">{{.Number}}</th>
+          <td>{{.Side1TeamName}} vs {{.Side2TeamName}}</td>
+          <td>{{.Format}}</td>
+          <td><span class="private-status">{{.State}}</span></td>
+          <td class="matches-ids">
+            <code>match: {{.ID}}</code><br>
+            <code>side:{{.Side1ID}}</code> ({{.Side1TeamName}})<br>
+            <code>side:{{.Side2ID}}</code> ({{.Side2TeamName}})
+          </td>
+          <td>
+            {{if eq .State "verified"}}Verified{{else}}
+            <form method="post" action="/admin/matches/{{.ID}}/result" class="members-role-form">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <select name="winner" aria-label="Winner">
+                <option value="side_1">{{.Side1TeamName}} won</option>
+                <option value="side_2">{{.Side2TeamName}} won</option>
+                <option value="tie">Tie</option>
+              </select>
+              <input name="score" placeholder="score (e.g. 3 &amp; 2)" aria-label="Score">
+              <input name="reason" required placeholder="reason" aria-label="Reason">
+              <button type="submit">Record</button>
+            </form>
+            {{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<p>No matches yet. Add two teams, then create a match.</p>{{end}}
+</section>
+{{else}}
+<p>No events yet. Create one above to get started.</p>
+{{end}}
+{{end}}

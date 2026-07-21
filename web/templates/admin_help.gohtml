@@ -20,7 +20,7 @@
     <li><strong>Future</strong> or <strong>Prop</strong> — a standalone market (e.g. "Who wins the Cabot Cup?"). <strong>These need no match ID.</strong> Use these for almost everything today.</li>
     <li><strong>Match</strong> — tied to a specific head-to-head match so it can settle <em>automatically</em> from the verified result.</li>
   </ul>
-  <p class="help-callout"><strong>Where does the match ID come from?</strong> A match ID is the identifier of a match recorded in the competition system. Creating matches from the admin UI is not built yet, so for now use <strong>Future</strong> or <strong>Prop</strong> markets (which don't ask for a match ID) and settle them by hand. Automatic match settlement will light up once match creation is added.</p>
+  <p class="help-callout"><strong>Where does the match ID come from?</strong> Create it on the <a href="/admin/matches">Matches</a> page: add an event, two teams, then a match. Creating the match shows its <strong>Match ID</strong> and two <strong>side:&lt;id&gt;</strong> values — put the Match ID in the match market's Match ID field and key each selection to the matching <code>side:&lt;id&gt;</code>. When you record the match result on the Matches page, any linked match market settles automatically.</p>
   <p>Add at least two <strong>selections</strong> (the bettable outcomes), each with display terms and American odds (e.g. <code>-110</code> or <code>+150</code>). The market is created in <strong>draft</strong>; click <strong>Open</strong> when you're ready to take bets, and <strong>Close</strong> to stop taking them.</p>
 </section>
 

@@ -651,3 +651,5 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .help-settings dd { margin: 0.1rem 0 0.4rem 0; color: var(--muted, #444); }
 .members-limit-form { display: flex; gap: 0.35rem; align-items: center; }
 .members-limit-form input { width: 6rem; }
+
+.matches-ids code { font-size: 0.75rem; display: inline-block; }
