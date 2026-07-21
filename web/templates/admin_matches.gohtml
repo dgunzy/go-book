@@ -18,6 +18,17 @@
   </form>
 </section>
 
+<section class="help-section" aria-labelledby="players">
+  <h2 id="players">Players</h2>
+  <p>Players are who match results and statistics are tracked for. Add them once; assign them to a match's sides below.</p>
+  <ul>{{range .Players}}<li>{{.DisplayName}}</li>{{else}}<li>No players yet.</li>{{end}}</ul>
+  <form method="post" action="/admin/players" class="betting-inline-form">
+    <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+    <input name="name" maxlength="120" required placeholder="Player name" aria-label="Player name">
+    <button type="submit">Add player</button>
+  </form>
+</section>
+
 {{range .Events}}
 <section class="help-section" aria-labelledby="event-{{.ID}}">
   <h2 id="event-{{.ID}}">{{.Name}} <span class="private-status">{{.SeasonYear}}</span></h2>
@@ -44,6 +55,14 @@
     <label>Format
       <select name="format"><option value="singles">Singles</option><option value="fourball">Fourball</option><option value="foursomes">Foursomes</option><option value="scramble">Scramble</option><option value="other">Other</option></select>
     </label>
+    {{if $.Players}}
+    <label>Side 1 players (for stats)
+      <select name="side1_players" multiple size="3">{{range $.Players}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}</select>
+    </label>
+    <label>Side 2 players (for stats)
+      <select name="side2_players" multiple size="3">{{range $.Players}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}</select>
+    </label>
+    {{end}}
     <button type="submit">Create match</button>
   </form>
   {{end}}
@@ -90,4 +109,21 @@
 {{else}}
 <p>No events yet. Create one above to get started.</p>
 {{end}}
+
+<section class="help-section" aria-labelledby="standings">
+  <h2 id="standings">Standings (from verified results)</h2>
+  <p>These update automatically whenever a match result is recorded.</p>
+  {{if .Standings}}
+  <div class="private-table-wrap">
+    <table class="private-table">
+      <thead><tr><th>Player</th><th>Event</th><th>Played</th><th>W</th><th>L</th><th>T</th><th>Points</th></tr></thead>
+      <tbody>
+        {{range .Standings}}
+        <tr><th scope="row">{{.PlayerName}}</th><td>{{.EventName}}</td><td>{{.Played}}</td><td>{{.Wins}}</td><td>{{.Losses}}</td><td>{{.Ties}}</td><td>{{.Points}}</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<p>No results recorded yet.</p>{{end}}
+</section>
 {{end}}

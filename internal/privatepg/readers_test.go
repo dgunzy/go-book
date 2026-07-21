@@ -134,6 +134,7 @@ func TestDashboardSummaryIsUserScoped(t *testing.T) {
 		{kind: "query", contains: "WHERE a.owner_user_id = $1::uuid", args: []any{"user-7", 5}, rows: rows(
 			[]any{now, "Wager accepted", "wager_acceptance", "wager:abc", "Member cash", int64(-2_000), "CAD", int64(10_345), true},
 		)},
+		{kind: "row", contains: "u.credit_limit_cents", args: []any{"user-7"}, row: fakeRow{values: []any{int64(100_000), int64(12_345)}}},
 	}}
 	reader, err := New(db)
 	if err != nil {
@@ -152,6 +153,10 @@ func TestDashboardSummaryIsUserScoped(t *testing.T) {
 	}
 	if len(summary.RecentActivity) != 1 || summary.RecentActivity[0].RunningBalance.Cents != 10_345 {
 		t.Fatalf("activity = %+v", summary.RecentActivity)
+	}
+	// Credit available = limit ($1000) + cash balance ($123.45) = $1123.45.
+	if summary.CreditAvailable.Cents != 112_345 || summary.CreditLimit.Cents != 100_000 {
+		t.Fatalf("credit = available %d limit %d", summary.CreditAvailable.Cents, summary.CreditLimit.Cents)
 	}
 }
 

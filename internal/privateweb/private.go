@@ -68,11 +68,13 @@ type BalanceRow struct {
 }
 
 type DashboardSummary struct {
-	Balances       []BalanceRow
-	OpenWagers     int
-	PendingWagers  int
-	SettledWagers  int
-	RecentActivity []LedgerRow
+	Balances        []BalanceRow
+	OpenWagers      int
+	PendingWagers   int
+	SettledWagers   int
+	RecentActivity  []LedgerRow
+	CreditLimit     ledger.Money
+	CreditAvailable ledger.Money
 }
 
 type LedgerRow struct {

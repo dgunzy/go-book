@@ -29,18 +29,27 @@ func (f fakeSessions) CurrentSession(*http.Request) (privateweb.Session, error) 
 
 type fakeComp struct {
 	resultCalls []competitionpg.RecordResultRequest
+	matchReqs   []competitionpg.CreateMatchRequest
 	created     competitionpg.MatchCreated
 	createErr   error
 }
 
 func (f *fakeComp) ListEvents(context.Context) ([]competitionpg.EventRow, error) { return nil, nil }
+func (f *fakeComp) ListPlayers(context.Context) ([]competitionpg.PlayerRow, error) {
+	return nil, nil
+}
+func (f *fakeComp) ListStandings(context.Context) ([]competitionpg.StandingRow, error) {
+	return nil, nil
+}
 func (f *fakeComp) CreateEvent(context.Context, competitionpg.CreateEventRequest) (string, error) {
 	return "e1", nil
 }
+func (f *fakeComp) CreatePlayer(context.Context, string, string) (string, error) { return "p1", nil }
 func (f *fakeComp) CreateTeam(context.Context, string, string, string) (string, error) {
 	return "t1", nil
 }
-func (f *fakeComp) CreateMatch(context.Context, string, string, string, string, string) (competitionpg.MatchCreated, error) {
+func (f *fakeComp) CreateMatch(_ context.Context, req competitionpg.CreateMatchRequest) (competitionpg.MatchCreated, error) {
+	f.matchReqs = append(f.matchReqs, req)
 	return f.created, f.createErr
 }
 func (f *fakeComp) RecordAdminResult(_ context.Context, req competitionpg.RecordResultRequest) (string, error) {

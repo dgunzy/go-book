@@ -64,6 +64,8 @@ jobs:
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000004_dynamic_pricing.up.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000005_player_auto_approve.up.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000006_credit_limit.up.sql
+          psql -1 -v ON_ERROR_STOP=1 -f migrations/000007_stat_projection_guard.up.sql
+          psql -1 -v ON_ERROR_STOP=1 -f migrations/000007_stat_projection_guard.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000006_credit_limit.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000005_player_auto_approve.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000004_dynamic_pricing.down.sql
@@ -74,6 +76,7 @@ jobs:
           go run ./cmd/cabot migrate
           # Rollback rehearsal on seeded (but not financially promoted) data,
           # then prove the migration path re-applies cleanly from scratch.
+          psql -1 -v ON_ERROR_STOP=1 -f migrations/000007_stat_projection_guard.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000006_credit_limit.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000005_player_auto_approve.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000004_dynamic_pricing.down.sql
@@ -99,7 +102,7 @@ jobs:
               (SELECT count(*) FROM media_assets) || '|' ||
               (SELECT count(*) FROM media_player_links) || '|' ||
               (SELECT count(*) FROM legacy_import_records)
-          ")" = "6|23|6|23|22|23|81"
+          ")" = "7|23|6|23|22|23|81"
           # After a financial promotion the down migration must REFUSE to roll
           # back; a successful rollback here would mean the guard is broken.
           if psql -1 -v ON_ERROR_STOP=1 -f migrations/000002_identity_and_legacy_book.down.sql; then

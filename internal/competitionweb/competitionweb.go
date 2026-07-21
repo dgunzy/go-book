@@ -36,9 +36,12 @@ type SessionReader interface {
 // CompetitionStore is the competition surface this handler needs.
 type CompetitionStore interface {
 	ListEvents(context.Context) ([]competitionpg.EventRow, error)
+	ListPlayers(context.Context) ([]competitionpg.PlayerRow, error)
+	ListStandings(context.Context) ([]competitionpg.StandingRow, error)
 	CreateEvent(context.Context, competitionpg.CreateEventRequest) (string, error)
+	CreatePlayer(ctx context.Context, displayName, linkedUserID string) (string, error)
 	CreateTeam(ctx context.Context, eventID, name, createdBy string) (string, error)
-	CreateMatch(ctx context.Context, eventID, format, side1TeamID, side2TeamID, createdBy string) (competitionpg.MatchCreated, error)
+	CreateMatch(context.Context, competitionpg.CreateMatchRequest) (competitionpg.MatchCreated, error)
 	RecordAdminResult(context.Context, competitionpg.RecordResultRequest) (string, error)
 }
 
@@ -67,6 +70,7 @@ func New(deps Dependencies) (*Handler, error) {
 	h := &Handler{mux: http.NewServeMux(), deps: deps, tmpl: tmpl}
 	h.mux.HandleFunc("GET /admin/matches", h.list)
 	h.mux.HandleFunc("POST /admin/events", h.createEvent)
+	h.mux.HandleFunc("POST /admin/players", h.createPlayer)
 	h.mux.HandleFunc("POST /admin/events/{id}/teams", h.createTeam)
 	h.mux.HandleFunc("POST /admin/matches", h.createMatch)
 	h.mux.HandleFunc("POST /admin/matches/{id}/result", h.recordResult)
@@ -83,6 +87,8 @@ type pageData struct {
 	Current   string
 	Session   privateweb.Session
 	Events    []competitionpg.EventRow
+	Players   []competitionpg.PlayerRow
+	Standings []competitionpg.StandingRow
 	FormError string
 	Notice    string
 }
@@ -101,7 +107,18 @@ func (h *Handler) renderList(w http.ResponseWriter, r *http.Request, session pri
 		http.Error(w, "Unable to load matches", http.StatusInternalServerError)
 		return
 	}
+	players, err := h.deps.Competition.ListPlayers(r.Context())
+	if err != nil {
+		http.Error(w, "Unable to load players", http.StatusInternalServerError)
+		return
+	}
+	standings, err := h.deps.Competition.ListStandings(r.Context())
+	if err != nil {
+		http.Error(w, "Unable to load standings", http.StatusInternalServerError)
+		return
+	}
 	extra.Title, extra.Current, extra.Session, extra.Events = "Matches", "admin-matches", session, eventsList
+	extra.Players, extra.Standings = players, standings
 	status := http.StatusOK
 	if extra.FormError != "" {
 		status = http.StatusBadRequest
@@ -169,7 +186,11 @@ func (h *Handler) createMatch(w http.ResponseWriter, r *http.Request) {
 		h.renderList(w, r, session, pageData{FormError: "Pick an event and two teams."})
 		return
 	}
-	created, err := h.deps.Competition.CreateMatch(r.Context(), eventID, format, side1, side2, session.UserID)
+	created, err := h.deps.Competition.CreateMatch(r.Context(), competitionpg.CreateMatchRequest{
+		EventID: eventID, Format: format, Side1TeamID: side1, Side2TeamID: side2,
+		Side1PlayerIDs: uuidList(r.PostForm["side1_players"]), Side2PlayerIDs: uuidList(r.PostForm["side2_players"]),
+		CreatedBy: session.UserID,
+	})
 	if err != nil {
 		h.renderList(w, r, session, pageData{FormError: "Could not create match: " + err.Error()})
 		return
@@ -177,6 +198,31 @@ func (h *Handler) createMatch(w http.ResponseWriter, r *http.Request) {
 	h.renderList(w, r, session, pageData{Notice: fmt.Sprintf(
 		"Match created. To bet on it, create a Match market with Match ID %s and selections keyed side:%s and side:%s.",
 		created.MatchID, created.Side1ID, created.Side2ID)})
+}
+
+func uuidList(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		if isUUID(strings.TrimSpace(v)) {
+			out = append(out, strings.TrimSpace(v))
+		}
+	}
+	return out
+}
+
+func (h *Handler) createPlayer(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	if _, err := h.deps.Competition.CreatePlayer(r.Context(), r.PostForm.Get("name"), strings.TrimSpace(r.PostForm.Get("linked_user_id"))); err != nil {
+		h.renderList(w, r, session, pageData{FormError: "Could not create player: " + err.Error()})
+		return
+	}
+	http.Redirect(w, r, "/admin/matches", http.StatusSeeOther)
 }
 
 func (h *Handler) recordResult(w http.ResponseWriter, r *http.Request) {

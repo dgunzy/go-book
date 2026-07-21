@@ -58,9 +58,24 @@ func (r *Readers) DashboardSummary(ctx context.Context, userID string) (privatew
 	if err != nil {
 		return privateweb.DashboardSummary{}, fmt.Errorf("load recent ledger activity: %w", err)
 	}
+
+	// Credit line: how much the member can still bet = credit limit plus their
+	// current cash balance (which may be negative when they owe the book).
+	var creditLimit, cashBalance int64
+	if err := r.db.QueryRow(ctx, `
+		SELECT u.credit_limit_cents,
+		       coalesce((SELECT balance_cents FROM ledger_account_balances b
+		                 WHERE b.owner_user_id = u.id AND b.account_type = 'user_cash' AND b.currency = 'CAD'), 0)
+		FROM users u WHERE u.id = $1::uuid`, userID).Scan(&creditLimit, &cashBalance); err != nil {
+		return privateweb.DashboardSummary{}, fmt.Errorf("load credit line: %w", err)
+	}
+	creditMoney := func(cents int64) ledger.Money { m, _ := ledger.NewMoney(cents, ledger.CAD); return m }
+
 	return privateweb.DashboardSummary{
 		Balances: balances, OpenWagers: openCount, PendingWagers: pendingCount,
 		SettledWagers: settledCount, RecentActivity: recent,
+		CreditLimit:     creditMoney(creditLimit),
+		CreditAvailable: creditMoney(creditLimit + cashBalance),
 	}, nil
 }
 

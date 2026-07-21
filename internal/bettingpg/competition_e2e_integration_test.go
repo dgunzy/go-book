@@ -60,7 +60,9 @@ func TestMatchResultDrivesSettlementEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	match, err := compStore.CreateMatch(ctx, eventID, "singles", teamA, teamB, admin)
+	match, err := compStore.CreateMatch(ctx, competitionpg.CreateMatchRequest{
+		EventID: eventID, Format: "singles", Side1TeamID: teamA, Side2TeamID: teamB, CreatedBy: admin,
+	})
 	if err != nil {
 		t.Fatalf("CreateMatch() error = %v", err)
 	}

@@ -246,6 +246,7 @@ func newOutboxDispatcher(pool *pgxpool.Pool, logger *slog.Logger) (*events.Dispa
 		Consumers: []events.Consumer{
 			&bettingpg.MatchSettlementConsumer{Store: &bettingpg.Store{DB: pool}, Logger: logger},
 			&bettingpg.PricingConsumer{Store: &bettingpg.Store{DB: pool}, Logger: logger},
+			&competitionpg.StatsProjectionConsumer{Pool: pool, Logger: logger},
 		},
 		PollInterval: outboxPollInterval,
 		BatchSize:    outboxBatchSize,

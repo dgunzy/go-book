@@ -34,6 +34,9 @@ var playerAutoApproveSQL string
 //go:embed 000006_credit_limit.up.sql
 var creditLimitSQL string
 
+//go:embed 000007_stat_projection_guard.up.sql
+var statProjectionGuardSQL string
+
 // All returns migrations in application order.
 func All() []Definition {
 	return []Definition{
@@ -43,6 +46,7 @@ func All() []Definition {
 		newDefinition(4, "dynamic_pricing", dynamicPricingSQL),
 		newDefinition(5, "player_auto_approve", playerAutoApproveSQL),
 		newDefinition(6, "credit_limit", creditLimitSQL),
+		newDefinition(7, "stat_projection_guard", statProjectionGuardSQL),
 	}
 }
 

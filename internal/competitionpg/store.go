@@ -113,14 +113,27 @@ type MatchCreated struct {
 	Side2ID string
 }
 
-// CreateMatch inserts a match with two sides (side 1 vs side 2) and returns the
-// match and side IDs. The match is created open so betting markets can be
+// CreateMatchRequest describes a new match: two team sides and, optionally, the
+// players on each side. Participants are what event-derived statistics are
+// projected onto when the result is verified.
+type CreateMatchRequest struct {
+	EventID        string
+	Format         string
+	Side1TeamID    string
+	Side2TeamID    string
+	Side1PlayerIDs []string
+	Side2PlayerIDs []string
+	CreatedBy      string
+}
+
+// CreateMatch inserts a match with two sides and their participants, returning
+// the match and side IDs. The match is created open so betting markets can be
 // attached to it.
-func (s Store) CreateMatch(ctx context.Context, eventID, format, side1TeamID, side2TeamID, createdBy string) (MatchCreated, error) {
+func (s Store) CreateMatch(ctx context.Context, req CreateMatchRequest) (MatchCreated, error) {
 	if s.Pool == nil {
 		return MatchCreated{}, errors.New("competitionpg: pool is required")
 	}
-	if side1TeamID == side2TeamID {
+	if req.Side1TeamID == req.Side2TeamID {
 		return MatchCreated{}, errors.New("a match needs two different teams")
 	}
 	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
@@ -130,28 +143,79 @@ func (s Store) CreateMatch(ctx context.Context, eventID, format, side1TeamID, si
 	defer func() { _ = tx.Rollback(context.Background()) }()
 
 	var matchNumber int
-	if err := tx.QueryRow(ctx, `SELECT coalesce(max(match_number), 0) + 1 FROM matches WHERE event_id = $1::uuid`, eventID).Scan(&matchNumber); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT coalesce(max(match_number), 0) + 1 FROM matches WHERE event_id = $1::uuid`, req.EventID).Scan(&matchNumber); err != nil {
 		return MatchCreated{}, fmt.Errorf("next match number: %w", err)
 	}
 	var matchID string
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO matches (event_id, match_number, format, state, created_by)
 		VALUES ($1::uuid, $2, $3, 'open', $4::uuid) RETURNING id::text`,
-		eventID, matchNumber, format, createdBy).Scan(&matchID); err != nil {
+		req.EventID, matchNumber, req.Format, req.CreatedBy).Scan(&matchID); err != nil {
 		return MatchCreated{}, fmt.Errorf("insert match: %w", err)
 	}
-	side1ID, err := insertSide(ctx, tx, eventID, matchID, 1, side1TeamID)
+	side1ID, err := insertSide(ctx, tx, req.EventID, matchID, 1, req.Side1TeamID)
 	if err != nil {
 		return MatchCreated{}, err
 	}
-	side2ID, err := insertSide(ctx, tx, eventID, matchID, 2, side2TeamID)
+	side2ID, err := insertSide(ctx, tx, req.EventID, matchID, 2, req.Side2TeamID)
 	if err != nil {
+		return MatchCreated{}, err
+	}
+	if err := insertParticipants(ctx, tx, matchID, side1ID, req.Side1PlayerIDs); err != nil {
+		return MatchCreated{}, err
+	}
+	if err := insertParticipants(ctx, tx, matchID, side2ID, req.Side2PlayerIDs); err != nil {
 		return MatchCreated{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return MatchCreated{}, fmt.Errorf("commit create match: %w", err)
 	}
 	return MatchCreated{MatchID: matchID, Side1ID: side1ID, Side2ID: side2ID}, nil
+}
+
+func insertParticipants(ctx context.Context, tx pgx.Tx, matchID, sideID string, playerIDs []string) error {
+	for i, playerID := range playerIDs {
+		if strings.TrimSpace(playerID) == "" {
+			continue
+		}
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO match_participants (match_id, match_side_id, player_id, playing_order)
+			VALUES ($1::uuid, $2::uuid, $3::uuid, $4)`, matchID, sideID, playerID, i+1); err != nil {
+			return fmt.Errorf("insert participant %s: %w", playerID, err)
+		}
+	}
+	return nil
+}
+
+// CreatePlayer inserts a competition player, optionally linked to a login user,
+// and returns its ID.
+func (s Store) CreatePlayer(ctx context.Context, displayName, linkedUserID string) (string, error) {
+	if s.Pool == nil {
+		return "", errors.New("competitionpg: pool is required")
+	}
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		return "", errors.New("player requires a display name")
+	}
+	slug := slugify(displayName)
+	if slug == "" {
+		return "", errors.New("player name must contain letters or digits")
+	}
+	// Disambiguate the slug so two players with the same name do not collide.
+	unique, err := newUUID()
+	if err != nil {
+		return "", err
+	}
+	slug = slug + "-" + strings.Split(unique, "-")[0]
+	var id string
+	err = s.Pool.QueryRow(ctx, `
+		INSERT INTO players (slug, display_name, linked_user_id)
+		VALUES ($1, $2, nullif($3, '')::uuid) RETURNING id::text`,
+		slug, displayName, linkedUserID).Scan(&id)
+	if err != nil {
+		return "", fmt.Errorf("insert player: %w", err)
+	}
+	return id, nil
 }
 
 func insertSide(ctx context.Context, tx pgx.Tx, eventID, matchID string, number int, teamID string) (string, error) {
@@ -402,4 +466,69 @@ func (s Store) ListEvents(ctx context.Context) ([]EventRow, error) {
 		}
 	}
 	return eventsList, matchRows.Err()
+}
+
+// PlayerRow is a competition player for selection lists.
+type PlayerRow struct {
+	ID          string
+	DisplayName string
+}
+
+// ListPlayers returns all competition players, alphabetically.
+func (s Store) ListPlayers(ctx context.Context) ([]PlayerRow, error) {
+	if s.Pool == nil {
+		return nil, errors.New("competitionpg: pool is required")
+	}
+	rows, err := s.Pool.Query(ctx, `SELECT id::text, display_name FROM players WHERE active ORDER BY display_name`)
+	if err != nil {
+		return nil, fmt.Errorf("list players: %w", err)
+	}
+	defer rows.Close()
+	var result []PlayerRow
+	for rows.Next() {
+		var p PlayerRow
+		if err := rows.Scan(&p.ID, &p.DisplayName); err != nil {
+			return nil, err
+		}
+		result = append(result, p)
+	}
+	return result, rows.Err()
+}
+
+// StandingRow is one player's event-derived record for a standings view.
+type StandingRow struct {
+	PlayerName string
+	EventName  string
+	Played     int
+	Wins       int
+	Losses     int
+	Ties       int
+	Points     string
+}
+
+// ListStandings returns event-derived player standings (from verified match
+// results), most points first.
+func (s Store) ListStandings(ctx context.Context) ([]StandingRow, error) {
+	if s.Pool == nil {
+		return nil, errors.New("competitionpg: pool is required")
+	}
+	rows, err := s.Pool.Query(ctx, `
+		SELECT p.display_name, e.name, sp.matches_played, sp.wins, sp.losses, sp.ties, sp.points_won::text
+		FROM player_stat_projections sp
+		JOIN players p ON p.id = sp.player_id
+		JOIN events e ON e.id = sp.event_id
+		ORDER BY e.season_year DESC, sp.points_won DESC, sp.wins DESC, p.display_name`)
+	if err != nil {
+		return nil, fmt.Errorf("list standings: %w", err)
+	}
+	defer rows.Close()
+	var result []StandingRow
+	for rows.Next() {
+		var r StandingRow
+		if err := rows.Scan(&r.PlayerName, &r.EventName, &r.Played, &r.Wins, &r.Losses, &r.Ties, &r.Points); err != nil {
+			return nil, err
+		}
+		result = append(result, r)
+	}
+	return result, rows.Err()
 }

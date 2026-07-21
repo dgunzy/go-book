@@ -6,6 +6,7 @@
 
 <section aria-labelledby="balances-heading">
   <div class="private-section-heading"><h2 id="balances-heading">Balances</h2><a href="/book/ledger">View ledger <span aria-hidden="true">&rarr;</span></a></div>
+  <p class="private-credit-line">Credit available to bet: <strong>{{money .Dashboard.CreditAvailable}}</strong> <span>(limit {{money .Dashboard.CreditLimit}})</span></p>
   <div class="balance-grid">
     {{range .Dashboard.Balances}}
     <article class="balance-card">
