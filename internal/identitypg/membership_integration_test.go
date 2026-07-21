@@ -206,3 +206,45 @@ func activeRoleOf(t *testing.T, ctx context.Context, pool *pgxpool.Pool, userID 
 	}
 	return role
 }
+
+func TestSetAutoApproveLimit(t *testing.T) {
+	store, pool, ctx := membershipTestStore(t)
+	admin := makeMember(t, ctx, pool, "Limit Admin", "admin")
+	member := makeMember(t, ctx, pool, "Limit Member", "member")
+
+	// A plain member cannot set limits.
+	other := makeMember(t, ctx, pool, "Limit Other", "member")
+	cents := int64(25_000)
+	if err := store.SetAutoApproveLimit(ctx, other, member, &cents); err == nil {
+		t.Fatal("a member was allowed to set a betting limit")
+	}
+	// An admin sets a $250 limit; it appears on the member row.
+	if err := store.SetAutoApproveLimit(ctx, admin, member, &cents); err != nil {
+		t.Fatalf("SetAutoApproveLimit() error = %v", err)
+	}
+	if got := memberLimit(t, ctx, store, member); got == nil || *got != 25_000 {
+		t.Fatalf("member limit = %v, want 25000", got)
+	}
+	// Clearing it (nil) returns the member to the default.
+	if err := store.SetAutoApproveLimit(ctx, admin, member, nil); err != nil {
+		t.Fatalf("clear limit error = %v", err)
+	}
+	if got := memberLimit(t, ctx, store, member); got != nil {
+		t.Fatalf("member limit after clear = %v, want nil", got)
+	}
+}
+
+func memberLimit(t *testing.T, ctx context.Context, store Store, userID string) *int64 {
+	t.Helper()
+	members, err := store.ListMembers(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range members {
+		if m.UserID == userID {
+			return m.AutoApproveMaxCents
+		}
+	}
+	t.Fatalf("member %s not found", userID)
+	return nil
+}

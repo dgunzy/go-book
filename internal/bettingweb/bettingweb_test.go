@@ -75,12 +75,14 @@ func (f *fakeMarkets) VoidMarket(_ context.Context, req bettingpg.VoidMarketRequ
 }
 
 type fakeWagers struct {
-	placeErr    error
-	acceptErr   error
-	rejectErr   error
-	placed      []bettingpg.PlaceWagerRequest
-	acceptCalls []string
-	rejectCalls []struct{ id, reason string }
+	placeErr      error
+	acceptErr     error
+	rejectErr     error
+	overrideCents int64
+	hasOverride   bool
+	placed        []bettingpg.PlaceWagerRequest
+	acceptCalls   []string
+	rejectCalls   []struct{ id, reason string }
 }
 
 func (f *fakeWagers) PlaceWager(_ context.Context, req bettingpg.PlaceWagerRequest) (betting.Wager, error) {
@@ -116,6 +118,9 @@ func (f *fakeWagers) ListWagersByState(context.Context, betting.WagerState) ([]b
 }
 func (f *fakeWagers) ListWagersForUser(context.Context, string) ([]bettingpg.UserWagerRow, error) {
 	return nil, nil
+}
+func (f *fakeWagers) AutoApproveLimitForUser(context.Context, string) (int64, bool, error) {
+	return f.overrideCents, f.hasOverride, nil
 }
 
 func newTestHandler(t *testing.T, session privateweb.Session, markets *fakeMarkets, wagers *fakeWagers) *Handler {
@@ -490,5 +495,30 @@ func TestPlaceWagerOverThresholdStaysPending(t *testing.T) {
 	}
 	if len(wagers.acceptCalls) != 0 {
 		t.Fatalf("AcceptWager calls = %d, want 0 (over threshold, manual)", len(wagers.acceptCalls))
+	}
+}
+
+func TestPlaceWagerPerPlayerOverrideRaisesThreshold(t *testing.T) {
+	// Global threshold is $10, but this player's override is $100, so a $25 bet
+	// auto-approves.
+	wagers := &fakeWagers{overrideCents: 10_000, hasOverride: true}
+	h, err := New(Dependencies{
+		Sessions: fakeSessions{session: memberSession()},
+		Markets:  &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}},
+		Wagers:   wagers, AutoApproveMaxCents: 1_000,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := url.Values{
+		"csrf_token": {testCSRF}, "market_id": {testMarketID}, "selection_id": {testSelID},
+		"idempotency_key": {testIdem}, "stake": {"25.00"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/book/wagers", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if len(wagers.acceptCalls) != 1 {
+		t.Fatalf("AcceptWager calls = %d, want 1 (per-player override raised the limit)", len(wagers.acceptCalls))
 	}
 }

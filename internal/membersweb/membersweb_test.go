@@ -34,9 +34,14 @@ type fakeMembers struct {
 	inviteErr   error
 	roleErr     error
 	revokeErr   error
+	limitErr    error
 	inviteCalls []struct{ actor, role, email string }
 	roleCalls   []struct{ actor, target, role, reason string }
 	revokeCalls []struct{ actor, target, reason string }
+	limitCalls  []struct {
+		target string
+		cents  *int64
+	}
 }
 
 func (f *fakeMembers) ListMembers(context.Context) ([]identitypg.MemberRow, error) {
@@ -60,6 +65,13 @@ func (f *fakeMembers) ChangeMemberRole(_ context.Context, actor, target, role, r
 func (f *fakeMembers) RevokeMember(_ context.Context, actor, target, reason string) error {
 	f.revokeCalls = append(f.revokeCalls, struct{ actor, target, reason string }{actor, target, reason})
 	return f.revokeErr
+}
+func (f *fakeMembers) SetAutoApproveLimit(_ context.Context, actor, target string, cents *int64) error {
+	f.limitCalls = append(f.limitCalls, struct {
+		target string
+		cents  *int64
+	}{target, cents})
+	return f.limitErr
 }
 
 func newHandler(t *testing.T, session privateweb.Session, members *fakeMembers) *Handler {
@@ -209,4 +221,37 @@ func TestNewRequiresBaseURL(t *testing.T) {
 		t.Fatal("New should require a public base URL")
 	}
 	_ = identity.ErrUnauthorized
+}
+
+func TestSetLimitParsesDollarsAndClears(t *testing.T) {
+	members := &fakeMembers{}
+	h := newHandler(t, session(privateweb.RoleAdmin), members)
+	// Set a $250 limit.
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, postForm("/admin/members/"+targetID+"/limit", url.Values{"csrf_token": {testCSRF}, "limit": {"250.00"}}))
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	if len(members.limitCalls) != 1 || members.limitCalls[0].cents == nil || *members.limitCalls[0].cents != 25000 {
+		t.Fatalf("limit calls = %+v, want one at 25000 cents", members.limitCalls)
+	}
+	// Blank clears the override (nil).
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, postForm("/admin/members/"+targetID+"/limit", url.Values{"csrf_token": {testCSRF}, "limit": {""}}))
+	if len(members.limitCalls) != 2 || members.limitCalls[1].cents != nil {
+		t.Fatalf("second limit call = %+v, want nil (cleared)", members.limitCalls)
+	}
+}
+
+func TestSetLimitRequiresAdmin(t *testing.T) {
+	members := &fakeMembers{}
+	h := newHandler(t, session(privateweb.RoleMember), members)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, postForm("/admin/members/"+targetID+"/limit", url.Values{"csrf_token": {testCSRF}, "limit": {"100"}}))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status=%d, want 403", rec.Code)
+	}
+	if len(members.limitCalls) != 0 {
+		t.Fatal("member reached SetAutoApproveLimit")
+	}
 }

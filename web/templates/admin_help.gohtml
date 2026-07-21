@@ -52,4 +52,16 @@
   <h2 id="help-members">Adding people</h2>
   <p>On the <a href="/admin/members">Members</a> page, generate a one-time <strong>invite link</strong> and send it to someone. They open it, sign in with Google, and join automatically — no need to pre-enter their email. Admins can invite members; only an owner can invite admins or change roles.</p>
 </section>
+
+<section class="help-section" aria-labelledby="help-settings">
+  <h2 id="help-settings">Current settings &amp; defaults</h2>
+  <dl class="help-settings">
+    <dt>Auto-approve threshold (book default)</dt>
+    <dd>${{.AutoApproveDollars}} — wagers up to this stake are accepted automatically. Set per-player overrides on the <a href="/admin/members">Members</a> page (blank uses this default; <code>0</code> forces every wager to manual review). Change the book default via the <code>WAGER_AUTO_APPROVE_MAX_CENTS</code> deployment setting.</dd>
+    <dt>Dynamic pricing line weight (default)</dt>
+    <dd>${{.DefaultLineWeightDollars}} — used when you enable dynamic pricing without entering a value. A larger weight moves the line less per bet; set it per market on the create form.</dd>
+    <dt>Currencies</dt>
+    <dd>Markets are priced and settled in a single currency (CAD or USD), chosen when the market is created.</dd>
+  </dl>
+</section>
 {{end}}

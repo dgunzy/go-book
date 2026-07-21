@@ -18,6 +18,37 @@ import (
 // not a UUID, so accepted_by and the ledger actor are left NULL.
 const AutoApproveActor = "system:auto-approve"
 
+// AutoApproveLimitForUser returns a user's per-player auto-approve override in
+// cents and whether one is set. When no override exists the caller falls back
+// to the book-wide default.
+func (s Store) AutoApproveLimitForUser(ctx context.Context, userID string) (int64, bool, error) {
+	if s.DB == nil {
+		return 0, false, errors.New("bettingpg: PostgreSQL pool is required")
+	}
+	if !isUUID(userID) {
+		return 0, false, fmt.Errorf("%w: auto-approve limit requires a user ID", betting.ErrInvalid)
+	}
+	rows, err := s.DB.Query(ctx, `SELECT wager_auto_approve_max_cents FROM users WHERE id = $1::uuid`, userID)
+	if err != nil {
+		return 0, false, fmt.Errorf("load auto-approve limit: %w", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			return 0, false, err
+		}
+		return 0, false, fmt.Errorf("%w: user %s", betting.ErrNotFound, userID)
+	}
+	var limit *int64
+	if err := rows.Scan(&limit); err != nil {
+		return 0, false, fmt.Errorf("scan auto-approve limit: %w", err)
+	}
+	if limit == nil {
+		return 0, false, rows.Err()
+	}
+	return *limit, true, rows.Err()
+}
+
 // AcceptWager approves a pending wager, moving its stake from the user's
 // funding account to the shared escrow account. Idempotency is guaranteed by
 // locking the wager row FOR UPDATE first: if it is already accepted, the

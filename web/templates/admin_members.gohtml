@@ -62,7 +62,7 @@
   <h2 id="members-heading">Current members</h2>
   <div class="private-table-wrap">
     <table class="private-table private-table-wide">
-      <thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Joined</th>{{if .IsOwner}}<th scope="col">Owner actions</th>{{end}}</tr></thead>
+      <thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Joined</th><th scope="col">Auto-approve limit</th>{{if .IsOwner}}<th scope="col">Owner actions</th>{{end}}</tr></thead>
       <tbody>
         {{range .Members}}
         <tr>
@@ -71,6 +71,13 @@
           <td><span class="private-status">{{.Role}}</span></td>
           <td>{{.Status}}</td>
           <td>{{when .GrantedAt}}</td>
+          <td class="betting-actions-cell">
+            <form method="post" action="/admin/members/{{.UserID}}/limit" class="members-limit-form">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <input name="limit" type="text" inputmode="decimal" value="{{if .AutoApproveMaxCents}}{{limitDollars .AutoApproveMaxCents}}{{end}}" placeholder="default" aria-label="Auto-approve limit dollars">
+              <button type="submit">Set</button>
+            </form>
+          </td>
           {{if $.IsOwner}}
           <td class="betting-actions-cell">
             <form method="post" action="/admin/members/{{.UserID}}/role" class="members-role-form">

@@ -68,6 +68,7 @@ type WagerStore interface {
 	RejectWager(ctx context.Context, wagerID, actorUserID, reason string) (betting.Wager, error)
 	ListWagersByState(context.Context, betting.WagerState) ([]bettingpg.AdminWagerRow, error)
 	ListWagersForUser(context.Context, string) ([]bettingpg.UserWagerRow, error)
+	AutoApproveLimitForUser(ctx context.Context, userID string) (int64, bool, error)
 }
 
 var (
@@ -146,7 +147,8 @@ func (h *Handler) adminHelp(w http.ResponseWriter, r *http.Request) {
 	}
 	h.render(w, "admin_help", pageData{
 		Title: "How to run the book", Current: "admin-help", Session: session,
-		AutoApproveDollars: formatCentsDollars(h.autoApproveMaxCents),
+		AutoApproveDollars:       formatCentsDollars(h.autoApproveMaxCents),
+		DefaultLineWeightDollars: formatCentsDollars(bettingpg.DefaultPricingLiquidityCents),
 	})
 }
 
@@ -177,9 +179,10 @@ type pageData struct {
 	Form           url.Values
 	NewMarketID    string
 	SelectionSlots []int
-	// AutoApproveDollars is the human-readable auto-approve threshold shown on
-	// the help page.
-	AutoApproveDollars string
+	// AutoApproveDollars and DefaultLineWeightDollars are the human-readable
+	// current settings shown on the help page.
+	AutoApproveDollars       string
+	DefaultLineWeightDollars string
 }
 
 // formatCentsDollars renders an integer-cents amount as a plain dollar string
@@ -296,7 +299,12 @@ func (h *Handler) placeWager(w http.ResponseWriter, r *http.Request) {
 	message := "Wager placed."
 	detail := fmt.Sprintf("%s at %s for %s. It is pending admin approval.",
 		wager.AcceptedTerms, formatOdds(wager.AcceptedOdds), formatMoney(wager.Stake))
-	if h.autoApproveMaxCents > 0 && stakeCents <= h.autoApproveMaxCents {
+	// A per-player override, when set, replaces the book-wide threshold.
+	limit := h.autoApproveMaxCents
+	if override, ok, limitErr := h.deps.Wagers.AutoApproveLimitForUser(r.Context(), session.UserID); limitErr == nil && ok {
+		limit = override
+	}
+	if limit > 0 && stakeCents <= limit {
 		if accepted, acceptErr := h.deps.Wagers.AcceptWager(r.Context(), string(wager.ID), bettingpg.AutoApproveActor); acceptErr == nil {
 			message = "Wager accepted."
 			detail = fmt.Sprintf("%s at %s for %s. Auto-approved and held in escrow.",

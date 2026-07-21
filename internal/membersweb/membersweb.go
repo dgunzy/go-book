@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -48,6 +49,7 @@ type MemberStore interface {
 	RevokeInvitation(ctx context.Context, actorUserID, invitationID string) error
 	ChangeMemberRole(ctx context.Context, actorUserID, targetUserID, newRole, reason string) error
 	RevokeMember(ctx context.Context, actorUserID, targetUserID, reason string) error
+	SetAutoApproveLimit(ctx context.Context, actorUserID, targetUserID string, cents *int64) error
 }
 
 var _ MemberStore = identitypg.Store{}
@@ -94,6 +96,62 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /admin/members/invite/{id}/revoke", h.revokeInvite)
 	h.mux.HandleFunc("POST /admin/members/{id}/role", h.changeRole)
 	h.mux.HandleFunc("POST /admin/members/{id}/revoke", h.revokeMember)
+	h.mux.HandleFunc("POST /admin/members/{id}/limit", h.setLimit)
+}
+
+var stakePattern = regexp.MustCompile(`^\$?([0-9]{1,7})(?:\.([0-9]{1,2}))?$`)
+
+// parseLimitCents converts a dollars-and-cents limit to integer cents. A blank
+// value returns nil, meaning "clear the override and use the book default".
+func parseLimitCents(value string) (*int64, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	match := stakePattern.FindStringSubmatch(value)
+	if match == nil {
+		return nil, errors.New("limit must be a dollar amount")
+	}
+	dollars, err := strconv.ParseInt(match[1], 10, 64)
+	if err != nil {
+		return nil, err
+	}
+	var cents int64
+	if match[2] != "" {
+		if cents, err = strconv.ParseInt(match[2], 10, 64); err != nil {
+			return nil, err
+		}
+		if len(match[2]) == 1 {
+			cents *= 10
+		}
+	}
+	total := dollars*100 + cents
+	return &total, nil
+}
+
+func (h *Handler) setLimit(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	targetID := r.PathValue("id")
+	if !isUUID(targetID) {
+		h.renderList(w, r, session, pageData{FormError: "That member was not found."})
+		return
+	}
+	cents, err := parseLimitCents(r.PostForm.Get("limit"))
+	if err != nil {
+		h.renderList(w, r, session, pageData{FormError: "Enter the auto-approve limit as a dollar amount, or leave it blank to use the default."})
+		return
+	}
+	if err := h.deps.Members.SetAutoApproveLimit(r.Context(), session.UserID, targetID, cents); err != nil {
+		h.renderList(w, r, session, pageData{FormError: storeErrorMessage(err)})
+		return
+	}
+	http.Redirect(w, r, redirectMembers, http.StatusSeeOther)
 }
 
 type pageData struct {
@@ -323,12 +381,20 @@ func storeErrorMessage(err error) string {
 }
 
 func parseTemplates() (map[string]*template.Template, error) {
-	functions := template.FuncMap{"when": func(t time.Time) string {
-		if t.IsZero() {
-			return "-"
-		}
-		return t.Format("Jan 2, 2006 15:04 MST")
-	}}
+	functions := template.FuncMap{
+		"when": func(t time.Time) string {
+			if t.IsZero() {
+				return "-"
+			}
+			return t.Format("Jan 2, 2006 15:04 MST")
+		},
+		"limitDollars": func(cents *int64) string {
+			if cents == nil {
+				return ""
+			}
+			return fmt.Sprintf("%d.%02d", *cents/100, *cents%100)
+		},
+	}
 	result := make(map[string]*template.Template, 2)
 	for name, page := range map[string]string{
 		"members":   "templates/admin_members.gohtml",

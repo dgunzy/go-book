@@ -35,6 +35,9 @@ type MemberRow struct {
 	Status         string
 	GrantedAt      time.Time
 	IdentityLinked bool
+	// AutoApproveMaxCents is the member's per-player auto-approve override in
+	// cents, or nil when they use the book-wide default.
+	AutoApproveMaxCents *int64
 }
 
 // InvitationRow is one outstanding (unconsumed, unrevoked, unexpired) invite.
@@ -222,7 +225,8 @@ func (store Store) ListMembers(ctx context.Context) ([]MemberRow, error) {
 	}
 	rows, err := store.Pool.Query(ctx, `
 		SELECT u.id::text, u.display_name, coalesce(u.email, ''), m.role, u.status, m.granted_at,
-		       EXISTS (SELECT 1 FROM auth_identities ai WHERE ai.user_id = u.id)
+		       EXISTS (SELECT 1 FROM auth_identities ai WHERE ai.user_id = u.id),
+		       u.wager_auto_approve_max_cents
 		FROM memberships m
 		JOIN users u ON u.id = m.user_id
 		WHERE m.revoked_at IS NULL
@@ -234,7 +238,7 @@ func (store Store) ListMembers(ctx context.Context) ([]MemberRow, error) {
 	var result []MemberRow
 	for rows.Next() {
 		var row MemberRow
-		if err := rows.Scan(&row.UserID, &row.DisplayName, &row.Email, &row.Role, &row.Status, &row.GrantedAt, &row.IdentityLinked); err != nil {
+		if err := rows.Scan(&row.UserID, &row.DisplayName, &row.Email, &row.Role, &row.Status, &row.GrantedAt, &row.IdentityLinked, &row.AutoApproveMaxCents); err != nil {
 			return nil, fmt.Errorf("scan member: %w", err)
 		}
 		row.GrantedAt = row.GrantedAt.UTC()
@@ -379,6 +383,49 @@ func (store Store) RevokeMember(ctx context.Context, actorUserID, targetUserID, 
 		VALUES ($1::uuid, 'membership.revoked', 'user', $2::uuid, $3, jsonb_build_object('role', $4::text))`,
 		actorUserID, targetUserID, reason, currentRole); err != nil {
 		return fmt.Errorf("record revoke audit: %w", err)
+	}
+	return tx.Commit(ctx)
+}
+
+// SetAutoApproveLimit sets (or clears, when cents is nil) a member's per-player
+// auto-approve override. Admins and owners may adjust betting limits. The
+// change is audited.
+func (store Store) SetAutoApproveLimit(ctx context.Context, actorUserID, targetUserID string, cents *int64) error {
+	if store.Pool == nil {
+		return errors.New("identity PostgreSQL pool is required")
+	}
+	if cents != nil && *cents < 0 {
+		return errors.New("auto-approve limit must not be negative")
+	}
+	actorRole, err := store.activeRole(ctx, actorUserID)
+	if err != nil {
+		return err
+	}
+	if actorRole != "admin" && actorRole != "owner" {
+		return fmt.Errorf("%w: only an admin or owner may set betting limits", identity.ErrUnauthorized)
+	}
+	tx, err := store.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return fmt.Errorf("begin set limit: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	tag, err := tx.Exec(ctx, `UPDATE users SET wager_auto_approve_max_cents = $2, updated_at = now() WHERE id = $1::uuid`, targetUserID, cents)
+	if err != nil {
+		return fmt.Errorf("set auto-approve limit: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("member not found")
+	}
+	after := "null"
+	if cents != nil {
+		after = fmt.Sprintf("%d", *cents)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO audit_entries (actor_user_id, action, target_type, target_id, reason, after_data)
+		VALUES ($1::uuid, 'membership.auto_approve_limit_set', 'user', $2::uuid, 'set betting limit', jsonb_build_object('auto_approve_max_cents', $3::text))`,
+		actorUserID, targetUserID, after); err != nil {
+		return fmt.Errorf("record limit audit: %w", err)
 	}
 	return tx.Commit(ctx)
 }
