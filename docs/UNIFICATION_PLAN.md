@@ -47,11 +47,11 @@ The event-driven and betting foundations landed 2026-07-17:
   write-up, photos, and authoritative match/stat entry. No result is inferred from
   legacy betting descriptions or aggregate player statistics.
 
-The isolated `cabot_cup_test` database and synchronized secret are ready, but the
-browser-accessible acceptance instance remains gated on external setup: DNS for
-`test.cabotcup.ca` must point to the Gateway and Google OIDC must allow
-`https://test.cabotcup.ca/auth/callback`. Production will remain permanently pinned
-to `DATABASE_MODE=real`; test mode belongs in a separate staging deployment.
+The isolated `cabot_cup_test` database, synchronized secrets, DNS, dedicated
+cert-manager certificate, and Google callback are configured for the separate
+`test.cabotcup.ca` acceptance instance. Its migration and web release are gated
+independently in Flux, both select `DATABASE_MODE=test`, and the route is marked
+no-index. Production remains permanently pinned to `DATABASE_MODE=real`.
 
 PostgreSQL repositories for markets/wagers/settlement, the verified-result
 settlement consumer, betting HTTP routes, dispatcher wiring in the server process,
