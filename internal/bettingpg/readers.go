@@ -18,21 +18,27 @@ type MarketSelectionRow struct {
 	Key                 string
 	DisplayTerms        string
 	OfferedAmericanOdds ledger.AmericanOdds
+	OpeningAmericanOdds ledger.AmericanOdds
 	SemanticResultKey   string
 	Active              bool
 }
 
+// Moved reports whether the live line has drifted from the opening line, i.e.
+// dynamic pricing has repriced this selection.
+func (r MarketSelectionRow) Moved() bool { return r.OfferedAmericanOdds != r.OpeningAmericanOdds }
+
 // MarketRow is a market with its selections for browse and admin pages.
 type MarketRow struct {
-	ID         string
-	Type       betting.MarketType
-	MatchID    string
-	Title      string
-	State      betting.MarketState
-	Currency   ledger.Currency
-	OpensAt    time.Time
-	ClosesAt   time.Time
-	Selections []MarketSelectionRow
+	ID             string
+	Type           betting.MarketType
+	MatchID        string
+	Title          string
+	State          betting.MarketState
+	Currency       ledger.Currency
+	DynamicPricing bool
+	OpensAt        time.Time
+	ClosesAt       time.Time
+	Selections     []MarketSelectionRow
 }
 
 // AdminWagerRow is one wager in the admin review queue. It includes the
@@ -68,9 +74,10 @@ type UserWagerRow struct {
 
 const marketRowsSQL = `
 SELECT m.id::text, m.market_type, coalesce(m.match_id::text, ''), m.title, m.state, m.currency::text,
-       m.opens_at, m.closes_at,
+       m.dynamic_pricing, m.opens_at, m.closes_at,
        coalesce(s.id::text, ''), coalesce(s.selection_key, ''), coalesce(s.display_terms, ''),
-       coalesce(s.offered_american_odds, 100), coalesce(s.semantic_result_key, ''), coalesce(s.active, false)
+       coalesce(s.offered_american_odds, 100), coalesce(s.opening_american_odds, 100),
+       coalesce(s.semantic_result_key, ''), coalesce(s.active, false)
 FROM markets m
 LEFT JOIN selections s ON s.market_id = m.id%s
 WHERE %s
@@ -106,13 +113,14 @@ func (s Store) listMarkets(ctx context.Context, query string) ([]MarketRow, erro
 	index := make(map[string]int)
 	for rows.Next() {
 		var id, marketType, matchID, title, state, currency string
+		var dynamicPricing bool
 		var opensAt sql.NullTime
 		var closesAt time.Time
 		var selectionID, selectionKey, displayTerms, semanticKey string
-		var odds int32
+		var odds, openingOdds int32
 		var active bool
 		if err := rows.Scan(&id, &marketType, &matchID, &title, &state, &currency,
-			&opensAt, &closesAt, &selectionID, &selectionKey, &displayTerms, &odds, &semanticKey, &active); err != nil {
+			&dynamicPricing, &opensAt, &closesAt, &selectionID, &selectionKey, &displayTerms, &odds, &openingOdds, &semanticKey, &active); err != nil {
 			return nil, fmt.Errorf("scan market row: %w", err)
 		}
 		position, seen := index[id]
@@ -123,7 +131,8 @@ func (s Store) listMarkets(ctx context.Context, query string) ([]MarketRow, erro
 			}
 			market := MarketRow{
 				ID: id, Type: betting.MarketType(marketType), MatchID: matchID, Title: title,
-				State: betting.MarketState(state), Currency: parsedCurrency, ClosesAt: closesAt.UTC(),
+				State: betting.MarketState(state), Currency: parsedCurrency, DynamicPricing: dynamicPricing,
+				ClosesAt: closesAt.UTC(),
 			}
 			if opensAt.Valid {
 				market.OpensAt = opensAt.Time.UTC()
@@ -139,9 +148,14 @@ func (s Store) listMarkets(ctx context.Context, query string) ([]MarketRow, erro
 		if err != nil {
 			return nil, fmt.Errorf("selection %s odds: %w", selectionID, err)
 		}
+		parsedOpeningOdds, err := ledger.NewAmericanOdds(openingOdds)
+		if err != nil {
+			return nil, fmt.Errorf("selection %s opening odds: %w", selectionID, err)
+		}
 		result[position].Selections = append(result[position].Selections, MarketSelectionRow{
 			ID: selectionID, Key: selectionKey, DisplayTerms: displayTerms,
-			OfferedAmericanOdds: parsedOdds, SemanticResultKey: semanticKey, Active: active,
+			OfferedAmericanOdds: parsedOdds, OpeningAmericanOdds: parsedOpeningOdds,
+			SemanticResultKey: semanticKey, Active: active,
 		})
 	}
 	if err := rows.Err(); err != nil {

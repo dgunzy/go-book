@@ -735,6 +735,15 @@ func parseCreateMarketForm(form url.Values) (bettingpg.CreateMarketRequest, stri
 	}
 	request.Currency = currency
 
+	if form.Get("dynamic_pricing") != "" {
+		request.DynamicPricing = true
+		liquidityCents, err := parseStakeCents(form.Get("pricing_liquidity"))
+		if err != nil {
+			return request, "Enter the pricing liquidity as a dollar amount, for example 500 (larger moves the line less)."
+		}
+		request.PricingLiquidityCents = liquidityCents
+	}
+
 	closesAt, err := parseFormTime(form.Get("closes_at"))
 	if err != nil || closesAt.IsZero() {
 		return request, "A closing time is required, formatted as YYYY-MM-DDTHH:MM (UTC)."

@@ -39,6 +39,11 @@ type CreateMarketRequest struct {
 	ClosesAt    time.Time
 	Selections  []CreateMarketSelection
 	ActorUserID string
+	// DynamicPricing enables exposure-based line movement for this market;
+	// PricingLiquidityCents is the sensitivity "b" (larger = smaller moves)
+	// and must be positive when DynamicPricing is set.
+	DynamicPricing        bool
+	PricingLiquidityCents int64
 }
 
 // maxSelectionsPerMarket bounds the selection list on one market so a
@@ -72,6 +77,14 @@ func (s Store) CreateMarket(ctx context.Context, req CreateMarketRequest) (betti
 	if len(req.Selections) == 0 || len(req.Selections) > maxSelectionsPerMarket {
 		return betting.Market{}, fmt.Errorf("%w: a market requires between 1 and %d selections", betting.ErrInvalid, maxSelectionsPerMarket)
 	}
+	if req.DynamicPricing {
+		if req.PricingLiquidityCents <= 0 {
+			return betting.Market{}, fmt.Errorf("%w: dynamic pricing requires a positive liquidity", betting.ErrInvalid)
+		}
+		if len(req.Selections) < 2 {
+			return betting.Market{}, fmt.Errorf("%w: dynamic pricing requires at least two selections", betting.ErrInvalid)
+		}
+	}
 	selections := make([]betting.Selection, 0, len(req.Selections))
 	seenKeys := make(map[string]bool, len(req.Selections))
 	for _, request := range req.Selections {
@@ -104,14 +117,19 @@ func (s Store) CreateMarket(ctx context.Context, req CreateMarketRequest) (betti
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	var pricingLiquidity any
+	if req.DynamicPricing {
+		pricingLiquidity = req.PricingLiquidityCents
+	}
 	var insertedID string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO markets (id, market_type, match_id, title, state, currency, opens_at, closes_at, created_by)
-		VALUES ($1::uuid, $2, nullif($3, '')::uuid, $4, 'draft', $5, $6, $7, $8::uuid)
+		INSERT INTO markets (id, market_type, match_id, title, state, currency, opens_at, closes_at, created_by, dynamic_pricing, pricing_liquidity_cents)
+		VALUES ($1::uuid, $2, nullif($3, '')::uuid, $4, 'draft', $5, $6, $7, $8::uuid, $9, $10)
 		ON CONFLICT (id) DO NOTHING
 		RETURNING id::text`,
 		string(market.ID), string(market.Type), string(market.MatchID), market.Title,
-		string(market.Currency), nullableTime(market.OpensAt), market.ClosesAt.UTC(), req.ActorUserID).Scan(&insertedID)
+		string(market.Currency), nullableTime(market.OpensAt), market.ClosesAt.UTC(), req.ActorUserID,
+		req.DynamicPricing, pricingLiquidity).Scan(&insertedID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		existing, err := loadMarket(ctx, tx, string(market.ID))
 		if err != nil {
@@ -132,9 +150,11 @@ func (s Store) CreateMarket(ctx context.Context, req CreateMarketRequest) (betti
 	}
 
 	for _, selection := range selections {
+		// opening_american_odds is seeded equal to the offered line and stays
+		// fixed as the prior the pricing engine reprices from.
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO selections (id, market_id, selection_key, display_terms, offered_american_odds, semantic_result_key, active)
-			VALUES ($1::uuid, $2::uuid, $3, $4, $5, nullif($6, ''), true)`,
+			INSERT INTO selections (id, market_id, selection_key, display_terms, offered_american_odds, opening_american_odds, semantic_result_key, active)
+			VALUES ($1::uuid, $2::uuid, $3, $4, $5, $5, nullif($6, ''), true)`,
 			string(selection.ID), string(selection.MarketID), selection.Key, selection.DisplayTerms,
 			int32(selection.OfferedAmericanOdds), selection.SemanticResultKey); err != nil {
 			return betting.Market{}, fmt.Errorf("insert selection %q for market %s: %w", selection.Key, market.ID, err)

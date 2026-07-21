@@ -406,3 +406,35 @@ func TestParseStakeCents(t *testing.T) {
 		}
 	}
 }
+
+func TestAdminCreateMarketParsesDynamicPricing(t *testing.T) {
+	markets := &fakeMarkets{}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	closesAt := time.Now().UTC().Add(72 * time.Hour).Format("2006-01-02T15:04")
+	body := url.Values{
+		"csrf_token": {testCSRF}, "market_id": {testMarketID}, "market_type": {"future"},
+		"title": {"Tournament winner"}, "currency": {"CAD"}, "closes_at": {closesAt},
+		"dynamic_pricing": {"1"}, "pricing_liquidity": {"1500.00"},
+		"selection_key_1": {"team-a"}, "selection_terms_1": {"Team A"}, "selection_odds_1": {"-110"},
+		"selection_key_2": {"team-b"}, "selection_terms_2": {"Team B"}, "selection_odds_2": {"120"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	if len(markets.createCalls) != 1 {
+		t.Fatalf("CreateMarket calls = %d, want 1", len(markets.createCalls))
+	}
+	req := markets.createCalls[0]
+	if !req.DynamicPricing {
+		t.Fatal("DynamicPricing was not set from the form")
+	}
+	if req.PricingLiquidityCents != 150000 {
+		t.Fatalf("PricingLiquidityCents = %d, want 150000", req.PricingLiquidityCents)
+	}
+}

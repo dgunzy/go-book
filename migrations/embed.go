@@ -25,12 +25,16 @@ var identityAndLegacyBookSQL string
 //go:embed 000003_market_currency.up.sql
 var marketCurrencySQL string
 
+//go:embed 000004_dynamic_pricing.up.sql
+var dynamicPricingSQL string
+
 // All returns migrations in application order.
 func All() []Definition {
 	return []Definition{
 		newDefinition(1, "initial", initialSQL),
 		newDefinition(2, "identity_and_legacy_book", identityAndLegacyBookSQL),
 		newDefinition(3, "market_currency", marketCurrencySQL),
+		newDefinition(4, "dynamic_pricing", dynamicPricingSQL),
 	}
 }
 

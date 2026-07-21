@@ -160,10 +160,12 @@ func ensureMockMarket(ctx context.Context, tx pgx.Tx, createdBy string) (bool, e
 	if createdBy == "" {
 		return false, errors.New("mock-seed needs an admin or owner account to own the market")
 	}
+	// Dynamic pricing on, liquidity $1,500, so a member's bet noticeably but
+	// not wildly moves the line in the dev harness.
 	var marketID string
 	err := tx.QueryRow(ctx, `
-		INSERT INTO markets (market_type, title, state, currency, closes_at, created_by)
-		SELECT 'future', 'Mock Cup Winner', 'open', 'CAD', now() + interval '30 days', $1::uuid
+		INSERT INTO markets (market_type, title, state, currency, closes_at, created_by, dynamic_pricing, pricing_liquidity_cents)
+		SELECT 'future', 'Mock Cup Winner', 'open', 'CAD', now() + interval '30 days', $1::uuid, true, 150000
 		WHERE NOT EXISTS (SELECT 1 FROM markets WHERE title = 'Mock Cup Winner')
 		RETURNING id::text`, createdBy).Scan(&marketID)
 	if errors.Is(err, pgx.ErrNoRows) {

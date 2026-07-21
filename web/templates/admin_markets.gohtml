@@ -12,13 +12,13 @@
       <tbody>
         {{range .Markets}}
         <tr>
-          <th scope="row">{{.Market.Title}}</th>
+          <th scope="row">{{.Market.Title}}{{if .Market.DynamicPricing}} <span class="betting-pricing-badge" title="Line moves automatically as action comes in">auto-priced</span>{{end}}</th>
           <td><span class="private-status">{{.Market.Type}}</span></td>
           <td><span class="private-status">{{.Market.State}}</span></td>
           <td>{{.Market.Currency}}</td>
           <td>{{when .Market.ClosesAt}}</td>
           <td>
-            {{range .Selections}}<span class="betting-selection-chip">{{.DisplayTerms}} <span class="private-odds">{{odds .OfferedAmericanOdds}}</span></span>{{end}}
+            {{range .Selections}}<span class="betting-selection-chip">{{.DisplayTerms}} <span class="private-odds">{{odds .OfferedAmericanOdds}}</span>{{if .Moved}} <span class="betting-line-moved" title="Opened at {{odds .OpeningAmericanOdds}}">(from {{odds .OpeningAmericanOdds}})</span>{{end}}</span>{{end}}
           </td>
           <td class="betting-actions-cell">
             {{if eq .Market.State "draft"}}

@@ -43,6 +43,18 @@
     <input type="datetime-local" name="closes_at" value="{{.Form.Get "closes_at"}}" required>
   </label>
 
+  <fieldset class="betting-pricing">
+    <legend>Dynamic pricing (optional)</legend>
+    <label class="betting-inline-check">
+      <input type="checkbox" name="dynamic_pricing" value="1" {{if .Form.Get "dynamic_pricing"}}checked{{end}}>
+      Move the line automatically as action comes in
+    </label>
+    <label>Liquidity (dollars; larger moves the line less per bet)
+      <input name="pricing_liquidity" value="{{.Form.Get "pricing_liquidity"}}" inputmode="decimal" placeholder="500.00">
+    </label>
+    <p class="betting-hint">The odds each bet is quoted are locked when the bet is placed; the line only moves for the next bettor. Requires at least two selections.</p>
+  </fieldset>
+
   <fieldset class="betting-selection-slots">
     <legend>Selections (fill at least one row)</legend>
     {{range .SelectionSlots}}
