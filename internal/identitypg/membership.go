@@ -38,6 +38,9 @@ type MemberRow struct {
 	// AutoApproveMaxCents is the member's per-player auto-approve override in
 	// cents, or nil when they use the book-wide default.
 	AutoApproveMaxCents *int64
+	// CreditLimitCents is how far the member's cash balance may go negative
+	// (how much they can bet on credit / owe the book).
+	CreditLimitCents int64
 }
 
 // InvitationRow is one outstanding (unconsumed, unrevoked, unexpired) invite.
@@ -226,7 +229,7 @@ func (store Store) ListMembers(ctx context.Context) ([]MemberRow, error) {
 	rows, err := store.Pool.Query(ctx, `
 		SELECT u.id::text, u.display_name, coalesce(u.email, ''), m.role, u.status, m.granted_at,
 		       EXISTS (SELECT 1 FROM auth_identities ai WHERE ai.user_id = u.id),
-		       u.wager_auto_approve_max_cents
+		       u.wager_auto_approve_max_cents, u.credit_limit_cents
 		FROM memberships m
 		JOIN users u ON u.id = m.user_id
 		WHERE m.revoked_at IS NULL
@@ -238,7 +241,7 @@ func (store Store) ListMembers(ctx context.Context) ([]MemberRow, error) {
 	var result []MemberRow
 	for rows.Next() {
 		var row MemberRow
-		if err := rows.Scan(&row.UserID, &row.DisplayName, &row.Email, &row.Role, &row.Status, &row.GrantedAt, &row.IdentityLinked, &row.AutoApproveMaxCents); err != nil {
+		if err := rows.Scan(&row.UserID, &row.DisplayName, &row.Email, &row.Role, &row.Status, &row.GrantedAt, &row.IdentityLinked, &row.AutoApproveMaxCents, &row.CreditLimitCents); err != nil {
 			return nil, fmt.Errorf("scan member: %w", err)
 		}
 		row.GrantedAt = row.GrantedAt.UTC()
@@ -426,6 +429,44 @@ func (store Store) SetAutoApproveLimit(ctx context.Context, actorUserID, targetU
 		VALUES ($1::uuid, 'membership.auto_approve_limit_set', 'user', $2::uuid, 'set betting limit', jsonb_build_object('auto_approve_max_cents', $3::text))`,
 		actorUserID, targetUserID, after); err != nil {
 		return fmt.Errorf("record limit audit: %w", err)
+	}
+	return tx.Commit(ctx)
+}
+
+// SetCreditLimit sets a member's credit limit (how far their balance may go
+// negative). Admins and owners may adjust it; the change is audited.
+func (store Store) SetCreditLimit(ctx context.Context, actorUserID, targetUserID string, cents int64) error {
+	if store.Pool == nil {
+		return errors.New("identity PostgreSQL pool is required")
+	}
+	if cents < 0 {
+		return errors.New("credit limit must not be negative")
+	}
+	actorRole, err := store.activeRole(ctx, actorUserID)
+	if err != nil {
+		return err
+	}
+	if actorRole != "admin" && actorRole != "owner" {
+		return fmt.Errorf("%w: only an admin or owner may set credit limits", identity.ErrUnauthorized)
+	}
+	tx, err := store.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+	if err != nil {
+		return fmt.Errorf("begin set credit limit: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+
+	tag, err := tx.Exec(ctx, `UPDATE users SET credit_limit_cents = $2, updated_at = now() WHERE id = $1::uuid`, targetUserID, cents)
+	if err != nil {
+		return fmt.Errorf("set credit limit: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return errors.New("member not found")
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO audit_entries (actor_user_id, action, target_type, target_id, reason, after_data)
+		VALUES ($1::uuid, 'membership.credit_limit_set', 'user', $2::uuid, 'set credit limit', jsonb_build_object('credit_limit_cents', $3::text))`,
+		actorUserID, targetUserID, fmt.Sprintf("%d", cents)); err != nil {
+		return fmt.Errorf("record credit limit audit: %w", err)
 	}
 	return tx.Commit(ctx)
 }

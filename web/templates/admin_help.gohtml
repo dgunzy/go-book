@@ -60,6 +60,8 @@
     <dd>${{.AutoApproveDollars}} — wagers up to this stake are accepted automatically. Set per-player overrides on the <a href="/admin/members">Members</a> page (blank uses this default; <code>0</code> forces every wager to manual review). Change the book default via the <code>WAGER_AUTO_APPROVE_MAX_CENTS</code> deployment setting.</dd>
     <dt>Dynamic pricing line weight (default)</dt>
     <dd>${{.DefaultLineWeightDollars}} — used when you enable dynamic pricing without entering a value. A larger weight moves the line less per bet; set it per market on the create form.</dd>
+    <dt>Credit line (per player)</dt>
+    <dd>Every member starts with a $1,000 credit limit — they can bet until they owe the book that much (their balance goes negative). When someone "applies for extra", raise their credit limit on the <a href="/admin/members">Members</a> page.</dd>
     <dt>Currencies</dt>
     <dd>Markets are priced and settled in a single currency (CAD or USD), chosen when the market is created.</dd>
   </dl>

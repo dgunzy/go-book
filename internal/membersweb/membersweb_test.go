@@ -42,6 +42,7 @@ type fakeMembers struct {
 		target string
 		cents  *int64
 	}
+	creditCalls []int64
 }
 
 func (f *fakeMembers) ListMembers(context.Context) ([]identitypg.MemberRow, error) {
@@ -71,6 +72,10 @@ func (f *fakeMembers) SetAutoApproveLimit(_ context.Context, actor, target strin
 		target string
 		cents  *int64
 	}{target, cents})
+	return f.limitErr
+}
+func (f *fakeMembers) SetCreditLimit(_ context.Context, actor, target string, cents int64) error {
+	f.creditCalls = append(f.creditCalls, cents)
 	return f.limitErr
 }
 
@@ -253,5 +258,18 @@ func TestSetLimitRequiresAdmin(t *testing.T) {
 	}
 	if len(members.limitCalls) != 0 {
 		t.Fatal("member reached SetAutoApproveLimit")
+	}
+}
+
+func TestSetCreditLimit(t *testing.T) {
+	members := &fakeMembers{}
+	h := newHandler(t, session(privateweb.RoleAdmin), members)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, postForm("/admin/members/"+targetID+"/credit", url.Values{"csrf_token": {testCSRF}, "credit": {"1000.00"}}))
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	if len(members.creditCalls) != 1 || members.creditCalls[0] != 100000 {
+		t.Fatalf("credit calls = %v, want [100000]", members.creditCalls)
 	}
 }

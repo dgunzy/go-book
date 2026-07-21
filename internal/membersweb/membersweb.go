@@ -50,6 +50,7 @@ type MemberStore interface {
 	ChangeMemberRole(ctx context.Context, actorUserID, targetUserID, newRole, reason string) error
 	RevokeMember(ctx context.Context, actorUserID, targetUserID, reason string) error
 	SetAutoApproveLimit(ctx context.Context, actorUserID, targetUserID string, cents *int64) error
+	SetCreditLimit(ctx context.Context, actorUserID, targetUserID string, cents int64) error
 }
 
 var _ MemberStore = identitypg.Store{}
@@ -97,6 +98,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /admin/members/{id}/role", h.changeRole)
 	h.mux.HandleFunc("POST /admin/members/{id}/revoke", h.revokeMember)
 	h.mux.HandleFunc("POST /admin/members/{id}/limit", h.setLimit)
+	h.mux.HandleFunc("POST /admin/members/{id}/credit", h.setCredit)
 }
 
 var stakePattern = regexp.MustCompile(`^\$?([0-9]{1,7})(?:\.([0-9]{1,2}))?$`)
@@ -127,6 +129,31 @@ func parseLimitCents(value string) (*int64, error) {
 	}
 	total := dollars*100 + cents
 	return &total, nil
+}
+
+func (h *Handler) setCredit(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	targetID := r.PathValue("id")
+	if !isUUID(targetID) {
+		h.renderList(w, r, session, pageData{FormError: "That member was not found."})
+		return
+	}
+	cents, err := parseLimitCents(r.PostForm.Get("credit"))
+	if err != nil || cents == nil {
+		h.renderList(w, r, session, pageData{FormError: "Enter the credit limit as a dollar amount, for example 1000."})
+		return
+	}
+	if err := h.deps.Members.SetCreditLimit(r.Context(), session.UserID, targetID, *cents); err != nil {
+		h.renderList(w, r, session, pageData{FormError: storeErrorMessage(err)})
+		return
+	}
+	http.Redirect(w, r, redirectMembers, http.StatusSeeOther)
 }
 
 func (h *Handler) setLimit(w http.ResponseWriter, r *http.Request) {
@@ -393,6 +420,9 @@ func parseTemplates() (map[string]*template.Template, error) {
 				return ""
 			}
 			return fmt.Sprintf("%d.%02d", *cents/100, *cents%100)
+		},
+		"creditDollars": func(cents int64) string {
+			return fmt.Sprintf("%d.%02d", cents/100, cents%100)
 		},
 	}
 	result := make(map[string]*template.Template, 2)

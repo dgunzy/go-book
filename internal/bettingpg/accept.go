@@ -101,7 +101,13 @@ func (s Store) AcceptWager(ctx context.Context, wagerID, actorUserID string) (be
 	if err != nil {
 		return betting.Wager{}, err
 	}
-	if balance < wager.Stake.Cents {
+	// A member may bet on credit: their cash balance may go negative down to
+	// their credit limit, so the available amount is balance + credit limit.
+	creditLimit, err := creditLimitForUser(ctx, tx, string(wager.UserID))
+	if err != nil {
+		return betting.Wager{}, err
+	}
+	if balance+creditLimit < wager.Stake.Cents {
 		return betting.Wager{}, ErrInsufficientFunds
 	}
 
@@ -158,6 +164,14 @@ func (s Store) AcceptWager(ctx context.Context, wagerID, actorUserID string) (be
 		return betting.Wager{}, fmt.Errorf("commit accept wager: %w", err)
 	}
 	return result.Wager, nil
+}
+
+func creditLimitForUser(ctx context.Context, tx pgx.Tx, userID string) (int64, error) {
+	var limit int64
+	if err := tx.QueryRow(ctx, `SELECT credit_limit_cents FROM users WHERE id = $1::uuid`, userID).Scan(&limit); err != nil {
+		return 0, fmt.Errorf("load credit limit: %w", err)
+	}
+	return limit, nil
 }
 
 func currentSelectionOdds(ctx context.Context, tx pgx.Tx, selectionID string) (ledger.AmericanOdds, error) {

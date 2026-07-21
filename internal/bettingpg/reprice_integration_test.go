@@ -302,3 +302,51 @@ func placeAndAcceptSelection(t *testing.T, ctx context.Context, store Store, mar
 	}
 	return accepted
 }
+
+func TestAcceptWagerAllowsBettingOnCreditToLimit(t *testing.T) {
+	pool := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	store := Store{DB: pool}
+
+	// Fixture funds users $2000; drop this user's balance to 0 via a $2000 bet
+	// is complex, so instead set a modest credit limit and bet beyond balance.
+	f := buildFixture(t, ctx, pool, 100) // $1 balance
+	// Give the user a $500 credit limit.
+	if _, err := pool.Exec(ctx, `UPDATE users SET credit_limit_cents = 50000 WHERE id = $1::uuid`, f.UserA); err != nil {
+		t.Fatal(err)
+	}
+
+	// A $400 stake exceeds the $1 balance but is within balance+credit ($501).
+	wagerID := mustNewUUID(t, ctx, store)
+	wager, err := store.PlaceWager(ctx, PlaceWagerRequest{
+		WagerID: wagerID, UserID: f.UserA, MarketID: f.MarketID, SelectionID: f.SelectionAID,
+		FundingAccountType: betting.FundingUserCash, StakeCents: 40000, Currency: f.Currency,
+		IdempotencyKey: "credit:" + f.Suffix,
+	})
+	if err != nil {
+		t.Fatalf("PlaceWager() error = %v", err)
+	}
+	if _, err := store.AcceptWager(ctx, string(wager.ID), f.UserA); err != nil {
+		t.Fatalf("AcceptWager on credit error = %v, want success within credit limit", err)
+	}
+	// The balance is now negative (they owe the book).
+	balance := accountBalanceFor(t, ctx, pool, f.UserA, "user_cash", f.Currency)
+	if balance != 100-40000 {
+		t.Fatalf("balance after credit bet = %d, want %d (negative, owing)", balance, 100-40000)
+	}
+
+	// A second bet that would exceed the credit limit is rejected.
+	wagerID2 := mustNewUUID(t, ctx, store)
+	wager2, err := store.PlaceWager(ctx, PlaceWagerRequest{
+		WagerID: wagerID2, UserID: f.UserA, MarketID: f.MarketID, SelectionID: f.SelectionAID,
+		FundingAccountType: betting.FundingUserCash, StakeCents: 20000, Currency: f.Currency,
+		IdempotencyKey: "credit2:" + f.Suffix,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AcceptWager(ctx, string(wager2.ID), f.UserA); !errors.Is(err, ErrInsufficientFunds) {
+		t.Fatalf("AcceptWager beyond credit limit error = %v, want ErrInsufficientFunds", err)
+	}
+}
