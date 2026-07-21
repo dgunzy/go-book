@@ -61,13 +61,14 @@ type Photo struct {
 }
 
 type Event struct {
-	Year     int
-	Winner   string
-	RunnerUp string
-	Score    string
-	Venue    string
-	Summary  string
-	Photos   []Photo
+	Year        int
+	Winner      string
+	RunnerUp    string
+	Score       string
+	Venue       string
+	Summary     string
+	Photos      []Photo
+	Placeholder bool
 }
 
 type Snapshot struct {
@@ -203,6 +204,10 @@ func legacyEvents() []Event {
 				{URL: "https://d18fc2989jrcic.cloudfront.net/2024_cup_mau_baby.JPG", Alt: "Mau accepting an award", Caption: "Mau accepts the biggest baby award"},
 				{URL: "https://d18fc2989jrcic.cloudfront.net/2024_cup_tee.jpg", Alt: "Lumberjacks and Cabanas on a tee", Caption: "Lumberjacks and Cabanas prepare to face off"},
 			},
+		},
+		{
+			Year: 2025, Venue: "Details to be added", Placeholder: true,
+			Summary: "This page is reserved for the 2025 Cabot Cup write-up, photographs, and verified match statistics. No winner, score, teams, or individual match results have been entered yet.",
 		},
 	}
 }

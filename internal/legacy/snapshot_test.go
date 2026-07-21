@@ -10,11 +10,15 @@ func TestLoadLegacySnapshot(t *testing.T) {
 	if got, want := len(snapshot.Players), 23; got != want {
 		t.Fatalf("len(Players) = %d, want %d", got, want)
 	}
-	if got, want := len(snapshot.Events), 6; got != want {
+	if got, want := len(snapshot.Events), 7; got != want {
 		t.Fatalf("len(Events) = %d, want %d", got, want)
 	}
-	if snapshot.Events[0].Year != 2019 || snapshot.Events[len(snapshot.Events)-1].Year != 2024 {
-		t.Fatalf("event range = %d-%d, want 2019-2024", snapshot.Events[0].Year, snapshot.Events[len(snapshot.Events)-1].Year)
+	if snapshot.Events[0].Year != 2019 || snapshot.Events[len(snapshot.Events)-1].Year != 2025 {
+		t.Fatalf("event range = %d-%d, want 2019-2025", snapshot.Events[0].Year, snapshot.Events[len(snapshot.Events)-1].Year)
+	}
+	placeholder := snapshot.Events[len(snapshot.Events)-1]
+	if !placeholder.Placeholder || placeholder.Winner != "" || placeholder.Score != "" || len(placeholder.Photos) != 0 {
+		t.Fatalf("2025 placeholder contains inferred results or media: %#v", placeholder)
 	}
 	if snapshot.Label != SnapshotLabel || snapshot.Note != SourceNote {
 		t.Fatal("snapshot is missing its legacy source labels")

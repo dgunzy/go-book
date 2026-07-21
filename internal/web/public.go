@@ -92,7 +92,7 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) history(w http.ResponseWriter, _ *http.Request) {
-	data := h.baseData("Cup history", "Explore every team-era Cabot Cup from 2019 through 2024.", "history")
+	data := h.baseData("Cup history", "Explore the Cabot Cup archive from 2019 through the 2025 placeholder.", "history")
 	h.render(w, "history", data)
 }
 

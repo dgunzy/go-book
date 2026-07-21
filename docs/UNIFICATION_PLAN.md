@@ -43,6 +43,15 @@ The event-driven and betting foundations landed 2026-07-17:
   `DATABASE_URL` and `TEST_DATABASE_URL` for end-to-end rehearsal; test mode is
   rejected in production and the two URLs must differ. GitOps stages a disposable
   `cabot_cup_test` database and the `TEST_DATABASE_URL` secret key.
+- The public archive includes an explicitly blank 2025 placeholder for the future
+  write-up, photos, and authoritative match/stat entry. No result is inferred from
+  legacy betting descriptions or aggregate player statistics.
+
+The isolated `cabot_cup_test` database and synchronized secret are ready, but the
+browser-accessible acceptance instance remains gated on external setup: DNS for
+`test.cabotcup.ca` must point to the Gateway and Google OIDC must allow
+`https://test.cabotcup.ca/auth/callback`. Production will remain permanently pinned
+to `DATABASE_MODE=real`; test mode belongs in a separate staging deployment.
 
 PostgreSQL repositories for markets/wagers/settlement, the verified-result
 settlement consumer, betting HTTP routes, dispatcher wiring in the server process,
@@ -392,6 +401,8 @@ Deliverables:
 - Build public event/year, player, statistics, match, and gallery routes.
 - Import 2019-2024 narratives, 23 player aggregates, profile images, and 25 existing
   CloudFront references through a repeatable migration/seed path.
+- Publish a source-honest 2025 placeholder without teams, scores, matches, or updated
+  aggregate statistics until authoritative records and editorial material arrive.
 - Preserve source provenance and display legacy aggregates separately from stats
   derived from verified match records when necessary.
 - Implement admin presigned S3 upload initiation/completion, validation, metadata,

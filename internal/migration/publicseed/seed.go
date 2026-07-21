@@ -73,7 +73,7 @@ func Apply(ctx context.Context, db DB) (Report, error) {
 
 	report := Report{
 		Players:            len(data.snapshot.Players),
-		Events:             len(data.snapshot.Events),
+		Events:             countImportableEvents(data.snapshot),
 		StatSnapshots:      len(data.snapshot.Players),
 		MediaAssets:        len(data.media),
 		SkippedEventPhotos: countEventPhotos(data.snapshot),
@@ -160,6 +160,12 @@ func Apply(ctx context.Context, db DB) (Report, error) {
 	}
 
 	for _, event := range data.snapshot.Events {
+		// A public archive placeholder is intentionally not promoted into the
+		// competition model. Historical matches and results will be entered only
+		// when authoritative source records are available.
+		if event.Placeholder {
+			continue
+		}
 		slug := fmt.Sprintf("cabot-cup-%d", event.Year)
 		name := fmt.Sprintf("Cabot Cup %d", event.Year)
 		var eventID string
@@ -245,6 +251,16 @@ func Apply(ctx context.Context, db DB) (Report, error) {
 	}
 
 	return report, nil
+}
+
+func countImportableEvents(snapshot legacy.Snapshot) int {
+	count := 0
+	for _, event := range snapshot.Events {
+		if !event.Placeholder {
+			count++
+		}
+	}
+	return count
 }
 
 func loadSeedData() (seedData, error) {

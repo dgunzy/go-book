@@ -243,6 +243,17 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
   padding: 3rem 0;
 }
 .event-image img { aspect-ratio: 4 / 3; height: 100%; object-fit: cover; width: 100%; }
+.event-image-placeholder {
+  align-items: center;
+  aspect-ratio: 4 / 3;
+  background: linear-gradient(145deg, var(--green-dark), var(--green));
+  color: var(--white);
+  display: flex;
+  justify-content: center;
+  min-height: 220px;
+  text-decoration: none;
+}
+.event-image-placeholder span { border: 1px solid rgba(255, 255, 255, .45); font-size: .75rem; font-weight: 800; letter-spacing: .12em; padding: .85rem 1rem; text-transform: uppercase; }
 .event-year { color: var(--coral); font-family: Georgia, "Times New Roman", serif; font-size: 1.5rem; }
 .event-copy h2 { font-size: 3rem; margin-bottom: 1rem; }
 .event-copy h2 a { text-decoration-thickness: 1px; text-underline-offset: .35rem; }
@@ -260,6 +271,7 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .archive-note.compact { margin-bottom: 3rem; }
 
 .event-hero { min-height: min(70vh, 680px); }
+.event-hero-placeholder { background: radial-gradient(circle at 75% 20%, rgba(183, 73, 52, .4), transparent 35%), linear-gradient(135deg, #173b2a, #07180f); }
 .event-hero-content {
   display: flex;
   flex-direction: column;
@@ -276,6 +288,12 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .event-score span { opacity: .8; }
 .lead-prose { font-family: Georgia, "Times New Roman", serif; font-size: 1.35rem; }
 .lead-prose .snapshot-note { font-family: ui-sans-serif, system-ui, sans-serif; font-size: .88rem; }
+
+.archive-placeholders { display: grid; gap: 1px; grid-template-columns: repeat(3, 1fr); padding-bottom: 5rem; }
+.archive-placeholders article { background: #f1f0e9; min-height: 300px; padding: 2rem; }
+.archive-placeholders h2 { font-size: 2rem; }
+.archive-placeholders p:not(.eyebrow) { color: var(--ink-soft); }
+.archive-placeholders strong { color: var(--green); display: block; font-size: .72rem; margin-top: 2rem; text-transform: uppercase; }
 
 .photo-grid { display: grid; gap: 1.5rem; grid-template-columns: repeat(2, 1fr); padding-bottom: 5rem; padding-top: 5rem; }
 .photo-grid figure { margin: 0; }
@@ -380,6 +398,7 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
   .scoreband strong { font-size: 1.35rem; }
   .scoreband span { font-size: .6rem; }
   .intro-grid, .story-grid, .records-callout { gap: 1.5rem; grid-template-columns: 1fr; padding-bottom: 4rem; padding-top: 4rem; }
+  .archive-placeholders { grid-template-columns: 1fr; }
   .event-row { gap: 1rem; grid-template-columns: 56px 1fr; }
   .event-image { grid-column: 1 / -1; }
   .event-year { grid-column: 1; }

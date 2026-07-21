@@ -54,6 +54,18 @@
   <p>After they join, use the <strong>Historical player</strong> column to link their member account to the matching golfer. This is a one-to-one mapping: each member and historical player can have only one link. Unlink the current player before changing a mistaken mapping. Linking does not create or alter match results; it connects the login identity to the player whose statistics come from verified matches.</p>
 </section>
 
+<section class="help-section" aria-labelledby="help-archive-2025">
+  <h2 id="help-archive-2025">Completing the 2025 public archive</h2>
+  <p>The public <a href="/history/2025">2025 Cabot Cup page</a> is intentionally blank and marked <strong>Archive in progress</strong>. Betting records and aggregate player totals are not treated as match scorecards, so the page does not guess a winner, teams, score, or individual results.</p>
+  <p>When authoritative material is available, enter the teams, players, matches, and verified results through <a href="/admin/matches">Matches</a>; prepare the tournament write-up and selected photographs separately. The placeholder has reserved sections for the write-up, match statistics, and gallery.</p>
+</section>
+
+<section class="help-section" aria-labelledby="help-test-mode">
+  <h2 id="help-test-mode">Testing without touching the live ledger</h2>
+  <p>The production process always uses the real database. Do not switch that process to test mode: sessions, identities, wagers, settlements, and the outbox worker all use the selected database together.</p>
+  <p>The application supports a separate staging instance with <code>DATABASE_MODE=test</code>, backed by the isolated <code>cabot_cup_test</code> database. Once its acceptance hostname and Google callback are configured, use that separate site to rehearse match results, automatic settlement, voids, reversals, and migration checks.</p>
+</section>
+
 <section class="help-section" aria-labelledby="help-settings">
   <h2 id="help-settings">Current settings &amp; defaults</h2>
   <dl class="help-settings">

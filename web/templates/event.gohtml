@@ -1,28 +1,64 @@
 {{define "content"}}
 {{$event := .Event}}
 <article>
-  <header class="event-hero">
+  <header class="event-hero{{if $event.Placeholder}} event-hero-placeholder{{end}}">
+    {{if not $event.Placeholder}}
     <img src="{{(index $event.Photos 0).URL}}" alt="{{(index $event.Photos 0).Alt}}" fetchpriority="high">
+    {{end}}
     <div class="hero-shade" aria-hidden="true"></div>
     <div class="event-hero-content">
       <a class="back-link" href="/history"><span aria-hidden="true">&larr;</span> Cup history</a>
       <p class="eyebrow">{{$event.Venue}}</p>
       <h1>{{$event.Year}} Cabot Cup</h1>
+      {{if $event.Placeholder}}
+      <p class="event-score"><strong>Archive in progress</strong> <span>Results not yet entered</span></p>
+      {{else}}
       <p class="event-score"><strong>{{$event.Winner}}</strong> {{$event.Score}} <span>{{$event.RunnerUp}}</span></p>
+      {{end}}
     </div>
   </header>
 
   <section class="section-shell story-grid">
     <div>
       <p class="eyebrow dark">The story</p>
+      {{if $event.Placeholder}}
+      <h2>Reserved for the 2025 write-up</h2>
+      {{else}}
       <h2>{{$event.Winner}} take the cup</h2>
+      {{end}}
     </div>
     <div class="prose lead-prose">
       <p>{{$event.Summary}}</p>
+      {{if $event.Placeholder}}
+      <p class="snapshot-note"><strong>Source status.</strong> No match results have been inferred from betting records or aggregate player statistics. Teams, scores, and individual matches will remain blank until verified source material is provided.</p>
+      {{else}}
       <p class="snapshot-note"><strong>Archive note.</strong> This narrative and its result were migrated from the former public site. It is historical editorial content, not a newly verified match record.</p>
+      {{end}}
     </div>
   </section>
 
+  {{if $event.Placeholder}}
+  <section class="section-shell archive-placeholders" aria-label="2025 archive content still to be added">
+    <article>
+      <p class="eyebrow dark">Write-up</p>
+      <h2>Story placeholder</h2>
+      <p>Ready for the tournament recap, teams, captains, venue details, and final result.</p>
+      <strong>Awaiting editorial copy</strong>
+    </article>
+    <article>
+      <p class="eyebrow dark">Match results &amp; statistics</p>
+      <h2>Scorecard placeholder</h2>
+      <p>Ready for authoritative team, side, player, score, and outcome entry without reconstructing matches from aggregates.</p>
+      <strong>Awaiting verified scorecards</strong>
+    </article>
+    <article>
+      <p class="eyebrow dark">Photos</p>
+      <h2>Gallery placeholder</h2>
+      <p>Ready for photographs, captions, alt text, player links, and the final gallery order.</p>
+      <strong>Awaiting selected photos</strong>
+    </article>
+  </section>
+  {{else}}
   <section class="photo-band" aria-label="{{$event.Year}} photo gallery">
     <div class="section-shell photo-grid">
       {{range $event.Photos}}
@@ -33,6 +69,7 @@
       {{end}}
     </div>
   </section>
+  {{end}}
 
   <nav class="section-shell year-nav" aria-label="Other cup years">
     <strong>More from the archive</strong>

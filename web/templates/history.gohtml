@@ -1,23 +1,33 @@
 {{define "content"}}
 <header class="page-header section-shell">
-  <p class="eyebrow dark">2019&ndash;2024</p>
+  <p class="eyebrow dark">2019&ndash;2025</p>
   <h1>Cup history</h1>
-  <p>Six competitions, twelve teams, and a growing collection of stories from the team era.</p>
+  <p>Seven competitions and a growing collection of stories from the team era. The 2025 archive is ready for its source material.</p>
 </header>
 
 <section class="section-shell timeline" aria-label="Cabot Cup events">
   {{range .Events}}
   <article class="event-row">
+    {{if .Placeholder}}
+    <a class="event-image event-image-placeholder" href="/history/{{.Year}}" aria-label="Open the {{.Year}} archive placeholder">
+      <span>Archive in progress</span>
+    </a>
+    {{else}}
     <a class="event-image" href="/history/{{.Year}}" tabindex="-1" aria-hidden="true">
       <img src="{{(index .Photos 0).URL}}" alt="" loading="lazy">
     </a>
+    {{end}}
     <div class="event-year">{{.Year}}</div>
     <div class="event-copy">
+      {{if .Placeholder}}
+      <p class="event-result"><span>Results not yet entered</span></p>
+      {{else}}
       <p class="event-result"><span>{{.Winner}}</span> defeated {{.RunnerUp}}</p>
+      {{end}}
       <h2><a href="/history/{{.Year}}">{{.Year}} Cabot Cup</a></h2>
       <p>{{.Summary}}</p>
       <dl class="event-meta">
-        <div><dt>Final</dt><dd>{{.Score}}</dd></div>
+        <div><dt>Final</dt><dd>{{if .Placeholder}}Not yet entered{{else}}{{.Score}}{{end}}</dd></div>
         <div><dt>Venue</dt><dd>{{.Venue}}</dd></div>
       </dl>
     </div>

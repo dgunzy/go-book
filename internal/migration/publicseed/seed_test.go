@@ -19,8 +19,11 @@ func TestLoadSeedData(t *testing.T) {
 	if got, want := len(data.snapshot.Players), 23; got != want {
 		t.Fatalf("players = %d, want %d", got, want)
 	}
-	if got, want := len(data.snapshot.Events), 6; got != want {
+	if got, want := len(data.snapshot.Events), 7; got != want {
 		t.Fatalf("events = %d, want %d", got, want)
+	}
+	if got, want := countImportableEvents(data.snapshot), 6; got != want {
+		t.Fatalf("importable events = %d, want %d", got, want)
 	}
 	if got, want := len(data.media), 22; got != want {
 		t.Fatalf("media = %d, want %d", got, want)
