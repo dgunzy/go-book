@@ -63,10 +63,12 @@ func runCommand(ctx context.Context, logger *slog.Logger, arguments []string, lo
 		return runLegacyBook(ctx, logger, lookup, true, os.Stdout)
 	case len(arguments) == 1 && arguments[0] == "bootstrap-owner":
 		return runBootstrapOwner(ctx, logger, lookup, os.Stdout)
+	case len(arguments) == 1 && arguments[0] == "bootstrap-role":
+		return runBootstrapRole(ctx, logger, lookup, os.Stdout)
 	case len(arguments) == 1 && arguments[0] == "mock-seed":
 		return runMockSeed(ctx, logger, lookup, os.Stdout)
 	default:
-		return fmt.Errorf("usage: cabot-cup [migrate|legacy-book-report|legacy-book-promote|bootstrap-owner|mock-seed]")
+		return fmt.Errorf("usage: cabot-cup [migrate|legacy-book-report|legacy-book-promote|bootstrap-owner|bootstrap-role|mock-seed]")
 	}
 }
 
