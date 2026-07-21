@@ -32,7 +32,9 @@ func TestMatchResultDrivesSettlementEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer pool.Close()
+	// Registered before the data cleanup below so it runs last (t.Cleanup is
+	// LIFO); a defer would close the pool before the cleanup could use it.
+	t.Cleanup(pool.Close)
 
 	betStore := bettingpg.Store{DB: pool}
 	compStore := competitionpg.Store{Pool: pool}
