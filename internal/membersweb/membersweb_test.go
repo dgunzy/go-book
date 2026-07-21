@@ -2,6 +2,8 @@ package membersweb
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dgunzy/go-book/internal/competitionpg"
 	"github.com/dgunzy/go-book/internal/identity"
 	"github.com/dgunzy/go-book/internal/identitypg"
 	"github.com/dgunzy/go-book/internal/privateweb"
@@ -79,9 +82,36 @@ func (f *fakeMembers) SetCreditLimit(_ context.Context, actor, target string, ce
 	return f.limitErr
 }
 
+type fakePlayers struct {
+	links       []competitionpg.PlayerLink
+	listErr     error
+	listActors  []string
+	linkCalls   []struct{ actor, playerID, userID string }
+	unlinkCalls []struct{ actor, playerID, userID string }
+	linkErr     error
+}
+
+func (f *fakePlayers) ListPlayerLinks(_ context.Context, actor string) ([]competitionpg.PlayerLink, error) {
+	f.listActors = append(f.listActors, actor)
+	return f.links, f.listErr
+}
+func (f *fakePlayers) LinkPlayerToUser(_ context.Context, actor, playerID, userID string) error {
+	f.linkCalls = append(f.linkCalls, struct{ actor, playerID, userID string }{actor, playerID, userID})
+	return f.linkErr
+}
+func (f *fakePlayers) UnlinkPlayer(_ context.Context, actor, playerID, userID string) error {
+	f.unlinkCalls = append(f.unlinkCalls, struct{ actor, playerID, userID string }{actor, playerID, userID})
+	return f.linkErr
+}
+
 func newHandler(t *testing.T, session privateweb.Session, members *fakeMembers) *Handler {
 	t.Helper()
-	h, err := New(Dependencies{Sessions: fakeSessions{session: session}, Members: members, PublicBaseURL: "https://cabotcup.ca"})
+	return newHandlerWithPlayers(t, session, members, &fakePlayers{})
+}
+
+func newHandlerWithPlayers(t *testing.T, session privateweb.Session, members *fakeMembers, players *fakePlayers) *Handler {
+	t.Helper()
+	h, err := New(Dependencies{Sessions: fakeSessions{session: session}, Members: members, Players: players, PublicBaseURL: "https://cabotcup.ca"})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
@@ -118,11 +148,30 @@ func TestMemberForbidden(t *testing.T) {
 }
 
 func TestAdminSeesMembers(t *testing.T) {
-	h := newHandler(t, session(privateweb.RoleAdmin), &fakeMembers{})
+	players := &fakePlayers{links: []competitionpg.PlayerLink{{
+		PlayerID: "66666666-6666-6666-6666-666666666666", PlayerName: "Jane Golfer",
+	}}}
+	h := newHandlerWithPlayers(t, session(privateweb.RoleAdmin), &fakeMembers{}, players)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin/members", nil))
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "jane@example.test") {
-		t.Fatalf("status=%d body has jane=%v", rec.Code, strings.Contains(rec.Body.String(), "jane@example.test"))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "jane@example.test") || !strings.Contains(rec.Body.String(), "Jane Golfer") {
+		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if len(players.listActors) != 1 || players.listActors[0] != testUserID {
+		t.Fatalf("list actors = %v", players.listActors)
+	}
+}
+
+func TestAdminSeesExistingPlayerLink(t *testing.T) {
+	playerID := "66666666-6666-6666-6666-666666666666"
+	players := &fakePlayers{links: []competitionpg.PlayerLink{{
+		PlayerID: playerID, PlayerName: "Jane Golfer", LinkedUserID: targetID,
+	}}}
+	h := newHandlerWithPlayers(t, session(privateweb.RoleAdmin), &fakeMembers{}, players)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin/members", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Jane Golfer") || !strings.Contains(rec.Body.String(), "value=\""+playerID+"\"") {
+		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 
@@ -271,5 +320,87 @@ func TestSetCreditLimit(t *testing.T) {
 	}
 	if len(members.creditCalls) != 1 || members.creditCalls[0] != 100000 {
 		t.Fatalf("credit calls = %v, want [100000]", members.creditCalls)
+	}
+}
+
+func TestLinkPlayerHappyPath(t *testing.T) {
+	players := &fakePlayers{}
+	h := newHandlerWithPlayers(t, session(privateweb.RoleAdmin), &fakeMembers{}, players)
+	playerID := "66666666-6666-6666-6666-666666666666"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, postForm("/admin/members/"+targetID+"/link-player", url.Values{"csrf_token": {testCSRF}, "player_id": {playerID}}))
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	if len(players.linkCalls) != 1 || players.linkCalls[0].actor != testUserID || players.linkCalls[0].playerID != playerID || players.linkCalls[0].userID != targetID {
+		t.Fatalf("link calls = %+v", players.linkCalls)
+	}
+}
+
+func TestLinkPlayerRequiresCSRF(t *testing.T) {
+	players := &fakePlayers{}
+	h := newHandlerWithPlayers(t, session(privateweb.RoleAdmin), &fakeMembers{}, players)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, postForm("/admin/members/"+targetID+"/link-player", url.Values{
+		"player_id": {"66666666-6666-6666-6666-666666666666"},
+	}))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status=%d, want 403", rec.Code)
+	}
+	if len(players.linkCalls) != 0 {
+		t.Fatal("LinkPlayerToUser called without CSRF")
+	}
+}
+
+func TestLinkPlayerReturnsSafeConflictMessage(t *testing.T) {
+	players := &fakePlayers{linkErr: fmt.Errorf("wrapped: %w", competitionpg.ErrMemberAlreadyLinked)}
+	h := newHandlerWithPlayers(t, session(privateweb.RoleAdmin), &fakeMembers{}, players)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, postForm("/admin/members/"+targetID+"/link-player", url.Values{
+		"csrf_token": {testCSRF}, "player_id": {"66666666-6666-6666-6666-666666666666"},
+	}))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "already linked to another historical player") {
+		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLinkPlayerDoesNotExposeStoreError(t *testing.T) {
+	players := &fakePlayers{linkErr: errors.New("postgresql secret diagnostic")}
+	h := newHandlerWithPlayers(t, session(privateweb.RoleAdmin), &fakeMembers{}, players)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, postForm("/admin/members/"+targetID+"/link-player", url.Values{
+		"csrf_token": {testCSRF}, "player_id": {"66666666-6666-6666-6666-666666666666"},
+	}))
+	if rec.Code != http.StatusBadRequest || strings.Contains(rec.Body.String(), "postgresql secret diagnostic") {
+		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUnlinkPlayerHappyPath(t *testing.T) {
+	players := &fakePlayers{}
+	h := newHandlerWithPlayers(t, session(privateweb.RoleAdmin), &fakeMembers{}, players)
+	playerID := "66666666-6666-6666-6666-666666666666"
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, postForm("/admin/members/"+targetID+"/unlink-player", url.Values{
+		"csrf_token": {testCSRF}, "player_id": {playerID},
+	}))
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	if len(players.unlinkCalls) != 1 || players.unlinkCalls[0].actor != testUserID || players.unlinkCalls[0].playerID != playerID || players.unlinkCalls[0].userID != targetID {
+		t.Fatalf("unlink calls = %+v", players.unlinkCalls)
+	}
+}
+
+func TestLinkPlayerRequiresAdmin(t *testing.T) {
+	players := &fakePlayers{}
+	h := newHandlerWithPlayers(t, session(privateweb.RoleMember), &fakeMembers{}, players)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, postForm("/admin/members/"+targetID+"/link-player", url.Values{"csrf_token": {testCSRF}, "player_id": {"66666666-6666-6666-6666-666666666666"}}))
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status=%d, want 403", rec.Code)
+	}
+	if len(players.linkCalls) != 0 {
+		t.Fatal("member reached LinkPlayerToUser")
 	}
 }

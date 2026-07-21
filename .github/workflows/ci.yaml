@@ -88,6 +88,7 @@ jobs:
           # -count=1 forbids Go test-result caching: these tests mutate the
           # database, and a cache hit would skip inserts later steps assert on.
           IDENTITYPG_TEST_DATABASE_URL="$DATABASE_URL" go test -count=1 -run TestPostgresSessionLifecycle ./internal/identitypg
+          IDENTITYPG_TEST_DATABASE_URL="$DATABASE_URL" go test -count=1 ./internal/competitionpg
           LEGACYBOOK_PROMOTION_TEST_DATABASE_URL="$DATABASE_URL" go test -count=1 -run TestPostgresPromotionIntegration ./internal/migration/legacybook
           EVENTSPG_TEST_DATABASE_URL="$DATABASE_URL" go test -count=1 ./internal/eventspg
           BETTINGPG_TEST_DATABASE_URL="$DATABASE_URL" go test -count=1 ./internal/bettingpg

@@ -26,6 +26,8 @@ const (
 	MatchResultVerified       Type = "MatchResultVerified.v1"
 	MatchResultCorrected      Type = "MatchResultCorrected.v1"
 	PlayerStatisticsProjected Type = "PlayerStatisticsProjected.v1"
+	PlayerLinkedToUser        Type = "PlayerLinkedToUser.v1"
+	PlayerUnlinkedFromUser    Type = "PlayerUnlinkedFromUser.v1"
 	MarketCreated             Type = "MarketCreated.v1"
 	MarketOpened              Type = "MarketOpened.v1"
 	MarketClosed              Type = "MarketClosed.v1"

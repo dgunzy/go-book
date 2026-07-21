@@ -62,7 +62,7 @@
   <h2 id="members-heading">Current members</h2>
   <div class="private-table-wrap">
     <table class="private-table private-table-wide">
-      <thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Joined</th><th scope="col">Auto-approve limit</th><th scope="col">Credit limit</th>{{if .IsOwner}}<th scope="col">Owner actions</th>{{end}}</tr></thead>
+      <thead><tr><th scope="col">Name</th><th scope="col">Email</th><th scope="col">Role</th><th scope="col">Status</th><th scope="col">Joined</th><th scope="col">Auto-approve limit</th><th scope="col">Credit limit</th><th scope="col">Historical player</th>{{if .IsOwner}}<th scope="col">Owner actions</th>{{end}}</tr></thead>
       <tbody>
         {{range .Members}}
         <tr>
@@ -84,6 +84,30 @@
               <input name="credit" type="text" inputmode="decimal" value="{{creditDollars .CreditLimitCents}}" aria-label="Credit limit dollars">
               <button type="submit">Set</button>
             </form>
+          </td>
+          <td class="betting-actions-cell">
+            {{$link := index $.LinkedPlayerByUser .UserID}}
+            {{if $link.PlayerID}}
+            <span>{{$link.PlayerName}}</span>
+            <form method="post" action="/admin/members/{{.UserID}}/unlink-player" class="members-limit-form">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <input type="hidden" name="player_id" value="{{$link.PlayerID}}">
+              <button type="submit">Unlink</button>
+            </form>
+            {{else}}
+            {{if $.UnlinkedPlayers}}
+            <form method="post" action="/admin/members/{{.UserID}}/link-player" class="members-limit-form">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <select name="player_id" aria-label="Historical player" required>
+                <option value="">— link to player —</option>
+                {{range $.UnlinkedPlayers}}<option value="{{.PlayerID}}">{{.PlayerName}}</option>{{end}}
+              </select>
+              <button type="submit">Link</button>
+            </form>
+            {{else}}
+            <span>No unlinked players available</span>
+            {{end}}
+            {{end}}
           </td>
           {{if $.IsOwner}}
           <td class="betting-actions-cell">

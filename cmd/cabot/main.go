@@ -142,7 +142,7 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		}
 		membersHandler, err := membersweb.New(membersweb.Dependencies{
 			Sessions: authHandler.SessionReader(), Members: identitypg.Store{Pool: pool},
-			PublicBaseURL: applicationConfig.PublicBaseURL.String(),
+			Players: competitionpg.Store{Pool: pool}, PublicBaseURL: applicationConfig.PublicBaseURL.String(),
 		})
 		if err != nil {
 			return fmt.Errorf("build members web handler: %w", err)

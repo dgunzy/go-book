@@ -286,6 +286,8 @@ Initial event catalog:
 - `MatchResultVerified.v1`
 - `MatchResultCorrected.v1`
 - `PlayerStatisticsProjected.v1`
+- `PlayerLinkedToUser.v1`
+- `PlayerUnlinkedFromUser.v1`
 - `MarketClosed.v1`
 - `MarketSettlementRequested.v1`
 - `MarketSettled.v1`

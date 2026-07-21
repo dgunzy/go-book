@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dgunzy/go-book/internal/competitionpg"
 	"github.com/dgunzy/go-book/internal/identity"
 	"github.com/dgunzy/go-book/internal/identitypg"
 	"github.com/dgunzy/go-book/internal/privateweb"
@@ -53,11 +54,23 @@ type MemberStore interface {
 	SetCreditLimit(ctx context.Context, actorUserID, targetUserID string, cents int64) error
 }
 
-var _ MemberStore = identitypg.Store{}
+// PlayerLinker maps onboarded members to historical/competition players so a
+// login identity is associated with the correct event-derived statistics.
+type PlayerLinker interface {
+	ListPlayerLinks(ctx context.Context, actorUserID string) ([]competitionpg.PlayerLink, error)
+	LinkPlayerToUser(ctx context.Context, actorUserID, playerID, targetUserID string) error
+	UnlinkPlayer(ctx context.Context, actorUserID, playerID, targetUserID string) error
+}
+
+var (
+	_ MemberStore  = identitypg.Store{}
+	_ PlayerLinker = competitionpg.Store{}
+)
 
 type Dependencies struct {
 	Sessions      SessionReader
 	Members       MemberStore
+	Players       PlayerLinker
 	PublicBaseURL string
 }
 
@@ -69,7 +82,7 @@ type Handler struct {
 }
 
 func New(deps Dependencies) (*Handler, error) {
-	if deps.Sessions == nil || deps.Members == nil {
+	if deps.Sessions == nil || deps.Members == nil || deps.Players == nil {
 		return nil, errors.New("members web dependencies must all be configured")
 	}
 	base := strings.TrimRight(strings.TrimSpace(deps.PublicBaseURL), "/")
@@ -99,6 +112,69 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /admin/members/{id}/revoke", h.revokeMember)
 	h.mux.HandleFunc("POST /admin/members/{id}/limit", h.setLimit)
 	h.mux.HandleFunc("POST /admin/members/{id}/credit", h.setCredit)
+	h.mux.HandleFunc("POST /admin/members/{id}/link-player", h.linkPlayer)
+	h.mux.HandleFunc("POST /admin/members/{id}/unlink-player", h.unlinkPlayer)
+}
+
+func (h *Handler) linkPlayer(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	targetID := r.PathValue("id")
+	playerID := r.PostForm.Get("player_id")
+	if !isUUID(targetID) || !isUUID(playerID) {
+		h.renderList(w, r, session, pageData{FormError: "Pick a member and a player to link."})
+		return
+	}
+	if err := h.deps.Players.LinkPlayerToUser(r.Context(), session.UserID, playerID, targetID); err != nil {
+		h.renderList(w, r, session, pageData{FormError: linkErrorMessage(err)})
+		return
+	}
+	http.Redirect(w, r, redirectMembers, http.StatusSeeOther)
+}
+
+func (h *Handler) unlinkPlayer(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	targetID := r.PathValue("id")
+	playerID := r.PostForm.Get("player_id")
+	if !isUUID(targetID) || !isUUID(playerID) {
+		h.renderList(w, r, session, pageData{FormError: "That member or player was not found."})
+		return
+	}
+	if err := h.deps.Players.UnlinkPlayer(r.Context(), session.UserID, playerID, targetID); err != nil {
+		h.renderList(w, r, session, pageData{FormError: linkErrorMessage(err)})
+		return
+	}
+	http.Redirect(w, r, redirectMembers, http.StatusSeeOther)
+}
+
+func linkErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, identity.ErrUnauthorized):
+		return "You are not authorized to map players."
+	case errors.Is(err, competitionpg.ErrPlayerNotFound):
+		return "That historical player was not found or is no longer active."
+	case errors.Is(err, competitionpg.ErrMemberNotFound):
+		return "That active member was not found."
+	case errors.Is(err, competitionpg.ErrPlayerAlreadyLinked):
+		return "That historical player is already linked to another member."
+	case errors.Is(err, competitionpg.ErrMemberAlreadyLinked):
+		return "That member is already linked to another historical player."
+	case errors.Is(err, competitionpg.ErrPlayerLinkMismatch):
+		return "That historical player is no longer linked to this member. Refresh and try again."
+	default:
+		return "The player mapping could not be updated."
+	}
 }
 
 var stakePattern = regexp.MustCompile(`^\$?([0-9]{1,7})(?:\.([0-9]{1,2}))?$`)
@@ -191,6 +267,10 @@ type pageData struct {
 	FormError   string
 	Notice      string
 	InviteLink  string
+	// LinkedPlayerByUser maps a member's user ID to the player they are mapped
+	// to; UnlinkedPlayers are the players still available to map.
+	LinkedPlayerByUser map[string]competitionpg.PlayerLink
+	UnlinkedPlayers    []competitionpg.PlayerLink
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
@@ -212,6 +292,20 @@ func (h *Handler) renderList(w http.ResponseWriter, r *http.Request, session pri
 		h.internalError(w)
 		return
 	}
+	links, err := h.deps.Players.ListPlayerLinks(r.Context(), session.UserID)
+	if err != nil {
+		h.internalError(w)
+		return
+	}
+	linkedByUser := make(map[string]competitionpg.PlayerLink)
+	var unlinked []competitionpg.PlayerLink
+	for _, link := range links {
+		if link.LinkedUserID != "" {
+			linkedByUser[link.LinkedUserID] = link
+		} else {
+			unlinked = append(unlinked, link)
+		}
+	}
 	data := extra
 	data.Title = "Members"
 	data.Current = "admin-members"
@@ -219,6 +313,8 @@ func (h *Handler) renderList(w http.ResponseWriter, r *http.Request, session pri
 	data.Members = members
 	data.Invitations = invitations
 	data.IsOwner = session.Role == privateweb.RoleOwner
+	data.LinkedPlayerByUser = linkedByUser
+	data.UnlinkedPlayers = unlinked
 	status := http.StatusOK
 	if data.FormError != "" {
 		status = http.StatusBadRequest

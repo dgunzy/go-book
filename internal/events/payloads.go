@@ -12,3 +12,11 @@ type MatchResultVerifiedPayload struct {
 	WinningSideID      string `json:"winning_side_id,omitempty"`
 	Score              string `json:"score"`
 }
+
+// PlayerUserLinkChangedPayload records the one-to-one association between a
+// historical/competition player and an authenticated member. Consumers can
+// rebuild identity-facing player views without using audit history as a feed.
+type PlayerUserLinkChangedPayload struct {
+	PlayerID string `json:"player_id"`
+	UserID   string `json:"user_id"`
+}
