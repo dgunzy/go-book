@@ -17,11 +17,11 @@
   <h2 id="help-create">Creating a market</h2>
   <p>Go to <a href="/admin/markets/new">Manage markets → Create a market</a>. Choose a type:</p>
   <ul>
-    <li><strong>Future</strong> or <strong>Prop</strong> — a standalone market (e.g. "Who wins the Cabot Cup?"). <strong>These need no match ID.</strong> Use these for almost everything today.</li>
+    <li><strong>Future</strong> or <strong>Prop</strong> — a standalone market (e.g. “Who wins the Cabot Cup?”). Enter a readable name and price for each outcome; the app creates the internal keys.</li>
     <li><strong>Match</strong> — tied to a specific head-to-head match so it can settle <em>automatically</em> from the verified result.</li>
   </ul>
-  <p class="help-callout"><strong>Where does the match ID come from?</strong> Create it on the <a href="/admin/matches">Matches</a> page: add an event, two teams, and (for stats) some players, then a match — assigning players to each side. Creating the match shows its <strong>Match ID</strong> and two <strong>side:&lt;id&gt;</strong> values — put the Match ID in the match market's Match ID field and key each selection to the matching <code>side:&lt;id&gt;</code>. When you record the match result, any linked match market settles automatically <em>and</em> the players' standings update — both driven off that one verified result.</p>
-  <p>Add at least two <strong>selections</strong> (the bettable outcomes), each with display terms and American odds (e.g. <code>-110</code> or <code>+150</code>). The market is created in <strong>draft</strong>; click <strong>Open</strong> when you're ready to take bets, and <strong>Close</strong> to stop taking them.</p>
+  <p class="help-callout"><strong>Match markets need no copied IDs.</strong> First create the match on the <a href="/admin/matches">Matches</a> page and assign its players. On the market form choose <strong>Match</strong>, then pick it from the readable list of matches without a market. The teams, players, title, and settlement mapping appear automatically; set the two prices and times. Recording the result later settles the linked market and updates player standings from the same event.</p>
+  <p>Choose the odds sign separately from its numeric magnitude, which works on phone number keyboards. All dates and times shown or entered in the app are <strong>Atlantic time</strong> (ADT in summer, AST in winter). The market is created in <strong>draft</strong>; click <strong>Open</strong> when you're ready to take bets, and <strong>Close</strong> to stop taking them.</p>
 </section>
 
 <section class="help-section" aria-labelledby="help-pricing">

@@ -186,7 +186,7 @@ func (h *Handler) createMatch(w http.ResponseWriter, r *http.Request) {
 		h.renderList(w, r, session, pageData{FormError: "Pick an event and two teams."})
 		return
 	}
-	created, err := h.deps.Competition.CreateMatch(r.Context(), competitionpg.CreateMatchRequest{
+	_, err := h.deps.Competition.CreateMatch(r.Context(), competitionpg.CreateMatchRequest{
 		EventID: eventID, Format: format, Side1TeamID: side1, Side2TeamID: side2,
 		Side1PlayerIDs: uuidList(r.PostForm["side1_players"]), Side2PlayerIDs: uuidList(r.PostForm["side2_players"]),
 		CreatedBy: session.UserID,
@@ -195,9 +195,7 @@ func (h *Handler) createMatch(w http.ResponseWriter, r *http.Request) {
 		h.renderList(w, r, session, pageData{FormError: "Could not create match: " + err.Error()})
 		return
 	}
-	h.renderList(w, r, session, pageData{Notice: fmt.Sprintf(
-		"Match created. To bet on it, create a Match market with Match ID %s and selections keyed side:%s and side:%s.",
-		created.MatchID, created.Side1ID, created.Side2ID)})
+	h.renderList(w, r, session, pageData{Notice: "Match created. It is now available by name when you create a Match market."})
 }
 
 func uuidList(values []string) []string {

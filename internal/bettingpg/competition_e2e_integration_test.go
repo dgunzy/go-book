@@ -2,7 +2,9 @@ package bettingpg_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -84,6 +86,19 @@ func TestMatchResultDrivesSettlementEndToEnd(t *testing.T) {
 		_, _ = pool.Exec(c, `DELETE FROM teams WHERE event_id = $1::uuid`, eventID)
 		_, _ = pool.Exec(c, `DELETE FROM events WHERE id = $1::uuid`, eventID)
 	})
+	marketable, err := betStore.ListMarketableMatches(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundMarketable := false
+	for _, option := range marketable {
+		if option.MatchID == match.MatchID {
+			foundMarketable = strings.HasPrefix(option.Side1TeamName, "North ") && strings.HasPrefix(option.Side2TeamName, "South ")
+		}
+	}
+	if !foundMarketable {
+		t.Fatal("new match was not returned as a readable market option")
+	}
 
 	// A match-type market whose selections are keyed to the match sides.
 	marketID := newEventID(t)
@@ -97,6 +112,26 @@ func TestMatchResultDrivesSettlementEndToEnd(t *testing.T) {
 		ActorUserID: admin,
 	}); err != nil {
 		t.Fatalf("CreateMarket() error = %v", err)
+	}
+	marketable, err = betStore.ListMarketableMatches(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, option := range marketable {
+		if option.MatchID == match.MatchID {
+			t.Fatal("match with an active market remained in the market picker")
+		}
+	}
+	if _, err := betStore.CreateMarket(ctx, bettingpg.CreateMarketRequest{
+		MarketID: newEventID(t), Type: betting.MarketMatch, MatchID: match.MatchID, Title: "Duplicate match winner",
+		Currency: ledger.CAD, ClosesAt: time.Now().UTC().Add(2 * time.Hour),
+		Selections: []bettingpg.CreateMarketSelection{
+			{Key: "north", DisplayTerms: "North wins", OfferedAmericanOdds: 100, SemanticResultKey: "side:" + match.Side1ID},
+			{Key: "south", DisplayTerms: "South wins", OfferedAmericanOdds: 100, SemanticResultKey: "side:" + match.Side2ID},
+		},
+		ActorUserID: admin,
+	}); !errors.Is(err, bettingpg.ErrMatchMarketExists) {
+		t.Fatalf("duplicate match market error = %v, want ErrMatchMarketExists", err)
 	}
 	if err := betStore.OpenMarket(ctx, marketID, admin); err != nil {
 		t.Fatal(err)

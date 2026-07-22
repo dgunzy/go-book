@@ -22,6 +22,7 @@ import (
 	"github.com/dgunzy/go-book/internal/identity"
 	"github.com/dgunzy/go-book/internal/identitypg"
 	"github.com/dgunzy/go-book/internal/privateweb"
+	"github.com/dgunzy/go-book/internal/webtime"
 	publicassets "github.com/dgunzy/go-book/web"
 )
 
@@ -505,12 +506,7 @@ func storeErrorMessage(err error) string {
 
 func parseTemplates() (map[string]*template.Template, error) {
 	functions := template.FuncMap{
-		"when": func(t time.Time) string {
-			if t.IsZero() {
-				return "-"
-			}
-			return t.Format("Jan 2, 2006 15:04 MST")
-		},
+		"when": webtime.Format,
 		"limitDollars": func(cents *int64) string {
 			if cents == nil {
 				return ""

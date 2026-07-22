@@ -13,6 +13,7 @@ import (
 	"github.com/dgunzy/go-book/internal/eventspg"
 	"github.com/dgunzy/go-book/internal/ledger"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // CreateMarketSelection is one bettable outcome supplied with a new market.
@@ -152,7 +153,16 @@ func (s Store) CreateMarket(ctx context.Context, req CreateMarketRequest) (betti
 		return existing, nil
 	}
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.ConstraintName == "markets_one_active_match_market_idx" {
+			return betting.Market{}, ErrMatchMarketExists
+		}
 		return betting.Market{}, fmt.Errorf("insert market %s: %w", market.ID, err)
+	}
+	if market.Type == betting.MarketMatch {
+		if err := validateMatchMarketMapping(ctx, tx, string(market.ID), string(market.MatchID), selections); err != nil {
+			return betting.Market{}, err
+		}
 	}
 
 	for _, selection := range selections {
@@ -177,6 +187,41 @@ func (s Store) CreateMarket(ctx context.Context, req CreateMarketRequest) (betti
 		return betting.Market{}, fmt.Errorf("commit create market: %w", err)
 	}
 	return market, nil
+}
+
+func validateMatchMarketMapping(ctx context.Context, tx pgx.Tx, marketID, matchID string, selections []betting.Selection) error {
+	var side1ID, side2ID string
+	err := tx.QueryRow(ctx, `
+		SELECT side1.id::text, side2.id::text
+		FROM matches m
+		JOIN match_sides side1 ON side1.match_id = m.id AND side1.side_number = 1
+		JOIN match_sides side2 ON side2.match_id = m.id AND side2.side_number = 2
+		WHERE m.id = $1::uuid
+		  AND m.state IN ('scheduled', 'open')
+		  AND NOT EXISTS (
+			SELECT 1 FROM markets existing
+			WHERE existing.match_id = m.id
+			  AND existing.id <> $2::uuid
+			  AND existing.state NOT IN ('voided', 'cancelled')
+		  )
+		FOR SHARE OF m, side1, side2`, matchID, marketID).Scan(&side1ID, &side2ID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return fmt.Errorf("%w: choose an open match without an existing market", betting.ErrInvalid)
+	}
+	if err != nil {
+		return fmt.Errorf("validate match market %s: %w", marketID, err)
+	}
+	if len(selections) != 2 {
+		return fmt.Errorf("%w: a match winner market requires exactly two side selections", betting.ErrInvalid)
+	}
+	want := map[string]bool{"side:" + side1ID: false, "side:" + side2ID: false}
+	for _, selection := range selections {
+		if _, ok := want[selection.SemanticResultKey]; !ok || want[selection.SemanticResultKey] {
+			return fmt.Errorf("%w: match selections must map exactly once to each match side", betting.ErrInvalid)
+		}
+		want[selection.SemanticResultKey] = true
+	}
+	return nil
 }
 
 // OpenMarket transitions a draft market to open, mirroring CloseMarket. It

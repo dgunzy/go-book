@@ -22,6 +22,9 @@ const (
 	testSelID    = "33333333-3333-3333-3333-333333333333"
 	testWagerID  = "44444444-4444-4444-4444-444444444444"
 	testIdem     = "55555555-5555-5555-5555-555555555555"
+	testMatchID  = "66666666-6666-4666-8666-666666666666"
+	testSide1ID  = "77777777-7777-4777-8777-777777777777"
+	testSide2ID  = "88888888-8888-4888-8888-888888888888"
 )
 
 type fakeSessions struct {
@@ -36,6 +39,7 @@ func (f fakeSessions) CurrentSession(*http.Request) (privateweb.Session, error) 
 type fakeMarkets struct {
 	open        []bettingpg.MarketRow
 	all         []bettingpg.MarketRow
+	matches     []bettingpg.MatchMarketOption
 	createErr   error
 	openErr     error
 	closeErr    error
@@ -52,6 +56,9 @@ func (f *fakeMarkets) ListMarkets(context.Context) ([]bettingpg.MarketRow, error
 }
 func (f *fakeMarkets) ListOpenMarkets(context.Context) ([]bettingpg.MarketRow, error) {
 	return f.open, nil
+}
+func (f *fakeMarkets) ListMarketableMatches(context.Context) ([]bettingpg.MatchMarketOption, error) {
+	return f.matches, nil
 }
 func (f *fakeMarkets) CreateMarket(_ context.Context, req bettingpg.CreateMarketRequest) (betting.Market, error) {
 	f.createCalls = append(f.createCalls, req)
@@ -382,6 +389,81 @@ func TestAdminCreateMarketPassesActorAndSelections(t *testing.T) {
 	}
 	if len(req.Selections) != 1 || req.Selections[0].OfferedAmericanOdds != -110 {
 		t.Fatalf("create selections = %+v, want one at -110", req.Selections)
+	}
+}
+
+func TestAdminNewMarketRendersReadableMatchAndMobileSafeOdds(t *testing.T) {
+	markets := &fakeMarkets{matches: []bettingpg.MatchMarketOption{{
+		MatchID: testMatchID, EventName: "Cabot Cup", SeasonYear: 2026, MatchNumber: 3, Format: "fourball",
+		Side1ID: testSide1ID, Side1TeamName: "Links", Side1Players: "Dan, Will",
+		Side2ID: testSide2ID, Side2TeamName: "Cliffs", Side2Players: "Mike, Pat",
+	}}}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+	r := httptest.NewRequest(http.MethodGet, "/admin/markets/new", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, want := range []string{
+		"Cabot Cup 2026 · Match 3 · Links vs Cliffs", "Dan, Will", "Mike, Pat",
+		`name="match_sign_1"`, `type="number" name="match_odds_1"`, "Closes at (Atlantic)",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("new market page missing %q", want)
+		}
+	}
+	if strings.Contains(body, "Semantic result key") || strings.Contains(body, "Match ID (UUID") {
+		t.Fatal("new market page exposes internal settlement identifiers")
+	}
+}
+
+func TestAdminCreateMatchMarketBuildsCanonicalSelections(t *testing.T) {
+	markets := &fakeMarkets{matches: []bettingpg.MatchMarketOption{{
+		MatchID: testMatchID, EventName: "Cabot Cup", SeasonYear: 2026, MatchNumber: 3, Format: "fourball",
+		Side1ID: testSide1ID, Side1TeamName: "Links", Side1Players: "Dan, Will",
+		Side2ID: testSide2ID, Side2TeamName: "Cliffs", Side2Players: "Mike, Pat",
+	}}}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+	closesAt := time.Now().Add(72 * time.Hour).Format("2006-01-02T15:04")
+	body := url.Values{
+		"csrf_token": {testCSRF}, "market_id": {testMarketID}, "market_type": {"match"}, "match_id": {testMatchID},
+		"currency": {"CAD"}, "closes_at": {closesAt}, "dynamic_pricing": {"1"}, "pricing_liquidity": {"500"},
+		"match_sign_1": {"-"}, "match_odds_1": {"125"}, "match_sign_2": {"+"}, "match_odds_2": {"140"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	if len(markets.createCalls) != 1 {
+		t.Fatalf("CreateMarket calls = %d, want 1", len(markets.createCalls))
+	}
+	req := markets.createCalls[0]
+	if req.Title != "Cabot Cup 2026 · Match 3 · Links vs Cliffs" || req.MatchID != testMatchID {
+		t.Fatalf("canonical match identity = %q/%q", req.Title, req.MatchID)
+	}
+	if len(req.Selections) != 2 || req.Selections[0].OfferedAmericanOdds != -125 || req.Selections[1].OfferedAmericanOdds != 140 {
+		t.Fatalf("match selections = %+v", req.Selections)
+	}
+	if req.Selections[0].SemanticResultKey != "side:"+testSide1ID || req.Selections[1].SemanticResultKey != "side:"+testSide2ID {
+		t.Fatalf("match semantic mappings = %+v", req.Selections)
+	}
+}
+
+func TestParseFormTimeUsesAtlantic(t *testing.T) {
+	got, err := parseFormTime("2026-07-22T08:00")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := time.Date(2026, time.July, 22, 11, 0, 0, 0, time.UTC)
+	if !got.Equal(want) {
+		t.Fatalf("parsed time = %s, want %s", got, want)
 	}
 }
 

@@ -1,7 +1,7 @@
 {{define "private_content"}}
 <header class="private-page-heading">
   <div><p class="private-kicker">Book administration</p><h1>Matches</h1></div>
-  <p>Create matches here to get a <strong>Match ID</strong> for match-type betting markets. Recording a result settles any linked market automatically.</p>
+  <p>Create and staff matches here. They then appear by name on the market form; recording a result settles the linked match market automatically.</p>
 </header>
 
 {{if .FormError}}<p class="betting-form-error" role="alert">{{.FormError}}</p>{{end}}
@@ -71,7 +71,7 @@
   {{if .Matches}}
   <div class="private-table-wrap">
     <table class="private-table private-table-wide">
-      <thead><tr><th>#</th><th>Matchup</th><th>Format</th><th>State</th><th>IDs (for match markets)</th><th>Record result</th></tr></thead>
+      <thead><tr><th>#</th><th>Matchup</th><th>Format</th><th>State</th><th>Record result</th></tr></thead>
       <tbody>
         {{range .Matches}}
         <tr>
@@ -79,11 +79,6 @@
           <td>{{.Side1TeamName}} vs {{.Side2TeamName}}</td>
           <td>{{.Format}}</td>
           <td><span class="private-status">{{.State}}</span></td>
-          <td class="matches-ids">
-            <code>match: {{.ID}}</code><br>
-            <code>side:{{.Side1ID}}</code> ({{.Side1TeamName}})<br>
-            <code>side:{{.Side2ID}}</code> ({{.Side2TeamName}})
-          </td>
           <td>
             {{if eq .State "verified"}}Verified{{else}}
             <form method="post" action="/admin/matches/{{.ID}}/result" class="members-role-form">

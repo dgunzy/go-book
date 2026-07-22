@@ -112,7 +112,7 @@ func TestRecordResultHappyPath(t *testing.T) {
 	}
 }
 
-func TestCreateMatchShowsIDs(t *testing.T) {
+func TestCreateMatchPointsToReadableMarketPicker(t *testing.T) {
 	comp := &fakeComp{created: competitionpg.MatchCreated{MatchID: matchID, Side1ID: "s1", Side2ID: "s2"}}
 	h := handler(t, privateweb.RoleAdmin, comp)
 	rec := httptest.NewRecorder()
@@ -121,7 +121,10 @@ func TestCreateMatchShowsIDs(t *testing.T) {
 		"side1_team_id": {"44444444-4444-4444-4444-444444444444"},
 		"side2_team_id": {"55555555-5555-5555-5555-555555555555"}, "format": {"singles"},
 	}))
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "side:s1") {
-		t.Fatalf("status=%d, expected side IDs shown; body=%q", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "available by name when you create a Match market") {
+		t.Fatalf("status=%d, expected market picker notice; body=%q", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "side:s1") {
+		t.Fatal("match page exposed internal side IDs")
 	}
 }

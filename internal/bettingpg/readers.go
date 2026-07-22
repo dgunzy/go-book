@@ -41,6 +41,81 @@ type MarketRow struct {
 	Selections     []MarketSelectionRow
 }
 
+// MatchMarketOption is an open competition match that does not yet have an
+// active match market. The IDs are retained for server-side settlement
+// mapping; the browser renders only the event, teams, and participants.
+type MatchMarketOption struct {
+	MatchID       string
+	EventName     string
+	SeasonYear    int
+	MatchNumber   int
+	Format        string
+	Side1ID       string
+	Side1TeamName string
+	Side1Players  string
+	Side2ID       string
+	Side2TeamName string
+	Side2Players  string
+}
+
+// Title is the canonical, readable title used by a match winner market.
+func (m MatchMarketOption) Title() string {
+	return fmt.Sprintf("%s %d · Match %d · %s vs %s", m.EventName, m.SeasonYear, m.MatchNumber, m.Side1TeamName, m.Side2TeamName)
+}
+
+// ListMarketableMatches returns scheduled/open matches that do not already
+// have a non-terminal match market. Participant names are aggregated per side
+// so admins never need to copy competition UUIDs into the betting form.
+func (s Store) ListMarketableMatches(ctx context.Context) ([]MatchMarketOption, error) {
+	if s.DB == nil {
+		return nil, errors.New("bettingpg: PostgreSQL pool is required")
+	}
+	rows, err := s.DB.Query(ctx, `
+		SELECT m.id::text, e.name, e.season_year, m.match_number, m.format,
+		       s1.id::text, t1.name, coalesce(p1.names, ''),
+		       s2.id::text, t2.name, coalesce(p2.names, '')
+		FROM matches m
+		JOIN events e ON e.id = m.event_id
+		JOIN match_sides s1 ON s1.match_id = m.id AND s1.side_number = 1
+		JOIN teams t1 ON t1.id = s1.team_id
+		JOIN match_sides s2 ON s2.match_id = m.id AND s2.side_number = 2
+		JOIN teams t2 ON t2.id = s2.team_id
+		LEFT JOIN LATERAL (
+			SELECT string_agg(p.display_name, ', ' ORDER BY mp.playing_order, p.display_name) AS names
+			FROM match_participants mp JOIN players p ON p.id = mp.player_id
+			WHERE mp.match_side_id = s1.id
+		) p1 ON true
+		LEFT JOIN LATERAL (
+			SELECT string_agg(p.display_name, ', ' ORDER BY mp.playing_order, p.display_name) AS names
+			FROM match_participants mp JOIN players p ON p.id = mp.player_id
+			WHERE mp.match_side_id = s2.id
+		) p2 ON true
+		WHERE m.state IN ('scheduled', 'open')
+		  AND NOT EXISTS (
+			SELECT 1 FROM markets existing
+			WHERE existing.match_id = m.id AND existing.state NOT IN ('voided', 'cancelled')
+		  )
+		ORDER BY e.season_year DESC, e.name, m.match_number`)
+	if err != nil {
+		return nil, fmt.Errorf("list marketable matches: %w", err)
+	}
+	defer rows.Close()
+	var result []MatchMarketOption
+	for rows.Next() {
+		var option MatchMarketOption
+		if err := rows.Scan(&option.MatchID, &option.EventName, &option.SeasonYear, &option.MatchNumber, &option.Format,
+			&option.Side1ID, &option.Side1TeamName, &option.Side1Players,
+			&option.Side2ID, &option.Side2TeamName, &option.Side2Players); err != nil {
+			return nil, fmt.Errorf("scan marketable match: %w", err)
+		}
+		result = append(result, option)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate marketable matches: %w", err)
+	}
+	return result, nil
+}
+
 // AdminWagerRow is one wager in the admin review queue. It includes the
 // wagering user's identity, so it must only ever be rendered for admins.
 type AdminWagerRow struct {

@@ -1,75 +1,120 @@
 {{define "private_content"}}
 <header class="private-page-heading">
   <div><p class="private-kicker">Book administration</p><h1>New market</h1></div>
-  <p>The market is created in draft state; open it from the <a href="/admin/markets">market list</a> when the line is ready.</p>
+  <p>Build the line here, then open the draft from the <a href="/admin/markets">market list</a> when it is ready.</p>
 </header>
 
 {{if .FormError}}<p class="betting-form-error" role="alert">{{.FormError}}</p>{{end}}
 
-<form method="post" action="/admin/markets" class="betting-form">
+<form method="post" action="/admin/markets" class="betting-form market-create-form" data-market-create-form>
   <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
   <input type="hidden" name="market_id" value="{{.NewMarketID}}">
 
-  <label>Market type
-    <select name="market_type" required>
-      {{$type := .Form.Get "market_type"}}
-      <option value="future" {{if eq $type "future"}}selected{{end}}>Future</option>
-      <option value="prop" {{if eq $type "prop"}}selected{{end}}>Prop</option>
-      <option value="match" {{if eq $type "match"}}selected{{end}}>Match</option>
+  {{$type := .Form.Get "market_type"}}
+  <label>What are members betting on?
+    <select name="market_type" required data-market-type>
+      <option value="future" {{if eq $type "future"}}selected{{end}}>Future — decided later</option>
+      <option value="prop" {{if eq $type "prop"}}selected{{end}}>Prop — manually graded</option>
+      <option value="match" {{if eq $type "match"}}selected{{end}}>Match — settles from a recorded result</option>
     </select>
   </label>
 
-  <label>Match ID (UUID, match markets only)
-    <input name="match_id" value="{{.Form.Get "match_id"}}" autocomplete="off" placeholder="Leave blank for futures and props">
-  </label>
+  <section class="market-match-fields" data-market-match-fields {{if ne $type "match"}}hidden{{end}}>
+    <label>Match
+      {{$selectedMatch := .Form.Get "match_id"}}
+      <select name="match_id" data-match-picker {{if eq $type "match"}}required{{end}}>
+        <option value="">Choose an open match without a market</option>
+        {{range .MarketableMatches}}
+        <option value="{{.MatchID}}"
+          data-match-title="{{.Title}}"
+          data-side-1="{{.Side1TeamName}}"
+          data-side-1-players="{{.Side1Players}}"
+          data-side-2="{{.Side2TeamName}}"
+          data-side-2-players="{{.Side2Players}}"
+          {{if eq $selectedMatch .MatchID}}selected{{end}}>{{.EventName}} {{.SeasonYear}} · Match {{.MatchNumber}} · {{.Side1TeamName}} vs {{.Side2TeamName}} ({{.Format}})</option>
+        {{else}}
+        <option value="" disabled>No eligible matches — create one on the Matches page first</option>
+        {{end}}
+      </select>
+    </label>
+    <p class="betting-hint">Teams, players, and settlement mapping come from the match. A tie pushes both sides.</p>
+    <div class="match-market-preview" data-match-preview hidden>
+      <h2 data-match-title></h2>
+      <div class="match-market-sides">
+        <article>
+          <h3 data-side-1-name>Side 1</h3>
+          <p data-side-1-players>No players assigned</p>
+          <label>American odds
+            <span class="odds-entry">
+              {{$matchSign1 := .Form.Get "match_sign_1"}}
+              <select name="match_sign_1" aria-label="Side 1 odds sign"><option value="-" {{if ne $matchSign1 "+"}}selected{{end}}>−</option><option value="+" {{if eq $matchSign1 "+"}}selected{{end}}>+</option></select>
+              <input type="number" name="match_odds_1" value="{{.Form.Get "match_odds_1"}}" min="100" max="100000" step="1" inputmode="numeric" aria-label="Side 1 odds magnitude" placeholder="110">
+            </span>
+          </label>
+        </article>
+        <article>
+          <h3 data-side-2-name>Side 2</h3>
+          <p data-side-2-players>No players assigned</p>
+          <label>American odds
+            <span class="odds-entry">
+              {{$matchSign2 := .Form.Get "match_sign_2"}}
+              <select name="match_sign_2" aria-label="Side 2 odds sign"><option value="-" {{if ne $matchSign2 "+"}}selected{{end}}>−</option><option value="+" {{if eq $matchSign2 "+"}}selected{{end}}>+</option></select>
+              <input type="number" name="match_odds_2" value="{{.Form.Get "match_odds_2"}}" min="100" max="100000" step="1" inputmode="numeric" aria-label="Side 2 odds magnitude" placeholder="110">
+            </span>
+          </label>
+        </article>
+      </div>
+    </div>
+  </section>
 
-  <label>Title
-    <input name="title" value="{{.Form.Get "title"}}" maxlength="200" required>
-  </label>
+  <section data-custom-market-fields {{if eq $type "match"}}hidden{{end}}>
+    <label>Market title
+      <input name="title" value="{{.Form.Get "title"}}" maxlength="200" {{if ne $type "match"}}required{{end}} placeholder="Who will win the Cabot Cup?">
+    </label>
+  </section>
 
-  <label>Currency
-    {{$currency := .Form.Get "currency"}}
-    <select name="currency" required>
-      <option value="CAD" {{if or (eq $currency "") (eq $currency "CAD")}}selected{{end}}>CAD</option>
-      <option value="USD" {{if eq $currency "USD"}}selected{{end}}>USD</option>
-    </select>
-  </label>
-
-  <label>Opens at (UTC, optional)
-    <input type="datetime-local" name="opens_at" value="{{.Form.Get "opens_at"}}">
-  </label>
-
-  <label>Closes at (UTC)
-    <input type="datetime-local" name="closes_at" value="{{.Form.Get "closes_at"}}" required>
-  </label>
+  <div class="market-form-grid">
+    <label>Currency
+      {{$currency := .Form.Get "currency"}}
+      <select name="currency" required>
+        <option value="CAD" {{if or (eq $currency "") (eq $currency "CAD")}}selected{{end}}>CAD</option>
+        <option value="USD" {{if eq $currency "USD"}}selected{{end}}>USD</option>
+      </select>
+    </label>
+    <label>Opens at (Atlantic, optional)
+      <input type="datetime-local" name="opens_at" value="{{.Form.Get "opens_at"}}">
+    </label>
+    <label>Closes at (Atlantic)
+      <input type="datetime-local" name="closes_at" value="{{.Form.Get "closes_at"}}" required>
+    </label>
+  </div>
 
   <fieldset class="betting-pricing">
-    <legend>Dynamic pricing (optional)</legend>
+    <legend>Automatic line movement</legend>
     <label class="betting-inline-check">
       <input type="checkbox" name="dynamic_pricing" value="1" {{if .Form.Get "dynamic_pricing"}}checked{{end}}>
-      Move the line automatically as action comes in
+      Move the line as accepted action comes in
     </label>
-    <label>Liquidity (dollars; larger moves the line less per bet)
+    <label>Liquidity in dollars
       <input name="pricing_liquidity" value="{{.Form.Get "pricing_liquidity"}}" inputmode="decimal" placeholder="500.00">
     </label>
-    <p class="betting-hint">The odds each bet is quoted are locked when the bet is placed; the line only moves for the next bettor. Requires at least two selections.</p>
+    <p class="betting-hint">Larger liquidity means smaller price moves. Every accepted wager keeps the exact price it received.</p>
   </fieldset>
 
-  <fieldset class="betting-selection-slots">
-    <legend>Selections (fill at least one row)</legend>
+  <fieldset class="betting-selection-slots" data-custom-outcomes {{if eq $type "match"}}hidden{{end}}>
+    <legend>Outcomes</legend>
+    <p class="betting-hint">Name each bettable result and set its opening American odds. Leave unused rows completely blank.</p>
     {{range .SelectionSlots}}
-    <div class="betting-selection-slot">
-      <label>Key {{.}}
-        <input name="selection_key_{{.}}" value="{{$.Form.Get (printf "selection_key_%d" .)}}" autocomplete="off" placeholder="team-a" pattern="[a-z0-9]+([._-][a-z0-9]+)*">
+    <div class="betting-selection-slot outcome-entry">
+      <label>Outcome {{.}}
+        <input name="selection_terms_{{.}}" value="{{$.Form.Get (printf "selection_terms_%d" .)}}" maxlength="500" placeholder="Yes">
       </label>
-      <label>Display terms {{.}}
-        <input name="selection_terms_{{.}}" value="{{$.Form.Get (printf "selection_terms_%d" .)}}" maxlength="500" placeholder="Team A to win">
-      </label>
-      <label>American odds {{.}}
-        <input name="selection_odds_{{.}}" value="{{$.Form.Get (printf "selection_odds_%d" .)}}" inputmode="numeric" placeholder="-110">
-      </label>
-      <label>Semantic result key {{.}} (optional, e.g. side:&lt;side-uuid&gt; or tie)
-        <input name="selection_semantic_{{.}}" value="{{$.Form.Get (printf "selection_semantic_%d" .)}}" autocomplete="off">
+      <label>American odds
+        <span class="odds-entry">
+          {{$sign := $.Form.Get (printf "selection_sign_%d" .)}}
+          <select name="selection_sign_{{.}}" aria-label="Outcome {{.}} odds sign"><option value="-" {{if ne $sign "+"}}selected{{end}}>−</option><option value="+" {{if eq $sign "+"}}selected{{end}}>+</option></select>
+          <input type="number" name="selection_odds_{{.}}" value="{{$.Form.Get (printf "selection_odds_%d" .)}}" min="100" max="100000" step="1" inputmode="numeric" aria-label="Outcome {{.}} odds magnitude" placeholder="110">
+        </span>
       </label>
     </div>
     {{end}}

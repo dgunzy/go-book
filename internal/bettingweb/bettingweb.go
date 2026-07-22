@@ -25,6 +25,7 @@ import (
 	"github.com/dgunzy/go-book/internal/bettingpg"
 	"github.com/dgunzy/go-book/internal/ledger"
 	"github.com/dgunzy/go-book/internal/privateweb"
+	"github.com/dgunzy/go-book/internal/webtime"
 	publicassets "github.com/dgunzy/go-book/web"
 )
 
@@ -54,6 +55,7 @@ type SessionReader interface {
 type MarketStore interface {
 	ListMarkets(context.Context) ([]bettingpg.MarketRow, error)
 	ListOpenMarkets(context.Context) ([]bettingpg.MarketRow, error)
+	ListMarketableMatches(context.Context) ([]bettingpg.MatchMarketOption, error)
 	CreateMarket(context.Context, bettingpg.CreateMarketRequest) (betting.Market, error)
 	OpenMarket(ctx context.Context, marketID, actor string) error
 	CloseMarket(ctx context.Context, marketID, actor string) error
@@ -166,19 +168,20 @@ type marketView struct {
 }
 
 type pageData struct {
-	Title          string
-	Current        string
-	Session        privateweb.Session
-	Markets        []marketView
-	Market         marketView
-	MemberWagers   []bettingpg.UserWagerRow
-	AdminWagers    []bettingpg.AdminWagerRow
-	FormError      string
-	Notice         string
-	BackLink       string
-	Form           url.Values
-	NewMarketID    string
-	SelectionSlots []int
+	Title             string
+	Current           string
+	Session           privateweb.Session
+	Markets           []marketView
+	Market            marketView
+	MemberWagers      []bettingpg.UserWagerRow
+	AdminWagers       []bettingpg.AdminWagerRow
+	FormError         string
+	Notice            string
+	BackLink          string
+	Form              url.Values
+	NewMarketID       string
+	SelectionSlots    []int
+	MarketableMatches []bettingpg.MatchMarketOption
 	// AutoApproveDollars and DefaultLineWeightDollars are the human-readable
 	// current settings shown on the help page.
 	AutoApproveDollars       string
@@ -341,9 +344,14 @@ func (h *Handler) adminMarketNew(w http.ResponseWriter, r *http.Request) {
 		h.internalError(w)
 		return
 	}
+	matches, err := h.deps.Markets.ListMarketableMatches(r.Context())
+	if err != nil {
+		h.internalError(w)
+		return
+	}
 	h.render(w, "admin_market_new", pageData{
 		Title: "New market", Current: "admin-markets", Session: session,
-		NewMarketID: marketID, Form: defaultMarketForm(), SelectionSlots: selectionSlots(),
+		NewMarketID: marketID, Form: defaultMarketForm(), SelectionSlots: selectionSlots(), MarketableMatches: matches,
 	})
 }
 
@@ -359,6 +367,24 @@ func (h *Handler) adminCreateMarket(w http.ResponseWriter, r *http.Request) {
 	if formError != "" {
 		h.rerenderCreateForm(w, r, session, formError)
 		return
+	}
+	if request.Type == betting.MarketMatch {
+		match, ok, err := h.findMarketableMatch(r.Context(), request.MatchID)
+		if err != nil {
+			h.internalError(w)
+			return
+		}
+		if !ok {
+			h.rerenderCreateForm(w, r, session, "Choose an open match that does not already have a market.")
+			return
+		}
+		request.Title = match.Title()
+		request.Selections[0].Key = "side-1"
+		request.Selections[0].DisplayTerms = match.Side1TeamName + " to win"
+		request.Selections[0].SemanticResultKey = "side:" + match.Side1ID
+		request.Selections[1].Key = "side-2"
+		request.Selections[1].DisplayTerms = match.Side2TeamName + " to win"
+		request.Selections[1].SemanticResultKey = "side:" + match.Side2ID
 	}
 	request.ActorUserID = session.UserID
 	if _, err := h.deps.Markets.CreateMarket(r.Context(), request); err != nil {
@@ -386,10 +412,28 @@ func (h *Handler) rerenderCreateForm(w http.ResponseWriter, r *http.Request, ses
 		h.fragment(w, http.StatusBadRequest, fragmentData{Message: "Market was not created.", Detail: formError, IsError: true})
 		return
 	}
+	matches, err := h.deps.Markets.ListMarketableMatches(r.Context())
+	if err != nil {
+		h.internalError(w)
+		return
+	}
 	h.renderStatus(w, http.StatusBadRequest, "admin_market_new", pageData{
 		Title: "New market", Current: "admin-markets", Session: session, FormError: formError,
-		NewMarketID: marketID, Form: r.PostForm, SelectionSlots: selectionSlots(),
+		NewMarketID: marketID, Form: r.PostForm, SelectionSlots: selectionSlots(), MarketableMatches: matches,
 	})
+}
+
+func (h *Handler) findMarketableMatch(ctx context.Context, matchID string) (bettingpg.MatchMarketOption, bool, error) {
+	matches, err := h.deps.Markets.ListMarketableMatches(ctx)
+	if err != nil {
+		return bettingpg.MatchMarketOption{}, false, err
+	}
+	for _, match := range matches {
+		if match.MatchID == matchID {
+			return match, true, nil
+		}
+	}
+	return bettingpg.MatchMarketOption{}, false, nil
 }
 
 func (h *Handler) adminOpenMarket(w http.ResponseWriter, r *http.Request) {
@@ -727,6 +771,8 @@ func storeErrorStatus(err error) (int, string) {
 		return http.StatusConflict, "This market is not in a state that can be settled or voided."
 	case errors.Is(err, bettingpg.ErrMarketNotOpenable):
 		return http.StatusConflict, "This market cannot be opened from its current state."
+	case errors.Is(err, bettingpg.ErrMatchMarketExists):
+		return http.StatusConflict, "That match already has an active market. Choose another match."
 	case errors.Is(err, bettingpg.ErrIdempotencyConflict), errors.Is(err, betting.ErrIdempotencyConflict):
 		return http.StatusConflict, "This request conflicts with one already recorded."
 	case errors.Is(err, betting.ErrMarketNotOpen):
@@ -755,7 +801,11 @@ func storeErrorStatus(err error) (int, string) {
 // defaultMarketForm pre-fills a fresh create-market form so dynamic pricing is
 // on with a $500 liquidity by default and the admin need not enter it.
 func defaultMarketForm() url.Values {
-	return url.Values{"dynamic_pricing": {"1"}, "pricing_liquidity": {"500.00"}, "currency": {"CAD"}}
+	return url.Values{
+		"market_type": {"future"}, "dynamic_pricing": {"1"}, "pricing_liquidity": {"500.00"}, "currency": {"CAD"},
+		"match_sign_1": {"-"}, "match_odds_1": {"110"},
+		"match_sign_2": {"-"}, "match_odds_2": {"110"},
+	}
 }
 
 func selectionSlots() []int {
@@ -779,14 +829,14 @@ func parseCreateMarketForm(form url.Values) (bettingpg.CreateMarketRequest, stri
 	}
 	request.MatchID = strings.TrimSpace(form.Get("match_id"))
 	if request.Type == betting.MarketMatch && !isUUID(request.MatchID) {
-		return request, "Match markets require the match's UUID."
+		return request, "Choose the match this market belongs to."
 	}
 	if request.Type != betting.MarketMatch && request.MatchID != "" {
 		return request, "Only match markets may reference a match."
 	}
 	request.Title = strings.TrimSpace(form.Get("title"))
-	if request.Title == "" || len(request.Title) > maxTitleLen {
-		return request, "A title between 1 and 200 characters is required."
+	if request.Type != betting.MarketMatch && (request.Title == "" || len(request.Title) > maxTitleLen) {
+		return request, "Enter a market title between 1 and 200 characters."
 	}
 	currency, err := ledger.ParseCurrency(strings.TrimSpace(form.Get("currency")))
 	if err != nil {
@@ -810,7 +860,7 @@ func parseCreateMarketForm(form url.Values) (bettingpg.CreateMarketRequest, stri
 
 	closesAt, err := parseFormTime(form.Get("closes_at"))
 	if err != nil || closesAt.IsZero() {
-		return request, "A closing time is required, formatted as YYYY-MM-DDTHH:MM (UTC)."
+		return request, "Choose a closing date and time in Atlantic time."
 	}
 	if !closesAt.After(time.Now().UTC()) {
 		return request, "The closing time must be in the future."
@@ -819,7 +869,7 @@ func parseCreateMarketForm(form url.Values) (bettingpg.CreateMarketRequest, stri
 	if opensRaw := strings.TrimSpace(form.Get("opens_at")); opensRaw != "" {
 		opensAt, err := parseFormTime(opensRaw)
 		if err != nil {
-			return request, "The opening time must be formatted as YYYY-MM-DDTHH:MM (UTC)."
+			return request, "Choose a valid opening date and time in Atlantic time."
 		}
 		if !closesAt.After(opensAt) {
 			return request, "The closing time must be after the opening time."
@@ -827,30 +877,43 @@ func parseCreateMarketForm(form url.Values) (bettingpg.CreateMarketRequest, stri
 		request.OpensAt = opensAt
 	}
 
-	for slot := 1; slot <= selectionSlot; slot++ {
-		key := strings.TrimSpace(form.Get(fmt.Sprintf("selection_key_%d", slot)))
+	lastSlot := selectionSlot
+	if request.Type == betting.MarketMatch {
+		lastSlot = 2
+	}
+	for slot := 1; slot <= lastSlot; slot++ {
 		terms := strings.TrimSpace(form.Get(fmt.Sprintf("selection_terms_%d", slot)))
-		oddsRaw := strings.TrimSpace(form.Get(fmt.Sprintf("selection_odds_%d", slot)))
-		semantic := strings.TrimSpace(form.Get(fmt.Sprintf("selection_semantic_%d", slot)))
-		if key == "" && terms == "" && oddsRaw == "" && semantic == "" {
+		oddsPrefix := "selection"
+		if request.Type == betting.MarketMatch {
+			terms = fmt.Sprintf("Match side %d", slot)
+			oddsPrefix = "match"
+		}
+		oddsRaw := strings.TrimSpace(form.Get(fmt.Sprintf("%s_odds_%d", oddsPrefix, slot)))
+		if terms == "" && oddsRaw == "" {
 			continue
 		}
-		if key == "" || terms == "" || oddsRaw == "" {
-			return request, fmt.Sprintf("Selection %d needs a key, display terms, and odds (or leave the whole row blank).", slot)
+		if terms == "" {
+			return request, fmt.Sprintf("Outcome %d has odds but no name.", slot)
 		}
-		odds, err := strconv.ParseInt(oddsRaw, 10, 32)
+		if oddsRaw == "" {
+			return request, fmt.Sprintf("Enter American odds for outcome %d.", slot)
+		}
+		odds, err := parseAmericanOdds(form, oddsPrefix, slot)
 		if err != nil {
-			return request, fmt.Sprintf("Selection %d odds must be an American odds integer such as -110 or +150.", slot)
-		}
-		if _, err := ledger.NewAmericanOdds(int32(odds)); err != nil {
-			return request, fmt.Sprintf("Selection %d odds must be at most -100 or at least +100.", slot)
+			return request, fmt.Sprintf("Outcome %d odds must have a magnitude of at least 100, for example −110 or +150.", slot)
 		}
 		request.Selections = append(request.Selections, bettingpg.CreateMarketSelection{
-			Key: key, DisplayTerms: terms, OfferedAmericanOdds: int32(odds), SemanticResultKey: semantic,
+			Key: fmt.Sprintf("outcome-%d", slot), DisplayTerms: terms, OfferedAmericanOdds: odds,
 		})
 	}
 	if len(request.Selections) == 0 {
-		return request, "At least one selection is required."
+		return request, "Add at least one outcome and its odds."
+	}
+	if request.Type == betting.MarketMatch && len(request.Selections) != 2 {
+		return request, "Enter prices for both sides of the match."
+	}
+	if request.DynamicPricing && len(request.Selections) < 2 {
+		return request, "Dynamic pricing needs at least two outcomes. Add another outcome or turn dynamic pricing off."
 	}
 	return request, ""
 }
@@ -860,11 +923,29 @@ func parseFormTime(value string) (time.Time, error) {
 	if value == "" {
 		return time.Time{}, nil
 	}
-	parsed, err := time.ParseInLocation("2006-01-02T15:04", value, time.UTC)
-	if err != nil {
-		return time.Time{}, err
+	return webtime.ParseForm(value)
+}
+
+func parseAmericanOdds(form url.Values, prefix string, slot int) (int32, error) {
+	raw := strings.TrimSpace(form.Get(fmt.Sprintf("%s_odds_%d", prefix, slot)))
+	if raw == "" {
+		return 0, ledger.ErrInvalidAmericanOdds
 	}
-	return parsed, nil
+	sign := strings.TrimSpace(form.Get(fmt.Sprintf("%s_sign_%d", prefix, slot)))
+	if sign != "" && sign != "+" && sign != "-" {
+		return 0, ledger.ErrInvalidAmericanOdds
+	}
+	if sign != "" && raw[0] != '+' && raw[0] != '-' {
+		raw = sign + raw
+	}
+	parsed, err := strconv.ParseInt(raw, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	if _, err := ledger.NewAmericanOdds(int32(parsed)); err != nil {
+		return 0, err
+	}
+	return int32(parsed), nil
 }
 
 var stakePattern = regexp.MustCompile(`^\$?([0-9]{1,7})(?:\.([0-9]{1,2}))?$`)
@@ -977,8 +1058,5 @@ func formatOdds(value ledger.AmericanOdds) string {
 }
 
 func formatTime(value time.Time) string {
-	if value.IsZero() {
-		return "-"
-	}
-	return value.Format("Jan 2, 2006 15:04 MST")
+	return webtime.Format(value)
 }

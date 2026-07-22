@@ -12,6 +12,9 @@ var (
 	// ErrMarketNotOpenable is returned when OpenMarket is asked to open a
 	// market that is not in draft state.
 	ErrMarketNotOpenable = errors.New("bettingpg: market cannot be opened from its current state")
+	// ErrMatchMarketExists is returned when a second non-terminal winner
+	// market is created for the same match.
+	ErrMatchMarketExists = errors.New("bettingpg: match already has an active market")
 	// ErrIdempotencyConflict is returned when a repeated request with the
 	// same idempotency key describes a different command than the one
 	// already recorded.

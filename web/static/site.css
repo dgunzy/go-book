@@ -633,6 +633,19 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
   color: var(--muted, #6b7280);
   margin: 0.4rem 0 0;
 }
+.market-create-form { max-width: 980px; }
+.market-form-grid { display: grid; gap: .85rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.market-match-fields, [data-custom-market-fields] { display: grid; gap: .85rem; }
+.match-market-preview { background: #f4f6f3; border: 1px solid #cfd6d0; border-radius: .5rem; padding: 1rem; }
+.match-market-preview > h2 { font-size: 1rem; margin: 0 0 .75rem; }
+.match-market-sides { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.match-market-sides article { background: #fff; border: 1px solid #d8ddd8; border-radius: .4rem; padding: .85rem; }
+.match-market-sides h3 { margin: 0; }
+.match-market-sides p { color: #66716b; min-height: 1.25rem; }
+.odds-entry { display: grid; gap: .4rem; grid-template-columns: 4.25rem minmax(7rem, 1fr); }
+.odds-entry select, .odds-entry input { margin: 0; }
+.outcome-entry { display: grid; gap: .75rem; grid-template-columns: minmax(0, 2fr) minmax(12rem, 1fr); }
+[hidden] { display: none !important; }
 
 /* Member management */
 .members-section { margin: 1.5rem 0; }
@@ -675,3 +688,7 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .members-limit-form input { width: 6rem; }
 
 .matches-ids code { font-size: 0.75rem; display: inline-block; }
+
+@media (max-width: 680px) {
+  .market-form-grid, .match-market-sides, .outcome-entry { grid-template-columns: 1fr; }
+}

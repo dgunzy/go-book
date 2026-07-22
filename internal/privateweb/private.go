@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/dgunzy/go-book/internal/ledger"
+	"github.com/dgunzy/go-book/internal/webtime"
 	publicassets "github.com/dgunzy/go-book/web"
 )
 
@@ -298,8 +299,5 @@ func formatOdds(value ledger.AmericanOdds) string {
 }
 
 func formatTime(value time.Time) string {
-	if value.IsZero() {
-		return "-"
-	}
-	return value.Format("Jan 2, 2006 15:04 MST")
+	return webtime.Format(value)
 }

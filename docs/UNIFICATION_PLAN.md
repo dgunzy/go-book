@@ -449,7 +449,11 @@ Deliverables:
 - Double-entry accounts, posting service, balance projection, reconciliation command,
   and CSV audit exports.
 - Admin market/selection management for match, future, and prop markets with member
-  restrictions and close times.
+  restrictions and close times. User-facing times are entered and displayed in
+  Atlantic time while domain/storage timestamps remain UTC. Match winner markets are
+  created from a readable list of open matches without an active market; the server
+  derives their title, sides, players, and semantic settlement keys from competition
+  data so operators never copy UUIDs.
 - Wager placement with locked terms/odds, funds check and escrow, approval/rejection,
   idempotency keys, and member history.
 - Automatic match-market settlement from verified-result events.
