@@ -87,6 +87,7 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 	}
 
 	secureDeployment := applicationConfig.Environment == "staging" || applicationConfig.Environment == "production"
+	acceptanceDeployment := applicationConfig.Environment == "staging" && applicationConfig.DatabaseMode == config.DatabaseModeTest
 	applicationHandler := http.NewServeMux()
 	var readiness func(context.Context) error
 	var dispatcher *events.Dispatcher
@@ -114,7 +115,7 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 			return fmt.Errorf("initialize OIDC login attempts: %w", err)
 		}
 		authHandler, err := authweb.New(authweb.Config{
-			Deployed: secureDeployment, LoginAttemptTTL: applicationConfig.LoginAttemptTTL,
+			Deployed: secureDeployment, Acceptance: acceptanceDeployment, LoginAttemptTTL: applicationConfig.LoginAttemptTTL,
 		}, authweb.Dependencies{
 			Attempts: attempts, OIDC: provider, Sessions: sessions,
 		})

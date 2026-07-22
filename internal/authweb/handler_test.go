@@ -378,7 +378,7 @@ func TestSessionReaderAdaptsValidatedCookies(t *testing.T) {
 	now := time.Date(2026, 7, 17, 4, 0, 0, 0, time.UTC)
 	token, csrf := testSecret(t, 0xa1), testSecret(t, 0xa2)
 	sessions := &fakeIdentitySessions{resumeResult: authenticatedSession(now, token, csrf)}
-	reader := &SessionReader{Sessions: sessions, Cookies: namesFor(false)}
+	reader := &SessionReader{Sessions: sessions, Cookies: namesFor(false), Acceptance: true}
 	request := httptest.NewRequest(http.MethodGet, "/book", nil)
 	request.AddCookie(&http.Cookie{Name: "cabot_session", Value: token.Value()})
 	request.AddCookie(&http.Cookie{Name: "cabot_csrf", Value: csrf.Value()})
@@ -387,7 +387,7 @@ func TestSessionReaderAdaptsValidatedCookies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentSession() error = %v", err)
 	}
-	if got.UserID != "11111111-1111-4111-8111-111111111111" || got.DisplayName != "Approved Member" || got.Role != privateweb.RoleAdmin || !got.Active || got.CSRFToken != csrf.Value() {
+	if got.UserID != "11111111-1111-4111-8111-111111111111" || got.DisplayName != "Approved Member" || got.Role != privateweb.RoleAdmin || !got.Active || got.CSRFToken != csrf.Value() || !got.Acceptance {
 		t.Fatalf("CurrentSession() = %#v", got)
 	}
 

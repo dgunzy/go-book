@@ -29,6 +29,9 @@
       <a class="private-public-link" href="/">Public archive <span aria-hidden="true">&rarr;</span></a>
     </aside>
     <div class="private-workspace">
+      {{if .Session.Acceptance}}<div class="test-book-banner" role="status">
+        <strong>Test book</strong><span>No live money &middot; isolated acceptance data</span>
+      </div>{{end}}
       <header class="private-topbar">
         <div>
           <span class="private-context">Member book</span>

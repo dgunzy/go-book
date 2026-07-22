@@ -116,7 +116,7 @@ func TestMemberPagesRenderReadModels(t *testing.T) {
 		contains  []string
 		forbidden []string
 	}{
-		{path: "/book", contains: []string{"<h1>Member book</h1>", "CA$123.45", "Wager accepted", "Dan &amp; Co"}, forbidden: []string{"href=\"/admin\""}},
+		{path: "/book", contains: []string{"<h1>Member book</h1>", "CA$123.45", "Wager accepted", "Dan &amp; Co"}, forbidden: []string{"href=\"/admin\"", "test-book-banner"}},
 		{path: "/book/ledger", contains: []string{"<h1>Ledger</h1>", "Opening balance", "migration_adjustment", "CA$123.45"}},
 		{path: "/book/wagers", contains: []string{"<h1>Wagers</h1>", "2026 Singles", "Alex to win", "&#43;150", "CA$20.00", "CA$30.00"}},
 	}
@@ -146,6 +146,20 @@ func TestMemberPagesRenderReadModels(t *testing.T) {
 	}
 	if got, want := strings.Join(reader.userIDs, ","), "user-7,user-7,user-7"; got != want {
 		t.Errorf("reader user IDs = %q, want %q", got, want)
+	}
+}
+
+func TestAcceptanceSessionRendersPersistentTestBanner(t *testing.T) {
+	deps, _ := testDependencies(Session{UserID: "test-owner", DisplayName: "Test Owner", Role: RoleOwner, Active: true, Acceptance: true})
+	response := httptest.NewRecorder()
+	newHandler(t, deps).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/book", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	for _, expected := range []string{`class="test-book-banner"`, "Test book", "No live money", "isolated acceptance data"} {
+		if !strings.Contains(response.Body.String(), expected) {
+			t.Errorf("body does not contain %q", expected)
+		}
 	}
 }
 

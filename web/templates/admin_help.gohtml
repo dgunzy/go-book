@@ -63,7 +63,7 @@
 <section class="help-section" aria-labelledby="help-test-mode">
   <h2 id="help-test-mode">Testing without touching the live ledger</h2>
   <p>The production process always uses the real database. Do not switch that process to test mode: sessions, identities, wagers, settlements, and the outbox worker all use the selected database together.</p>
-  <p>Use the separate <a href="https://test.cabotcup.ca">Cabot Cup acceptance site</a> to rehearse match results, automatic settlement, voids, reversals, and migration checks. It runs with <code>APP_ENV=staging</code> and <code>DATABASE_MODE=test</code> against the isolated <code>cabot_cup_test</code> database. The acceptance site uses normal Google sign-in and has its own memberships, sessions, wagers, ledger, and outbox; nothing entered there appears in the live book.</p>
+  <p>Use the separate <a href="https://test.cabotcup.ca">Cabot Cup acceptance site</a> to rehearse match results, automatic settlement, voids, reversals, and migration checks. Its private pages display a yellow <strong>Test book</strong> banner. It runs with <code>APP_ENV=staging</code> and <code>DATABASE_MODE=test</code> against the isolated <code>cabot_cup_test</code> database. The acceptance site uses normal Google sign-in and has its own memberships, sessions, wagers, ledger, and outbox; nothing entered there appears in the live book.</p>
 </section>
 
 <section class="help-section" aria-labelledby="help-settings">

@@ -74,8 +74,9 @@ func (h *Handler) clearCookie(w http.ResponseWriter, name string) {
 // SessionReader adapts identity sessions to the private web read model. Both
 // cookies must validate against the server-side hashes before a session is exposed.
 type SessionReader struct {
-	Sessions IdentitySessions
-	Cookies  cookieNames
+	Sessions   IdentitySessions
+	Cookies    cookieNames
+	Acceptance bool
 }
 
 func (s *SessionReader) CurrentSession(r *http.Request) (privateweb.Session, error) {
@@ -103,5 +104,6 @@ func (s *SessionReader) CurrentSession(r *http.Request) (privateweb.Session, err
 	return privateweb.Session{
 		UserID: string(authenticated.Principal.User.ID), DisplayName: authenticated.Principal.User.DisplayName,
 		Role: privateweb.Role(authenticated.Principal.Membership.Role), Active: true, CSRFToken: csrfCookie.Value,
+		Acceptance: s.Acceptance,
 	}, nil
 }

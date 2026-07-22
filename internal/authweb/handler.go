@@ -35,6 +35,7 @@ type IdentitySessions interface {
 
 type Config struct {
 	Deployed        bool
+	Acceptance      bool
 	LoginAttemptTTL time.Duration
 }
 
@@ -93,7 +94,7 @@ func (h *Handler) routes() {
 }
 
 func (h *Handler) SessionReader() *SessionReader {
-	return &SessionReader{Sessions: h.deps.Sessions, Cookies: h.cookies}
+	return &SessionReader{Sessions: h.deps.Sessions, Cookies: h.cookies, Acceptance: h.config.Acceptance}
 }
 
 func (h *Handler) showLogin(w http.ResponseWriter, r *http.Request) {

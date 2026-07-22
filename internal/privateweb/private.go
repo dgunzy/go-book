@@ -31,6 +31,7 @@ type Session struct {
 	Role        Role
 	Active      bool
 	CSRFToken   string
+	Acceptance  bool
 }
 
 type SessionReader interface {
