@@ -461,8 +461,8 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .private-nav a[aria-current="page"] { background: rgba(255,255,255,.08); border-color: #e4ad42; color: #fff; }
 .private-public-link { color: rgba(255,255,255,.68); font-size: .78rem; margin-top: auto; padding: .7rem .75rem; }
 .private-workspace { min-width: 0; }
-.test-book-banner { align-items: center; background: #f4c34e; border-bottom: 2px solid #8a5a00; color: #2f2309; display: flex; font-size: .76rem; gap: .65rem; justify-content: center; letter-spacing: .02em; min-height: 38px; padding: .45rem 1rem; position: sticky; text-align: center; top: 0; z-index: 10; }
-.test-book-banner strong { font-size: .8rem; letter-spacing: .12em; text-transform: uppercase; }
+.test-book-banner { align-items: center; background: #b42318; border-bottom: 3px solid #74150e; box-shadow: 0 2px 8px rgba(62, 8, 5, .24); color: #fff; display: flex; font-size: .88rem; gap: .8rem; justify-content: center; letter-spacing: .02em; min-height: 52px; padding: .65rem 1rem; position: sticky; text-align: center; top: 0; width: 100%; z-index: 10; }
+.test-book-banner strong { color: #fff; font-size: .92rem; letter-spacing: .14em; text-transform: uppercase; }
 .private-topbar { align-items: center; background: #fff; border-bottom: 1px solid #d8ddd8; display: flex; justify-content: space-between; min-height: 66px; padding: .8rem 2rem; }
 .private-topbar > div { display: flex; flex-direction: column; }
 .private-topbar strong { font-size: .88rem; }

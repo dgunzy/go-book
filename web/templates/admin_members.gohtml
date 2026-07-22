@@ -10,7 +10,7 @@
 {{if .InviteLink}}
 <div class="members-invite-link">
   <label for="invite-link">Invite link (copy now)</label>
-  <input id="invite-link" type="text" readonly value="{{.InviteLink}}" onclick="this.select()">
+  <input id="invite-link" type="text" readonly value="{{.InviteLink}}" data-select-on-click>
 </div>
 {{end}}
 

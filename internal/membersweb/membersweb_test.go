@@ -199,6 +199,9 @@ func TestAdminInviteMemberShowsLink(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "https://cabotcup.ca/invite/raw-token-abc") {
 		t.Fatal("invite link not shown")
 	}
+	if !strings.Contains(rec.Body.String(), "data-select-on-click") || strings.Contains(rec.Body.String(), "onclick=") {
+		t.Fatal("invite-link selection is not wired through CSP-safe external JavaScript")
+	}
 	if len(members.inviteCalls) != 1 || members.inviteCalls[0].role != "member" || members.inviteCalls[0].actor != testUserID {
 		t.Fatalf("invite calls = %+v", members.inviteCalls)
 	}

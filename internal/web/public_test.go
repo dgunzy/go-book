@@ -104,7 +104,7 @@ func TestNotFoundAndMethodHandling(t *testing.T) {
 
 func TestAssetsAreEmbeddedAndProtected(t *testing.T) {
 	handler := newTestHandler(t)
-	for _, path := range []string{"/assets/site.css", "/assets/players/alex_image.jpeg"} {
+	for _, path := range []string{"/assets/site.css", "/assets/site.js", "/assets/players/alex_image.jpeg"} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
