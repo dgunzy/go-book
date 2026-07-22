@@ -8,9 +8,15 @@
   <h2 id="help-roles">Who can do what</h2>
   <ul>
     <li><strong>Member</strong> — browses open markets and places wagers.</li>
-    <li><strong>Admin</strong> — everything a member can, plus creating markets, accepting/rejecting wagers, settling markets, inviting members, and linking member accounts to historical players.</li>
+    <li><strong>Admin</strong> — everything a member can, plus creating markets, accepting/rejecting wagers, settling markets, managing competition setup, inviting members, and linking member accounts to historical players.</li>
     <li><strong>Owner</strong> — everything an admin can, plus inviting admins and changing or revoking roles on the <a href="/admin/members">Members</a> page.</li>
   </ul>
+</section>
+
+<section class="help-section" aria-labelledby="help-matches">
+  <h2 id="help-matches">Setting up teams and matches</h2>
+  <p>On <a href="/admin/matches">Matches</a>, create an event, add its teams, then create each match. A new match starts with different teams and different players selected on its two sides; check those defaults before saving, and select additional players for team formats. Assigned player names appear below each team everywhere the match is identified, including the match-market picker.</p>
+  <p>If you create the wrong setup record, open its red <strong>Delete</strong> control, enter an audit reason, and confirm. Only unused matches, unused teams, and empty non-historical events can be deleted. Anything with a market, result, media, statistics, roster, or imported history is protected; use the appropriate void or correction workflow instead. Historical players are deliberately not deletable from this page.</p>
 </section>
 
 <section class="help-section" aria-labelledby="help-create">
@@ -63,7 +69,7 @@
 <section class="help-section" aria-labelledby="help-test-mode">
   <h2 id="help-test-mode">Testing without touching the live ledger</h2>
   <p>The production process always uses the real database. Do not switch that process to test mode: sessions, identities, wagers, settlements, and the outbox worker all use the selected database together.</p>
-  <p>Use the separate <a href="https://test.cabotcup.ca">Cabot Cup acceptance site</a> to rehearse match results, automatic settlement, voids, reversals, and migration checks. Its private pages display a yellow <strong>Test book</strong> banner. It runs with <code>APP_ENV=staging</code> and <code>DATABASE_MODE=test</code> against the isolated <code>cabot_cup_test</code> database. The acceptance site uses normal Google sign-in and has its own memberships, sessions, wagers, ledger, and outbox; nothing entered there appears in the live book.</p>
+  <p>Use the separate <a href="https://test.cabotcup.ca">Cabot Cup acceptance site</a> to rehearse match results, automatic settlement, voids, reversals, and migration checks. Its private pages display a full-width red <strong>Test book</strong> banner. It runs with <code>APP_ENV=staging</code> and <code>DATABASE_MODE=test</code> against the isolated <code>cabot_cup_test</code> database. The acceptance site uses normal Google sign-in and has its own memberships, sessions, wagers, ledger, and outbox; nothing entered there appears in the live book.</p>
 </section>
 
 <section class="help-section" aria-labelledby="help-settings">

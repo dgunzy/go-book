@@ -20,3 +20,13 @@ type PlayerUserLinkChangedPayload struct {
 	PlayerID string `json:"player_id"`
 	UserID   string `json:"user_id"`
 }
+
+// CompetitionSetupDeletedPayload records the deliberate removal of an unused
+// event, team, or match. Records with betting, result, media, statistics, or
+// imported history are protected and never produce this event.
+type CompetitionSetupDeletedPayload struct {
+	RecordType string `json:"record_type"`
+	RecordID   string `json:"record_id"`
+	Name       string `json:"name"`
+	Reason     string `json:"reason"`
+}

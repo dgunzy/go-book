@@ -60,7 +60,22 @@ type MatchMarketOption struct {
 
 // Title is the canonical, readable title used by a match winner market.
 func (m MatchMarketOption) Title() string {
-	return fmt.Sprintf("%s %d · Match %d · %s vs %s", m.EventName, m.SeasonYear, m.MatchNumber, m.Side1TeamName, m.Side2TeamName)
+	return fmt.Sprintf("%s %d · Match %d · %s vs %s", m.EventName, m.SeasonYear, m.MatchNumber, m.Side1Label(), m.Side2Label())
+}
+
+// Side1Label and Side2Label keep player identity in every compact match label.
+func (m MatchMarketOption) Side1Label() string {
+	return matchSideLabel(m.Side1TeamName, m.Side1Players)
+}
+func (m MatchMarketOption) Side2Label() string {
+	return matchSideLabel(m.Side2TeamName, m.Side2Players)
+}
+
+func matchSideLabel(team, players string) string {
+	if strings.TrimSpace(players) == "" {
+		return team
+	}
+	return team + " — " + players
 }
 
 // ListMarketableMatches returns scheduled/open matches that do not already

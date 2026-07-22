@@ -43,6 +43,9 @@ type CompetitionStore interface {
 	CreateTeam(ctx context.Context, eventID, name, createdBy string) (string, error)
 	CreateMatch(context.Context, competitionpg.CreateMatchRequest) (competitionpg.MatchCreated, error)
 	RecordAdminResult(context.Context, competitionpg.RecordResultRequest) (string, error)
+	DeleteMatch(ctx context.Context, matchID, actorUserID, reason string) error
+	DeleteTeam(ctx context.Context, eventID, teamID, actorUserID, reason string) error
+	DeleteEvent(ctx context.Context, eventID, actorUserID, reason string) error
 }
 
 var _ CompetitionStore = competitionpg.Store{}
@@ -72,8 +75,11 @@ func New(deps Dependencies) (*Handler, error) {
 	h.mux.HandleFunc("POST /admin/events", h.createEvent)
 	h.mux.HandleFunc("POST /admin/players", h.createPlayer)
 	h.mux.HandleFunc("POST /admin/events/{id}/teams", h.createTeam)
+	h.mux.HandleFunc("POST /admin/events/{id}/delete", h.deleteEvent)
+	h.mux.HandleFunc("POST /admin/events/{id}/teams/{teamID}/delete", h.deleteTeam)
 	h.mux.HandleFunc("POST /admin/matches", h.createMatch)
 	h.mux.HandleFunc("POST /admin/matches/{id}/result", h.recordResult)
+	h.mux.HandleFunc("POST /admin/matches/{id}/delete", h.deleteMatch)
 	return h, nil
 }
 
@@ -249,6 +255,98 @@ func (h *Handler) recordResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.renderList(w, r, session, pageData{Notice: "Result recorded. Any linked match markets will settle automatically."})
+}
+
+func (h *Handler) deleteMatch(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	matchID := r.PathValue("id")
+	if !isUUID(matchID) {
+		h.renderList(w, r, session, pageData{FormError: "That match was not found."})
+		return
+	}
+	reason, ok := h.deleteReason(w, r, session)
+	if !ok {
+		return
+	}
+	if err := h.deps.Competition.DeleteMatch(r.Context(), matchID, session.UserID, reason); err != nil {
+		h.renderDeleteError(w, r, session, "match", err)
+		return
+	}
+	h.renderList(w, r, session, pageData{Notice: "Unused match deleted. The deletion remains in the audit history."})
+}
+
+func (h *Handler) deleteTeam(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	eventID, teamID := r.PathValue("id"), r.PathValue("teamID")
+	if !isUUID(eventID) || !isUUID(teamID) {
+		h.renderList(w, r, session, pageData{FormError: "That team was not found."})
+		return
+	}
+	reason, ok := h.deleteReason(w, r, session)
+	if !ok {
+		return
+	}
+	if err := h.deps.Competition.DeleteTeam(r.Context(), eventID, teamID, session.UserID, reason); err != nil {
+		h.renderDeleteError(w, r, session, "team", err)
+		return
+	}
+	h.renderList(w, r, session, pageData{Notice: "Unused team deleted. The deletion remains in the audit history."})
+}
+
+func (h *Handler) deleteEvent(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	eventID := r.PathValue("id")
+	if !isUUID(eventID) {
+		h.renderList(w, r, session, pageData{FormError: "That event was not found."})
+		return
+	}
+	reason, ok := h.deleteReason(w, r, session)
+	if !ok {
+		return
+	}
+	if err := h.deps.Competition.DeleteEvent(r.Context(), eventID, session.UserID, reason); err != nil {
+		h.renderDeleteError(w, r, session, "event", err)
+		return
+	}
+	h.renderList(w, r, session, pageData{Notice: "Empty event deleted. The deletion remains in the audit history."})
+}
+
+func (h *Handler) deleteReason(w http.ResponseWriter, r *http.Request, session privateweb.Session) (string, bool) {
+	reason := strings.TrimSpace(r.PostForm.Get("reason"))
+	if reason == "" || len(reason) > 500 {
+		h.renderList(w, r, session, pageData{FormError: "Enter a deletion reason of at most 500 characters."})
+		return "", false
+	}
+	return reason, true
+}
+
+func (h *Handler) renderDeleteError(w http.ResponseWriter, r *http.Request, session privateweb.Session, recordType string, err error) {
+	message := "Could not delete that " + recordType + "."
+	switch {
+	case errors.Is(err, competitionpg.ErrDeleteNotFound):
+		message = "That " + recordType + " was not found."
+	case errors.Is(err, competitionpg.ErrDeleteProtected):
+		message = "That " + recordType + " has match, market, result, media, statistics, roster, or imported history and cannot be deleted. Use the correction or void workflow instead."
+	}
+	h.renderList(w, r, session, pageData{FormError: message})
 }
 
 func (h *Handler) requireAdmin(w http.ResponseWriter, r *http.Request) (privateweb.Session, bool) {

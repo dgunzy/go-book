@@ -380,10 +380,10 @@ func (h *Handler) adminCreateMarket(w http.ResponseWriter, r *http.Request) {
 		}
 		request.Title = match.Title()
 		request.Selections[0].Key = "side-1"
-		request.Selections[0].DisplayTerms = match.Side1TeamName + " to win"
+		request.Selections[0].DisplayTerms = match.Side1Label() + " to win"
 		request.Selections[0].SemanticResultKey = "side:" + match.Side1ID
 		request.Selections[1].Key = "side-2"
-		request.Selections[1].DisplayTerms = match.Side2TeamName + " to win"
+		request.Selections[1].DisplayTerms = match.Side2Label() + " to win"
 		request.Selections[1].SemanticResultKey = "side:" + match.Side2ID
 	}
 	request.ActorUserID = session.UserID

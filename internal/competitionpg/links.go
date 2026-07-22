@@ -238,7 +238,7 @@ func requireStaff(ctx context.Context, db queryRower, actorUserID string) error 
 		  AND users.status = 'active'
 		FOR SHARE OF memberships`, actorUserID).Scan(&role)
 	if errors.Is(err, pgx.ErrNoRows) || (err == nil && role != "admin" && role != "owner") {
-		return fmt.Errorf("%w: only an admin or owner may map players", identity.ErrUnauthorized)
+		return fmt.Errorf("%w: only an admin or owner may manage competition data", identity.ErrUnauthorized)
 	}
 	if err != nil {
 		return fmt.Errorf("verify staff role: %w", err)

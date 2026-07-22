@@ -454,6 +454,12 @@ Deliverables:
   created from a readable list of open matches without an active market; the server
   derives their title, sides, players, and semantic settlement keys from competition
   data so operators never copy UUIDs.
+- Competition setup labels always include assigned players, and new matches default to
+  distinct teams and players. Admins may delete only unused matches, unused teams, and
+  empty non-historical events with confirmation and a reason; PostgreSQL rechecks staff
+  authorization and protected dependencies, then records an immutable audit entry and
+  durable deletion event in the same transaction. Financial, result, media, statistics,
+  roster, and imported history is never deleted through this workflow.
 - Wager placement with locked terms/odds, funds check and escrow, approval/rejection,
   idempotency keys, and member history.
 - Automatic match-market settlement from verified-result events.

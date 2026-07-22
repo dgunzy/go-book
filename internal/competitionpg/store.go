@@ -389,7 +389,9 @@ type MatchRow struct {
 	Format        string
 	State         string
 	Side1TeamName string
+	Side1Players  string
 	Side2TeamName string
+	Side2Players  string
 	Side1ID       string
 	Side2ID       string
 }
@@ -442,13 +444,24 @@ func (s Store) ListEvents(ctx context.Context) ([]EventRow, error) {
 
 	matchRows, err := s.Pool.Query(ctx, `
 		SELECT m.event_id::text, m.id::text, m.match_number, m.format, m.state,
-		       coalesce(t1.name, ''), coalesce(t2.name, ''),
+		       coalesce(t1.name, ''), coalesce(p1.names, ''),
+		       coalesce(t2.name, ''), coalesce(p2.names, ''),
 		       coalesce(s1.id::text, ''), coalesce(s2.id::text, '')
 		FROM matches m
 		LEFT JOIN match_sides s1 ON s1.match_id = m.id AND s1.side_number = 1
 		LEFT JOIN match_sides s2 ON s2.match_id = m.id AND s2.side_number = 2
 		LEFT JOIN teams t1 ON t1.id = s1.team_id
 		LEFT JOIN teams t2 ON t2.id = s2.team_id
+		LEFT JOIN LATERAL (
+			SELECT string_agg(p.display_name, ', ' ORDER BY mp.playing_order, p.display_name) AS names
+			FROM match_participants mp JOIN players p ON p.id = mp.player_id
+			WHERE mp.match_side_id = s1.id
+		) p1 ON true
+		LEFT JOIN LATERAL (
+			SELECT string_agg(p.display_name, ', ' ORDER BY mp.playing_order, p.display_name) AS names
+			FROM match_participants mp JOIN players p ON p.id = mp.player_id
+			WHERE mp.match_side_id = s2.id
+		) p2 ON true
 		ORDER BY m.match_number`)
 	if err != nil {
 		return nil, fmt.Errorf("list matches: %w", err)
@@ -458,7 +471,8 @@ func (s Store) ListEvents(ctx context.Context) ([]EventRow, error) {
 		var eventID string
 		var m MatchRow
 		if err := matchRows.Scan(&eventID, &m.ID, &m.Number, &m.Format, &m.State,
-			&m.Side1TeamName, &m.Side2TeamName, &m.Side1ID, &m.Side2ID); err != nil {
+			&m.Side1TeamName, &m.Side1Players, &m.Side2TeamName, &m.Side2Players,
+			&m.Side1ID, &m.Side2ID); err != nil {
 			return nil, err
 		}
 		if i, ok := index[eventID]; ok {
