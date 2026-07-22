@@ -106,9 +106,9 @@ func NewMatch(spec MatchSpec, sideOneTeam, sideTwoTeam Team) (*Match, error) {
 	if !validID(spec.ID) || !validID(spec.EventID) || spec.Scheduled.IsZero() {
 		return nil, invalidf("match requires IDs and a scheduled time")
 	}
-	perSide := spec.Format.participantsPerSide()
-	if perSide == 0 {
-		return nil, invalidf("match format %q is not supported", spec.Format)
+	rule, err := ParticipantRuleFor(spec.Format)
+	if err != nil {
+		return nil, err
 	}
 	if sideOneTeam.ID != spec.SideOne.TeamID || sideTwoTeam.ID != spec.SideTwo.TeamID || sideOneTeam.ID == sideTwoTeam.ID {
 		return nil, invalidf("match sides must reference two distinct supplied teams")
@@ -119,10 +119,10 @@ func NewMatch(spec MatchSpec, sideOneTeam, sideTwoTeam Team) (*Match, error) {
 	if !validID(spec.SideOne.ID) || !validID(spec.SideTwo.ID) || spec.SideOne.ID == spec.SideTwo.ID {
 		return nil, invalidf("match requires two distinct side IDs")
 	}
-	if len(spec.SideOne.Participants) != perSide || len(spec.SideTwo.Participants) != perSide {
-		return nil, invalidf("%s matches require %d participant(s) per side", spec.Format, perSide)
+	if err := ValidateParticipantCounts(spec.Format, len(spec.SideOne.Participants), len(spec.SideTwo.Participants)); err != nil {
+		return nil, err
 	}
-	seen := make(map[ID]struct{}, perSide*2)
+	seen := make(map[ID]struct{}, rule.MinPerSide*2)
 	for _, check := range []struct {
 		side MatchSide
 		team Team

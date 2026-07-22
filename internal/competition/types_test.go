@@ -94,8 +94,8 @@ func TestNewMatchValidatesFormatAndParticipants(t *testing.T) {
 		wantErr bool
 	}{
 		{name: "valid singles"},
-		{name: "valid doubles", mutate: func(spec *MatchSpec) {
-			spec.Format = FormatDoubles
+		{name: "valid fourball", mutate: func(spec *MatchSpec) {
+			spec.Format = FormatFourball
 			spec.SideOne.Participants = []ID{"a1", "a2"}
 			spec.SideTwo.Participants = []ID{"b1", "b2"}
 		}},
@@ -121,6 +121,37 @@ func TestNewMatchValidatesFormatAndParticipants(t *testing.T) {
 			_, err := NewMatch(spec, teamOne, teamTwo)
 			if (err != nil) != test.wantErr {
 				t.Fatalf("NewMatch() error = %v, wantErr %v", err, test.wantErr)
+			}
+		})
+	}
+}
+
+func TestValidateParticipantCounts(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		format  MatchFormat
+		sideOne int
+		sideTwo int
+		wantErr bool
+	}{
+		{name: "singles", format: FormatSingles, sideOne: 1, sideTwo: 1},
+		{name: "singles missing player", format: FormatSingles, sideOne: 1, sideTwo: 0, wantErr: true},
+		{name: "singles too many", format: FormatSingles, sideOne: 2, sideTwo: 1, wantErr: true},
+		{name: "fourball", format: FormatFourball, sideOne: 2, sideTwo: 2},
+		{name: "foursomes", format: FormatFoursomes, sideOne: 2, sideTwo: 2},
+		{name: "scramble", format: FormatScramble, sideOne: 2, sideTwo: 2},
+		{name: "2v2 missing player", format: FormatFourball, sideOne: 2, sideTwo: 1, wantErr: true},
+		{name: "other minimum", format: FormatOther, sideOne: 1, sideTwo: 1},
+		{name: "other flexible", format: FormatOther, sideOne: 3, sideTwo: 2},
+		{name: "other missing player", format: FormatOther, sideOne: 1, sideTwo: 0, wantErr: true},
+		{name: "unknown", format: "stroke-play", sideOne: 1, sideTwo: 1, wantErr: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := ValidateParticipantCounts(test.format, test.sideOne, test.sideTwo)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("ValidateParticipantCounts() error = %v, wantErr %v", err, test.wantErr)
 			}
 		})
 	}

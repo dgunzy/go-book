@@ -58,7 +58,8 @@
 
   {{if ge (len .Teams) 2}}
   <h3>New match</h3>
-  <form method="post" action="/admin/matches" class="members-role-form competition-match-form">
+  {{if ge (len $.Players) 2}}
+  <form method="post" action="/admin/matches" class="members-role-form competition-match-form" data-match-create-form>
     <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
     <input type="hidden" name="event_id" value="{{.ID}}">
     <label>Side 1
@@ -68,18 +69,20 @@
       <select name="side2_team_id" required>{{range $i, $team := .Teams}}<option value="{{$team.ID}}" {{if eq $i 1}}selected{{end}}>{{$team.Name}}</option>{{end}}</select>
     </label>
     <label>Format
-      <select name="format"><option value="singles">Singles</option><option value="fourball">Fourball</option><option value="foursomes">Foursomes</option><option value="scramble">Scramble</option><option value="other">Other</option></select>
+      <select name="format" data-match-format><option value="singles">Singles</option><option value="fourball">Fourball (2v2)</option><option value="foursomes">Foursomes (2v2)</option><option value="scramble">Scramble (2v2)</option><option value="other">Other</option></select>
     </label>
-    {{if $.Players}}
-    <label>Side 1 players (for stats)
-      <select name="side1_players" multiple size="3">{{range $i, $player := $.Players}}<option value="{{$player.ID}}" {{if eq $i 0}}selected{{end}}>{{$player.DisplayName}}</option>{{end}}</select>
+    <label>Side 1 players
+      <select name="side1_players" multiple size="5" required data-match-side="one" aria-describedby="participant-rule-{{.ID}}">{{range $i, $player := $.Players}}<option value="{{$player.ID}}" {{if eq $i 0}}selected{{end}}>{{$player.DisplayName}}</option>{{end}}</select>
     </label>
-    <label>Side 2 players (for stats)
-      <select name="side2_players" multiple size="3">{{range $i, $player := $.Players}}<option value="{{$player.ID}}" {{if eq $i 1}}selected{{end}}>{{$player.DisplayName}}</option>{{end}}</select>
+    <label>Side 2 players
+      <select name="side2_players" multiple size="5" required data-match-side="two" aria-describedby="participant-rule-{{.ID}}">{{range $i, $player := $.Players}}<option value="{{$player.ID}}" {{if eq $i 1}}selected{{end}}>{{$player.DisplayName}}</option>{{end}}</select>
     </label>
-    {{end}}
+    <p id="participant-rule-{{.ID}}" class="betting-hint competition-participant-rule" data-match-participant-rule>Singles require one player per side. Create missing players above before creating the match.</p>
     <button type="submit">Create match</button>
   </form>
+  {{else}}
+  <p class="betting-form-error">Create at least two players above before setting a match.</p>
+  {{end}}
   {{end}}
 
   <h3>Matches</h3>

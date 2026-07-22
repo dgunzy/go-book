@@ -27,10 +27,10 @@
         {{range .MarketableMatches}}
         <option value="{{.MatchID}}"
           data-match-title="{{.Title}}"
-          data-side-1="{{.Side1TeamName}}"
-          data-side-1-players="{{.Side1Players}}"
-          data-side-2="{{.Side2TeamName}}"
-          data-side-2-players="{{.Side2Players}}"
+          data-side-one-name="{{.Side1TeamName}}"
+          data-side-one-players="{{.Side1Players}}"
+          data-side-two-name="{{.Side2TeamName}}"
+          data-side-two-players="{{.Side2Players}}"
           {{if eq $selectedMatch .MatchID}}selected{{end}}>{{.EventName}} {{.SeasonYear}} · Match {{.MatchNumber}} · {{.Side1Label}} vs {{.Side2Label}} ({{.Format}})</option>
         {{else}}
         <option value="" disabled>No eligible matches — create one on the Matches page first</option>

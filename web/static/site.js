@@ -62,10 +62,10 @@ function updateMarketCreateForm(form) {
   preview.hidden = false;
   const values = [
     ["[data-match-title]", selected.dataset.matchTitle || "Match winner"],
-    ["[data-side-1-name]", selected.dataset.side1 || "Side 1"],
-    ["[data-side-1-players]", selected.dataset.side1Players || "No players assigned"],
-    ["[data-side-2-name]", selected.dataset.side2 || "Side 2"],
-    ["[data-side-2-players]", selected.dataset.side2Players || "No players assigned"],
+    ["[data-side-1-name]", selected.dataset.sideOneName || "Side 1"],
+    ["[data-side-1-players]", selected.dataset.sideOnePlayers || "No players assigned"],
+    ["[data-side-2-name]", selected.dataset.sideTwoName || "Side 2"],
+    ["[data-side-2-players]", selected.dataset.sideTwoPlayers || "No players assigned"],
   ];
   values.forEach(([selector, value]) => {
     const target = preview.querySelector(selector);
@@ -85,4 +85,78 @@ document.querySelectorAll("[data-market-create-form]").forEach((form) => {
       updateMarketCreateForm(form);
     }
   });
+});
+
+function participantRule(format) {
+  if (format === "singles") {
+    return { count: 1, exact: true, message: "Singles require exactly one player per side." };
+  }
+  if (["fourball", "foursomes", "scramble"].includes(format)) {
+    return { count: 2, exact: true, message: "This 2v2 format requires exactly two players per side." };
+  }
+  return { count: 1, exact: false, message: "Assign at least one player per side." };
+}
+
+function assignParticipantDefaults(form) {
+  const format = form.querySelector("[data-match-format]");
+  const sides = [form.querySelector('[data-match-side="one"]'), form.querySelector('[data-match-side="two"]')];
+  if (!(format instanceof HTMLSelectElement) || sides.some((side) => !(side instanceof HTMLSelectElement))) {
+    return;
+  }
+  const rule = participantRule(format.value);
+  const used = new Set();
+  const original = sides.map((side) => Array.from(side.selectedOptions).map((option) => option.value));
+  sides.forEach((side, sideIndex) => {
+    let keep = Array.from(side.selectedOptions).map((option) => option.value).filter((value) => !used.has(value));
+    const targetCount = rule.exact ? rule.count : Math.max(rule.count, keep.length);
+    if (rule.exact && keep.length > targetCount) {
+      keep = keep.slice(0, targetCount);
+    }
+    const reservedForOtherSide = new Set(original.flatMap((values, index) => index === sideIndex ? [] : values));
+    Array.from(side.options).forEach((option) => {
+      if (keep.length < targetCount && !keep.includes(option.value) && !used.has(option.value) && !reservedForOtherSide.has(option.value)) {
+        keep.push(option.value);
+      }
+    });
+    Array.from(side.options).forEach((option) => { option.selected = keep.includes(option.value); });
+    keep.forEach((value) => used.add(value));
+  });
+}
+
+function validateMatchParticipants(form) {
+  const format = form.querySelector("[data-match-format]");
+  const sides = [form.querySelector('[data-match-side="one"]'), form.querySelector('[data-match-side="two"]')];
+  const hint = form.querySelector("[data-match-participant-rule]");
+  if (!(format instanceof HTMLSelectElement) || sides.some((side) => !(side instanceof HTMLSelectElement))) {
+    return;
+  }
+  const rule = participantRule(format.value);
+  if (hint instanceof HTMLElement) {
+    hint.textContent = rule.message + " Create missing players above before creating the match.";
+  }
+  const selected = sides.map((side) => Array.from(side.selectedOptions).map((option) => option.value));
+  const duplicates = selected[0].some((value) => selected[1].includes(value));
+  sides.forEach((side, index) => {
+    const countInvalid = rule.exact ? selected[index].length !== rule.count : selected[index].length < rule.count;
+    side.setCustomValidity(duplicates ? "A player cannot appear on both sides." : countInvalid ? rule.message : "");
+  });
+}
+
+document.querySelectorAll("[data-match-create-form]").forEach((form) => {
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+  validateMatchParticipants(form);
+  form.addEventListener("change", (event) => {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    if (event.target.matches("[data-match-format]")) {
+      assignParticipantDefaults(form);
+    }
+    if (event.target.matches("[data-match-format], [data-match-side]")) {
+      validateMatchParticipants(form);
+    }
+  });
+  form.addEventListener("submit", () => validateMatchParticipants(form));
 });

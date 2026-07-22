@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dgunzy/go-book/internal/competition"
 	"github.com/dgunzy/go-book/internal/events"
 	"github.com/dgunzy/go-book/internal/eventspg"
 	"github.com/jackc/pgx/v5"
@@ -28,7 +29,10 @@ const maxOutboxAttempts = 20
 // Store persists the competition domain.
 type Store struct{ Pool *pgxpool.Pool }
 
-var slugStrip = regexp.MustCompile(`[^a-z0-9]+`)
+var (
+	slugStrip       = regexp.MustCompile(`[^a-z0-9]+`)
+	uuidTextPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+)
 
 func slugify(value string) string {
 	s := slugStrip.ReplaceAllString(strings.ToLower(strings.TrimSpace(value)), "-")
@@ -113,9 +117,9 @@ type MatchCreated struct {
 	Side2ID string
 }
 
-// CreateMatchRequest describes a new match: two team sides and, optionally, the
-// players on each side. Participants are what event-derived statistics are
-// projected onto when the result is verified.
+// CreateMatchRequest describes a new match: two team sides and the required
+// players on each side. Participants identify betting outcomes and are what
+// event-derived statistics project onto when the result is verified.
 type CreateMatchRequest struct {
 	EventID        string
 	Format         string
@@ -136,11 +140,24 @@ func (s Store) CreateMatch(ctx context.Context, req CreateMatchRequest) (MatchCr
 	if req.Side1TeamID == req.Side2TeamID {
 		return MatchCreated{}, errors.New("a match needs two different teams")
 	}
+	req.Side1PlayerIDs = normalizeParticipantIDs(req.Side1PlayerIDs)
+	req.Side2PlayerIDs = normalizeParticipantIDs(req.Side2PlayerIDs)
+	if err := competition.ValidateParticipantCounts(
+		competition.MatchFormat(req.Format), len(req.Side1PlayerIDs), len(req.Side2PlayerIDs),
+	); err != nil {
+		return MatchCreated{}, err
+	}
+	if err := validateParticipantIDs(req.Side1PlayerIDs, req.Side2PlayerIDs); err != nil {
+		return MatchCreated{}, err
+	}
 	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
 	if err != nil {
 		return MatchCreated{}, fmt.Errorf("begin create match: %w", err)
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
+	if err := requireActivePlayers(ctx, tx, req.Side1PlayerIDs, req.Side2PlayerIDs); err != nil {
+		return MatchCreated{}, err
+	}
 
 	var matchNumber int
 	if err := tx.QueryRow(ctx, `SELECT coalesce(max(match_number), 0) + 1 FROM matches WHERE event_id = $1::uuid`, req.EventID).Scan(&matchNumber); err != nil {
@@ -171,6 +188,47 @@ func (s Store) CreateMatch(ctx context.Context, req CreateMatchRequest) (MatchCr
 		return MatchCreated{}, fmt.Errorf("commit create match: %w", err)
 	}
 	return MatchCreated{MatchID: matchID, Side1ID: side1ID, Side2ID: side2ID}, nil
+}
+
+func normalizeParticipantIDs(playerIDs []string) []string {
+	result := make([]string, 0, len(playerIDs))
+	for _, playerID := range playerIDs {
+		if playerID = strings.TrimSpace(playerID); playerID != "" {
+			result = append(result, playerID)
+		}
+	}
+	return result
+}
+
+func validateParticipantIDs(sideOne, sideTwo []string) error {
+	seen := make(map[string]struct{}, len(sideOne)+len(sideTwo))
+	for _, playerID := range append(append([]string(nil), sideOne...), sideTwo...) {
+		if !uuidTextPattern.MatchString(playerID) {
+			return fmt.Errorf("%w: every participant must be an existing player", competition.ErrInvalid)
+		}
+		if _, duplicate := seen[playerID]; duplicate {
+			return fmt.Errorf("%w: a player can appear only once in a match", competition.ErrInvalid)
+		}
+		seen[playerID] = struct{}{}
+	}
+	return nil
+}
+
+func requireActivePlayers(ctx context.Context, tx pgx.Tx, sideOne, sideTwo []string) error {
+	playerIDs := append(append([]string(nil), sideOne...), sideTwo...)
+	var activeCount int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*) FROM (
+			SELECT id FROM players
+			WHERE active AND id = ANY($1::uuid[])
+			FOR SHARE
+		) active_players`, playerIDs).Scan(&activeCount); err != nil {
+		return fmt.Errorf("check match players: %w", err)
+	}
+	if activeCount != len(playerIDs) {
+		return fmt.Errorf("%w: every participant must be an active player; create missing players first", competition.ErrInvalid)
+	}
+	return nil
 }
 
 func insertParticipants(ctx context.Context, tx pgx.Tx, matchID, sideID string, playerIDs []string) error {

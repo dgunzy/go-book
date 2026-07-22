@@ -142,19 +142,58 @@ func (t Team) hasCaptain(playerID ID) bool { return slices.Contains(t.CaptainIDs
 type MatchFormat string
 
 const (
-	FormatSingles MatchFormat = "singles"
-	FormatDoubles MatchFormat = "doubles"
+	FormatSingles   MatchFormat = "singles"
+	FormatFourball  MatchFormat = "fourball"
+	FormatFoursomes MatchFormat = "foursomes"
+	FormatScramble  MatchFormat = "scramble"
+	FormatOther     MatchFormat = "other"
 )
 
-func (f MatchFormat) participantsPerSide() int {
-	switch f {
+// ParticipantRule defines how many golfers a match format allows on each
+// side. MaxPerSide is zero only for the explicitly flexible "other" format.
+type ParticipantRule struct {
+	MinPerSide int
+	MaxPerSide int
+}
+
+// ParticipantRuleFor returns the canonical participant count for a match
+// format. Cabot's fourball, foursomes, and scramble matches are 2v2.
+func ParticipantRuleFor(format MatchFormat) (ParticipantRule, error) {
+	switch format {
 	case FormatSingles:
-		return 1
-	case FormatDoubles:
-		return 2
+		return ParticipantRule{MinPerSide: 1, MaxPerSide: 1}, nil
+	case FormatFourball, FormatFoursomes, FormatScramble:
+		return ParticipantRule{MinPerSide: 2, MaxPerSide: 2}, nil
+	case FormatOther:
+		return ParticipantRule{MinPerSide: 1}, nil
 	default:
-		return 0
+		return ParticipantRule{}, invalidf("match format %q is not supported", format)
 	}
+}
+
+// ValidateParticipantCounts applies the canonical format rule to both sides.
+func ValidateParticipantCounts(format MatchFormat, sideOneCount, sideTwoCount int) error {
+	rule, err := ParticipantRuleFor(format)
+	if err != nil {
+		return err
+	}
+	if sideOneCount < rule.MinPerSide || sideTwoCount < rule.MinPerSide {
+		if rule.MaxPerSide == rule.MinPerSide {
+			return invalidf("%s matches require exactly %d %s per side; create missing players first", format, rule.MinPerSide, playerWord(rule.MinPerSide))
+		}
+		return invalidf("%s matches require at least %d %s per side; create missing players first", format, rule.MinPerSide, playerWord(rule.MinPerSide))
+	}
+	if rule.MaxPerSide > 0 && (sideOneCount > rule.MaxPerSide || sideTwoCount > rule.MaxPerSide) {
+		return invalidf("%s matches require exactly %d %s per side", format, rule.MaxPerSide, playerWord(rule.MaxPerSide))
+	}
+	return nil
+}
+
+func playerWord(count int) string {
+	if count == 1 {
+		return "player"
+	}
+	return "players"
 }
 
 type MatchSide struct {

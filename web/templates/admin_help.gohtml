@@ -15,7 +15,7 @@
 
 <section class="help-section" aria-labelledby="help-matches">
   <h2 id="help-matches">Setting up teams and matches</h2>
-  <p>On <a href="/admin/matches">Matches</a>, create an event, add its teams, then create each match. A new match starts with different teams and different players selected on its two sides; check those defaults before saving, and select additional players for team formats. Assigned player names appear below each team everywhere the match is identified, including the match-market picker.</p>
+  <p>On <a href="/admin/matches">Matches</a>, create an event, add its teams, and create every golfer before setting a match. Player assignment is required: <strong>Singles need exactly one player per side</strong>; <strong>Fourball, Foursomes, and Scramble need exactly two per side</strong>; Other needs at least one. The form chooses distinct defaults when enough players exist and will not create a match with a missing, inactive, duplicated, or incorrectly counted player.</p>
   <p>If you create the wrong setup record, open its red <strong>Delete</strong> control, enter an audit reason, and confirm. Only unused matches, unused teams, and empty non-historical events can be deleted. Anything with a market, result, media, statistics, roster, or imported history is protected; use the appropriate void or correction workflow instead. Historical players are deliberately not deletable from this page.</p>
 </section>
 
@@ -26,7 +26,7 @@
     <li><strong>Future</strong> or <strong>Prop</strong> — a standalone market (e.g. “Who wins the Cabot Cup?”). Enter a readable name and price for each outcome; the app creates the internal keys.</li>
     <li><strong>Match</strong> — tied to a specific head-to-head match so it can settle <em>automatically</em> from the verified result.</li>
   </ul>
-  <p class="help-callout"><strong>Match markets need no copied IDs.</strong> First create the match on the <a href="/admin/matches">Matches</a> page and assign its players. On the market form choose <strong>Match</strong>, then pick it from the readable list of matches without a market. The teams, players, title, and settlement mapping appear automatically; set the two prices and times. Recording the result later settles the linked market and updates player standings from the same event.</p>
+  <p class="help-callout"><strong>Match markets need no copied IDs.</strong> First create the match on the <a href="/admin/matches">Matches</a> page with its required players. On the market form choose <strong>Match</strong>, then pick it from the readable list of valid matches without a market. Teams remain visible for context, while the market title and bet outcomes are derived from the assigned player names. Set only the two prices and times. Recording the result later settles the linked market and updates player standings from the same event.</p>
   <p>Choose the odds sign separately from its numeric magnitude, which works on phone number keyboards. All dates and times shown or entered in the app are <strong>Atlantic time</strong> (ADT in summer, AST in winter). The market is created in <strong>draft</strong>; click <strong>Open</strong> when you're ready to take bets, and <strong>Close</strong> to stop taking them.</p>
 </section>
 

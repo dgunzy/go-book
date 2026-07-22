@@ -60,7 +60,7 @@ type MatchMarketOption struct {
 
 // Title is the canonical, readable title used by a match winner market.
 func (m MatchMarketOption) Title() string {
-	return fmt.Sprintf("%s %d · Match %d · %s vs %s", m.EventName, m.SeasonYear, m.MatchNumber, m.Side1Label(), m.Side2Label())
+	return fmt.Sprintf("%s %d · Match %d · %s vs %s", m.EventName, m.SeasonYear, m.MatchNumber, m.Side1BetLabel(), m.Side2BetLabel())
 }
 
 // Side1Label and Side2Label keep player identity in every compact match label.
@@ -71,6 +71,15 @@ func (m MatchMarketOption) Side2Label() string {
 	return matchSideLabel(m.Side2TeamName, m.Side2Players)
 }
 
+// Side1BetLabel and Side2BetLabel name the wager from its golfers. The team
+// remains a fallback only for pre-enforcement historical setup rows.
+func (m MatchMarketOption) Side1BetLabel() string {
+	return matchBetLabel(m.Side1TeamName, m.Side1Players)
+}
+func (m MatchMarketOption) Side2BetLabel() string {
+	return matchBetLabel(m.Side2TeamName, m.Side2Players)
+}
+
 func matchSideLabel(team, players string) string {
 	if strings.TrimSpace(players) == "" {
 		return team
@@ -78,9 +87,17 @@ func matchSideLabel(team, players string) string {
 	return team + " — " + players
 }
 
-// ListMarketableMatches returns scheduled/open matches that do not already
-// have a non-terminal match market. Participant names are aggregated per side
-// so admins never need to copy competition UUIDs into the betting form.
+func matchBetLabel(team, players string) string {
+	if strings.TrimSpace(players) != "" {
+		return players
+	}
+	return team
+}
+
+// ListMarketableMatches returns scheduled/open matches that have the required
+// participants and do not already have a non-terminal match market.
+// Participant names are aggregated per side so admins never need to copy
+// competition UUIDs into the betting form.
 func (s Store) ListMarketableMatches(ctx context.Context) ([]MatchMarketOption, error) {
 	if s.DB == nil {
 		return nil, errors.New("bettingpg: PostgreSQL pool is required")
@@ -96,19 +113,26 @@ func (s Store) ListMarketableMatches(ctx context.Context) ([]MatchMarketOption, 
 		JOIN match_sides s2 ON s2.match_id = m.id AND s2.side_number = 2
 		JOIN teams t2 ON t2.id = s2.team_id
 		LEFT JOIN LATERAL (
-			SELECT string_agg(p.display_name, ', ' ORDER BY mp.playing_order, p.display_name) AS names
-			FROM match_participants mp JOIN players p ON p.id = mp.player_id
+			SELECT string_agg(p.display_name, ', ' ORDER BY mp.playing_order, p.display_name) AS names,
+			       count(*) AS player_count
+			FROM match_participants mp JOIN players p ON p.id = mp.player_id AND p.active
 			WHERE mp.match_side_id = s1.id
 		) p1 ON true
 		LEFT JOIN LATERAL (
-			SELECT string_agg(p.display_name, ', ' ORDER BY mp.playing_order, p.display_name) AS names
-			FROM match_participants mp JOIN players p ON p.id = mp.player_id
+			SELECT string_agg(p.display_name, ', ' ORDER BY mp.playing_order, p.display_name) AS names,
+			       count(*) AS player_count
+			FROM match_participants mp JOIN players p ON p.id = mp.player_id AND p.active
 			WHERE mp.match_side_id = s2.id
 		) p2 ON true
 		WHERE m.state IN ('scheduled', 'open')
 		  AND NOT EXISTS (
 			SELECT 1 FROM markets existing
 			WHERE existing.match_id = m.id AND existing.state NOT IN ('voided', 'cancelled')
+		  )
+		  AND (
+			(m.format = 'singles' AND p1.player_count = 1 AND p2.player_count = 1)
+			OR (m.format IN ('fourball', 'foursomes', 'scramble') AND p1.player_count = 2 AND p2.player_count = 2)
+			OR (m.format = 'other' AND p1.player_count >= 1 AND p2.player_count >= 1)
 		  )
 		ORDER BY e.season_year DESC, e.name, m.match_number`)
 	if err != nil {

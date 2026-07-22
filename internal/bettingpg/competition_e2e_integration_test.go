@@ -62,11 +62,32 @@ func TestMatchResultDrivesSettlementEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	playerA, err := compStore.CreatePlayer(ctx, "North Player "+itoa(suffix), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	playerB, err := compStore.CreatePlayer(ctx, "South Player "+itoa(suffix), "")
+	if err != nil {
+		t.Fatal(err)
+	}
 	match, err := compStore.CreateMatch(ctx, competitionpg.CreateMatchRequest{
-		EventID: eventID, Format: "singles", Side1TeamID: teamA, Side2TeamID: teamB, CreatedBy: admin,
+		EventID: eventID, Format: "singles", Side1TeamID: teamA, Side2TeamID: teamB,
+		Side1PlayerIDs: []string{playerA}, Side2PlayerIDs: []string{playerB}, CreatedBy: admin,
 	})
 	if err != nil {
 		t.Fatalf("CreateMatch() error = %v", err)
+	}
+	// Simulate a pre-enforcement setup row: it must never be offered as a
+	// bettable match until it is recreated with its required participants.
+	invalidMatchID := scanID(t, ctx, pool, `
+		INSERT INTO matches (event_id, match_number, format, state, created_by)
+		VALUES ($1::uuid, 2, 'singles', 'open', $2::uuid)
+		RETURNING id::text`, eventID, admin)
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO match_sides (event_id, match_id, side_number, team_id)
+		VALUES ($1::uuid, $2::uuid, 1, $3::uuid), ($1::uuid, $2::uuid, 2, $4::uuid)`,
+		eventID, invalidMatchID, teamA, teamB); err != nil {
+		t.Fatal(err)
 	}
 
 	t.Cleanup(func() {
@@ -83,6 +104,8 @@ func TestMatchResultDrivesSettlementEndToEnd(t *testing.T) {
 		_, _ = pool.Exec(c, `DELETE FROM verified_results WHERE match_id = $1::uuid`, match.MatchID)
 		_, _ = pool.Exec(c, `DELETE FROM match_sides WHERE match_id = $1::uuid`, match.MatchID)
 		_, _ = pool.Exec(c, `DELETE FROM matches WHERE id = $1::uuid`, match.MatchID)
+		_, _ = pool.Exec(c, `DELETE FROM matches WHERE id = $1::uuid`, invalidMatchID)
+		_, _ = pool.Exec(c, `DELETE FROM players WHERE id IN ($1::uuid, $2::uuid)`, playerA, playerB)
 		_, _ = pool.Exec(c, `DELETE FROM teams WHERE event_id = $1::uuid`, eventID)
 		_, _ = pool.Exec(c, `DELETE FROM events WHERE id = $1::uuid`, eventID)
 	})
@@ -92,8 +115,12 @@ func TestMatchResultDrivesSettlementEndToEnd(t *testing.T) {
 	}
 	foundMarketable := false
 	for _, option := range marketable {
+		if option.MatchID == invalidMatchID {
+			t.Fatal("playerless match was returned as a market option")
+		}
 		if option.MatchID == match.MatchID {
-			foundMarketable = strings.HasPrefix(option.Side1TeamName, "North ") && strings.HasPrefix(option.Side2TeamName, "South ")
+			foundMarketable = strings.HasPrefix(option.Side1TeamName, "North ") && strings.HasPrefix(option.Side2TeamName, "South ") &&
+				strings.HasPrefix(option.Side1Players, "North Player ") && strings.HasPrefix(option.Side2Players, "South Player ")
 		}
 	}
 	if !foundMarketable {

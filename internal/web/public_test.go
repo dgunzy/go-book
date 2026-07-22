@@ -123,5 +123,28 @@ func TestAssetsAreEmbeddedAndProtected(t *testing.T) {
 		if !strings.Contains(result.Header.Get("Content-Security-Policy"), "default-src 'self'") {
 			t.Errorf("GET %s missing content security policy", path)
 		}
+		if path == "/assets/site.js" {
+			script := string(body)
+			for _, want := range []string{
+				"selected.dataset.sideOneName",
+				"selected.dataset.sideOnePlayers",
+				"selected.dataset.sideTwoName",
+				"selected.dataset.sideTwoPlayers",
+			} {
+				if !strings.Contains(script, want) {
+					t.Errorf("GET %s does not contain %q", path, want)
+				}
+			}
+			for _, stale := range []string{
+				"selected.dataset.side1 ||",
+				"selected.dataset.side1Players",
+				"selected.dataset.side2 ||",
+				"selected.dataset.side2Players",
+			} {
+				if strings.Contains(script, stale) {
+					t.Errorf("GET %s contains stale numeric data attribute mapping %q", path, stale)
+				}
+			}
+		}
 	}
 }

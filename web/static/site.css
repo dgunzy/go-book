@@ -693,6 +693,7 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .competition-match-form { align-items: end; display: grid; gap: .6rem; grid-template-columns: repeat(3, minmax(9rem, 1fr)); }
 .competition-match-form label { display: grid; gap: .2rem; }
 .competition-match-form button { justify-self: start; }
+.competition-participant-rule { grid-column: 1 / -1; margin: 0; }
 
 @media (max-width: 680px) {
   .competition-match-form { grid-template-columns: 1fr; }

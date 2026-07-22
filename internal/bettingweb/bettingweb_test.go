@@ -409,6 +409,8 @@ func TestAdminNewMarketRendersReadableMatchAndMobileSafeOdds(t *testing.T) {
 	body := w.Body.String()
 	for _, want := range []string{
 		"Cabot Cup 2026 · Match 3 · Links — Dan, Will vs Cliffs — Mike, Pat", "Dan, Will", "Mike, Pat",
+		`data-match-title="Cabot Cup 2026 · Match 3 · Dan, Will vs Mike, Pat"`,
+		`data-side-one-name="Links"`, `data-side-two-players="Mike, Pat"`,
 		`name="match_sign_1"`, `type="number" name="match_odds_1"`, "Closes at (Atlantic)",
 	} {
 		if !strings.Contains(body, want) {
@@ -445,7 +447,7 @@ func TestAdminCreateMatchMarketBuildsCanonicalSelections(t *testing.T) {
 		t.Fatalf("CreateMarket calls = %d, want 1", len(markets.createCalls))
 	}
 	req := markets.createCalls[0]
-	if req.Title != "Cabot Cup 2026 · Match 3 · Links — Dan, Will vs Cliffs — Mike, Pat" || req.MatchID != testMatchID {
+	if req.Title != "Cabot Cup 2026 · Match 3 · Dan, Will vs Mike, Pat" || req.MatchID != testMatchID {
 		t.Fatalf("canonical match identity = %q/%q", req.Title, req.MatchID)
 	}
 	if len(req.Selections) != 2 || req.Selections[0].OfferedAmericanOdds != -125 || req.Selections[1].OfferedAmericanOdds != 140 {
@@ -454,7 +456,7 @@ func TestAdminCreateMatchMarketBuildsCanonicalSelections(t *testing.T) {
 	if req.Selections[0].SemanticResultKey != "side:"+testSide1ID || req.Selections[1].SemanticResultKey != "side:"+testSide2ID {
 		t.Fatalf("match semantic mappings = %+v", req.Selections)
 	}
-	if req.Selections[0].DisplayTerms != "Links — Dan, Will to win" || req.Selections[1].DisplayTerms != "Cliffs — Mike, Pat to win" {
+	if req.Selections[0].DisplayTerms != "Dan, Will to win" || req.Selections[1].DisplayTerms != "Mike, Pat to win" {
 		t.Fatalf("match player labels = %+v", req.Selections)
 	}
 }

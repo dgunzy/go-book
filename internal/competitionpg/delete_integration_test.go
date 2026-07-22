@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dgunzy/go-book/internal/competition"
 	"github.com/dgunzy/go-book/internal/identity"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -54,6 +55,18 @@ func TestCompetitionSetupDeletionLifecycle(t *testing.T) {
 	}
 	player2, err := store.CreatePlayer(ctx, fmt.Sprintf("Bill %d", suffix), "")
 	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE players SET active = false WHERE id = $1::uuid`, player2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateMatch(ctx, CreateMatchRequest{
+		EventID: eventID, Format: "singles", Side1TeamID: team1, Side2TeamID: team2,
+		Side1PlayerIDs: []string{player1}, Side2PlayerIDs: []string{player2}, CreatedBy: actor,
+	}); !errors.Is(err, competition.ErrInvalid) {
+		t.Fatalf("CreateMatch(inactive player) error = %v, want ErrInvalid", err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE players SET active = true WHERE id = $1::uuid`, player2); err != nil {
 		t.Fatal(err)
 	}
 	match, err := store.CreateMatch(ctx, CreateMatchRequest{

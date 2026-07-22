@@ -17,6 +17,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/dgunzy/go-book/internal/competition"
 	"github.com/dgunzy/go-book/internal/competitionpg"
 	"github.com/dgunzy/go-book/internal/privateweb"
 	publicassets "github.com/dgunzy/go-book/web"
@@ -192,16 +193,32 @@ func (h *Handler) createMatch(w http.ResponseWriter, r *http.Request) {
 		h.renderList(w, r, session, pageData{FormError: "Pick an event and two teams."})
 		return
 	}
+	side1Players := uuidList(r.PostForm["side1_players"])
+	side2Players := uuidList(r.PostForm["side2_players"])
+	if err := competition.ValidateParticipantCounts(
+		competition.MatchFormat(format), len(side1Players), len(side2Players),
+	); err != nil {
+		h.renderList(w, r, session, pageData{FormError: competitionValidationMessage(err)})
+		return
+	}
 	_, err := h.deps.Competition.CreateMatch(r.Context(), competitionpg.CreateMatchRequest{
 		EventID: eventID, Format: format, Side1TeamID: side1, Side2TeamID: side2,
-		Side1PlayerIDs: uuidList(r.PostForm["side1_players"]), Side2PlayerIDs: uuidList(r.PostForm["side2_players"]),
+		Side1PlayerIDs: side1Players, Side2PlayerIDs: side2Players,
 		CreatedBy: session.UserID,
 	})
 	if err != nil {
-		h.renderList(w, r, session, pageData{FormError: "Could not create match: " + err.Error()})
+		message := "Could not create match."
+		if errors.Is(err, competition.ErrInvalid) {
+			message = competitionValidationMessage(err)
+		}
+		h.renderList(w, r, session, pageData{FormError: message})
 		return
 	}
 	h.renderList(w, r, session, pageData{Notice: "Match created. It is now available by name when you create a Match market."})
+}
+
+func competitionValidationMessage(err error) string {
+	return strings.TrimPrefix(err.Error(), competition.ErrInvalid.Error()+": ")
 }
 
 func uuidList(values []string) []string {

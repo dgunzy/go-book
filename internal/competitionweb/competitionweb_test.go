@@ -138,12 +138,33 @@ func TestCreateMatchPointsToReadableMarketPicker(t *testing.T) {
 		"csrf_token": {csrf}, "event_id": {"33333333-3333-3333-3333-333333333333"},
 		"side1_team_id": {"44444444-4444-4444-4444-444444444444"},
 		"side2_team_id": {"55555555-5555-5555-5555-555555555555"}, "format": {"singles"},
+		"side1_players": {"66666666-6666-6666-6666-666666666666"},
+		"side2_players": {"77777777-7777-7777-7777-777777777777"},
 	}))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "available by name when you create a Match market") {
 		t.Fatalf("status=%d, expected market picker notice; body=%q", rec.Code, rec.Body.String())
 	}
 	if strings.Contains(rec.Body.String(), "side:s1") {
 		t.Fatal("match page exposed internal side IDs")
+	}
+}
+
+func TestCreateMatchRequiresPlayersForFormat(t *testing.T) {
+	comp := &fakeComp{}
+	h := handler(t, privateweb.RoleAdmin, comp)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, post("/admin/matches", url.Values{
+		"csrf_token": {csrf}, "event_id": {"33333333-3333-3333-3333-333333333333"},
+		"side1_team_id": {"44444444-4444-4444-4444-444444444444"},
+		"side2_team_id": {"55555555-5555-5555-5555-555555555555"}, "format": {"fourball"},
+		"side1_players": {"66666666-6666-6666-6666-666666666666"},
+		"side2_players": {"77777777-7777-7777-7777-777777777777"},
+	}))
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "exactly 2 players per side") || strings.Contains(rec.Body.String(), "invalid competition data") {
+		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if len(comp.matchReqs) != 0 {
+		t.Fatalf("CreateMatch calls = %d, want none", len(comp.matchReqs))
 	}
 }
 
@@ -228,10 +249,31 @@ func TestMatchPageShowsPlayersDistinctDefaultsAndConfirmations(t *testing.T) {
 	for _, want := range []string{
 		`value="` + team1ID + `" selected`, `value="` + team2ID + `" selected`,
 		`value="` + player1ID + `" selected`, `value="` + player2ID + `" selected`,
-		"Alex", "Bill", `data-confirm="Delete this unused match?`, `Delete empty event`,
+		"Alex", "Bill", `data-match-create-form`, `data-match-format`, `data-match-side="one"`,
+		`data-confirm="Delete this unused match?`, `Delete empty event`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("rendered page missing %q; body=%q", want, body)
 		}
+	}
+}
+
+func TestMatchPageRequiresPlayersBeforeShowingCreateForm(t *testing.T) {
+	comp := &fakeComp{events: []competitionpg.EventRow{{
+		ID: "33333333-3333-3333-3333-333333333333", Name: "Cabot Cup", SeasonYear: 2026,
+		Teams: []competitionpg.TeamRow{
+			{ID: "44444444-4444-4444-4444-444444444444", Name: "Bears"},
+			{ID: "55555555-5555-5555-5555-555555555555", Name: "Flamingos"},
+		},
+	}}}
+	h := handler(t, privateweb.RoleAdmin, comp)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin/matches", nil))
+	body := rec.Body.String()
+	if rec.Code != http.StatusOK || !strings.Contains(body, "Create at least two players above before setting a match") {
+		t.Fatalf("status=%d body=%q", rec.Code, body)
+	}
+	if strings.Contains(body, "data-match-create-form") {
+		t.Fatal("match create form rendered before enough players exist")
 	}
 }
