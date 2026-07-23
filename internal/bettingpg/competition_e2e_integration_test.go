@@ -104,7 +104,7 @@ func TestMatchResultDrivesSettlementEndToEnd(t *testing.T) {
 	t.Cleanup(func() {
 		c, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
-		_, _ = pool.Exec(c, `DELETE FROM outbox_events WHERE aggregate_id = $1::uuid OR aggregate_id IN (SELECT id FROM markets WHERE match_id = $1::uuid) OR aggregate_id IN (SELECT id FROM wagers WHERE market_id IN (SELECT id FROM markets WHERE match_id = $1::uuid))`, match.MatchID)
+		_, _ = pool.Exec(c, `DELETE FROM outbox_events WHERE aggregate_id = $1::uuid OR aggregate_id = ANY($2::uuid[]) OR aggregate_id IN (SELECT id FROM markets WHERE match_id = $1::uuid) OR aggregate_id IN (SELECT id FROM wagers WHERE market_id IN (SELECT id FROM markets WHERE match_id = $1::uuid))`, match.MatchID, []string{teamA, teamB})
 		_, _ = pool.Exec(c, `DELETE FROM event_receipts`)
 		_, _ = pool.Exec(c, `DELETE FROM wager_settlements WHERE wager_id IN (SELECT id FROM wagers WHERE market_id IN (SELECT id FROM markets WHERE match_id = $1::uuid))`, match.MatchID)
 		_, _ = pool.Exec(c, `DELETE FROM market_settlement_outcomes WHERE market_id IN (SELECT id FROM markets WHERE match_id = $1::uuid)`, match.MatchID)

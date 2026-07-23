@@ -81,7 +81,7 @@ func TestStatsProjectionFromVerifiedResult(t *testing.T) {
 	t.Cleanup(func() {
 		c, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
-		_, _ = pool.Exec(c, `DELETE FROM outbox_events WHERE aggregate_id = ANY($1::uuid[])`, matchIDs)
+		_, _ = pool.Exec(c, `DELETE FROM outbox_events WHERE aggregate_id = ANY($1::uuid[])`, append(matchIDs, teamA, teamB))
 		_, _ = pool.Exec(c, `DELETE FROM match_stat_applications WHERE match_id = ANY($1::uuid[])`, matchIDs)
 		_, _ = pool.Exec(c, `DELETE FROM player_stat_projections WHERE event_id = $1::uuid`, eventID)
 		_, _ = pool.Exec(c, `DELETE FROM match_participants WHERE match_id = ANY($1::uuid[])`, matchIDs)

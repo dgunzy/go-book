@@ -43,6 +43,7 @@ func TestTeamRosterLifecycleAndMatchEnforcement(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cleanupCancel()
+		_, _ = pool.Exec(cleanupCtx, `DELETE FROM outbox_events WHERE aggregate_id = ANY($1::uuid[])`, []string{teamA, teamB})
 		_, _ = pool.Exec(cleanupCtx, `DELETE FROM events WHERE id = $1::uuid`, eventID)
 		_, _ = pool.Exec(cleanupCtx, `DELETE FROM players WHERE id = ANY($1::uuid[])`, []string{playerA, playerReserve, playerB})
 		_, _ = pool.Exec(cleanupCtx, `DELETE FROM users WHERE id = $1::uuid`, actor)

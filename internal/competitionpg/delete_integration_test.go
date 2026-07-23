@@ -87,6 +87,7 @@ func TestCompetitionSetupDeletionLifecycle(t *testing.T) {
 	t.Cleanup(func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cleanupCancel()
+		_, _ = pool.Exec(cleanupCtx, `DELETE FROM outbox_events WHERE aggregate_id = ANY($1::uuid[])`, []string{match.MatchID, team1, team2, eventID})
 		_, _ = pool.Exec(cleanupCtx, `DELETE FROM matches WHERE id = $1::uuid`, match.MatchID)
 		_, _ = pool.Exec(cleanupCtx, `DELETE FROM teams WHERE id IN ($1::uuid, $2::uuid)`, team1, team2)
 		_, _ = pool.Exec(cleanupCtx, `DELETE FROM events WHERE id = $1::uuid`, eventID)
