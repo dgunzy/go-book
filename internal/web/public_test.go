@@ -1,12 +1,26 @@
 package web
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/dgunzy/go-book/internal/competitionpg"
 )
+
+type fakeCompetitionReader struct {
+	snapshot competitionpg.PublicCompetitionSnapshot
+	err      error
+}
+
+func (f fakeCompetitionReader) PublicCompetition(context.Context) (competitionpg.PublicCompetitionSnapshot, error) {
+	return f.snapshot, f.err
+}
 
 func newTestHandler(t *testing.T) http.Handler {
 	t.Helper()
@@ -79,6 +93,53 @@ func TestPlayerSorts(t *testing.T) {
 				t.Fatalf("first player is not %q", test.firstPlayer)
 			}
 		})
+	}
+}
+
+func TestVerifiedCompetitionHistoryAndCareerStats(t *testing.T) {
+	snapshot := competitionpg.PublicCompetitionSnapshot{
+		Seasons: []competitionpg.PublicSeasonRow{{
+			EventID: "event", Name: "Cabot Cup", Year: 2026, Venue: "Cabot Links", VerifiedCount: 1,
+			Teams:   []competitionpg.PublicTeamStandingRow{{TeamName: "Bears", Played: 1, Wins: 1, Points: "1.00"}},
+			Matches: []competitionpg.PublicMatchRow{{Number: 1, Format: "singles", Side1Team: "Bears", Side1Players: "Dan Guns", Side2Team: "Flamingos", Side2Players: "Alex", Outcome: "side_1", Score: "3 & 2", VerificationMethod: "admin_override", VerifiedAt: time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)}},
+			Players: []competitionpg.PublicPlayerStatRow{{PlayerName: "Dan Guns", Played: 1, Wins: 1, Points: "1.00", SinglesPlayed: 1, SinglesWins: 1, SinglesPoints: "1.00", TeamPoints: "0.00"}},
+		}},
+		Career: []competitionpg.PublicPlayerStatRow{{PlayerName: "Dan Guns", Played: 1, Wins: 1, Points: "1.00", SinglesPlayed: 1, SinglesPoints: "1.00", TeamPoints: "0.00"}},
+	}
+	handler, err := NewWithCompetition(fakeCompetitionReader{snapshot: snapshot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		path string
+		want []string
+	}{
+		{path: "/history", want: []string{"Verified match history", "2026", "1 verified match"}},
+		{path: "/history/2026", want: []string{"Authoritative competition record", "Dan Guns", "3 &amp; 2", "Admin verified", "Cup standings"}},
+		{path: "/stats", want: []string{"Verified career statistics", "Dan Guns", "Season records:", "/history/2026"}},
+	} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, test.path, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s status=%d body=%q", test.path, rec.Code, rec.Body.String())
+		}
+		for _, want := range test.want {
+			if !strings.Contains(rec.Body.String(), want) {
+				t.Errorf("GET %s missing %q", test.path, want)
+			}
+		}
+	}
+}
+
+func TestVerifiedCompetitionReadFailureIsNotSilentlyStale(t *testing.T) {
+	handler, err := NewWithCompetition(fakeCompetitionReader{err: errors.New("database unavailable")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/stats", nil))
+	if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "Unable to load verified competition records") {
+		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
 	}
 }
 

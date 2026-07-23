@@ -155,8 +155,17 @@ func (s Store) CreateMatch(ctx context.Context, req CreateMatchRequest) (MatchCr
 		return MatchCreated{}, fmt.Errorf("begin create match: %w", err)
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	if err := requireActivePlayers(ctx, tx, req.Side1PlayerIDs, req.Side2PlayerIDs); err != nil {
+	if err := requireStaff(ctx, tx, req.CreatedBy); err != nil {
 		return MatchCreated{}, err
+	}
+	if err := requireDistinctEventTeams(ctx, tx, req.EventID, req.Side1TeamID, req.Side2TeamID); err != nil {
+		return MatchCreated{}, err
+	}
+	if err := requireActiveRosterPlayers(ctx, tx, req.EventID, req.Side1TeamID, req.Side1PlayerIDs); err != nil {
+		return MatchCreated{}, fmt.Errorf("side 1: %w", err)
+	}
+	if err := requireActiveRosterPlayers(ctx, tx, req.EventID, req.Side2TeamID, req.Side2PlayerIDs); err != nil {
+		return MatchCreated{}, fmt.Errorf("side 2: %w", err)
 	}
 
 	var matchNumber int
@@ -214,19 +223,37 @@ func validateParticipantIDs(sideOne, sideTwo []string) error {
 	return nil
 }
 
-func requireActivePlayers(ctx context.Context, tx pgx.Tx, sideOne, sideTwo []string) error {
-	playerIDs := append(append([]string(nil), sideOne...), sideTwo...)
-	var activeCount int
+func requireActiveRosterPlayers(ctx context.Context, tx pgx.Tx, eventID, teamID string, playerIDs []string) error {
+	var activeCount, captainCount int
 	if err := tx.QueryRow(ctx, `
-		SELECT count(*) FROM (
-			SELECT id FROM players
-			WHERE active AND id = ANY($1::uuid[])
-			FOR SHARE
-		) active_players`, playerIDs).Scan(&activeCount); err != nil {
-		return fmt.Errorf("check match players: %w", err)
+		SELECT count(*) FILTER (WHERE p.active AND p.id = ANY($3::uuid[])),
+		       count(*) FILTER (WHERE etm.is_captain)
+		FROM event_team_memberships etm
+		JOIN players p ON p.id = etm.player_id
+		WHERE etm.event_id = $1::uuid AND etm.team_id = $2::uuid`, eventID, teamID, playerIDs).Scan(&activeCount, &captainCount); err != nil {
+		return fmt.Errorf("check match roster players: %w", err)
+	}
+	if captainCount == 0 {
+		return fmt.Errorf("%w: each team must have a captain before a match is created", competition.ErrInvalid)
 	}
 	if activeCount != len(playerIDs) {
-		return fmt.Errorf("%w: every participant must be an active player; create missing players first", competition.ErrInvalid)
+		return fmt.Errorf("%w: every participant must be an active golfer on the selected team's roster", competition.ErrInvalid)
+	}
+	return nil
+}
+
+func requireDistinctEventTeams(ctx context.Context, tx pgx.Tx, eventID, sideOneTeamID, sideTwoTeamID string) error {
+	var count int
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*) FROM (
+			SELECT id FROM teams
+			WHERE event_id = $1::uuid AND id = ANY($2::uuid[])
+			FOR SHARE
+		) selected_teams`, eventID, []string{sideOneTeamID, sideTwoTeamID}).Scan(&count); err != nil {
+		return fmt.Errorf("check match teams: %w", err)
+	}
+	if count != 2 {
+		return fmt.Errorf("%w: choose two teams from this event", competition.ErrInvalid)
 	}
 	return nil
 }
@@ -311,11 +338,18 @@ func (s Store) RecordAdminResult(ctx context.Context, req RecordResultRequest) (
 	if strings.TrimSpace(req.Reason) == "" {
 		return "", errors.New("a reason is required to record a result")
 	}
+	req.Score = strings.TrimSpace(req.Score)
+	if len(req.Score) > 120 {
+		return "", errors.New("score must be at most 120 characters")
+	}
 	tx, err := s.Pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return "", fmt.Errorf("begin record result: %w", err)
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
+	if err := requireStaff(ctx, tx, req.ActorUserID); err != nil {
+		return "", err
+	}
 
 	var eventID, state string
 	if err := tx.QueryRow(ctx, `SELECT event_id::text, state FROM matches WHERE id = $1::uuid FOR UPDATE`, req.MatchID).Scan(&eventID, &state); err != nil {
@@ -334,6 +368,9 @@ func (s Store) RecordAdminResult(ctx context.Context, req RecordResultRequest) (
 		}
 		return existing, nil
 	}
+	if state != "open" && state != "pending_verification" && state != "disputed" {
+		return "", fmt.Errorf("match in state %s cannot be verified", state)
+	}
 
 	sides, err := loadSideIDs(ctx, tx, req.MatchID)
 	if err != nil {
@@ -343,13 +380,29 @@ func (s Store) RecordAdminResult(ctx context.Context, req RecordResultRequest) (
 	outcome, winningSideID, side1Points, side2Points := resolveOutcome(req.Winner, sides)
 	var verificationID string
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO verified_results (match_id, version, side_1_points, side_2_points, outcome, verification_method, verified_by, verification_reason)
-		VALUES ($1::uuid, 1, $2, $3, $4, 'admin_override', $5::uuid, $6) RETURNING id::text`,
-		req.MatchID, side1Points, side2Points, verifiedOutcome(req.Winner), req.ActorUserID, req.Reason).Scan(&verificationID); err != nil {
+		INSERT INTO verified_results
+		    (match_id, version, side_1_points, side_2_points, outcome, verification_method,
+		     verified_by, verification_reason, display_score)
+		VALUES ($1::uuid, 1, $2, $3, $4, 'admin_override', $5::uuid, $6, nullif($7, ''))
+		RETURNING id::text`,
+		req.MatchID, side1Points, side2Points, verifiedOutcome(req.Winner), req.ActorUserID, req.Reason, req.Score).Scan(&verificationID); err != nil {
 		return "", fmt.Errorf("insert verified result: %w", err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE matches SET state = 'verified', updated_at = now() WHERE id = $1::uuid`, req.MatchID); err != nil {
 		return "", fmt.Errorf("mark match verified: %w", err)
+	}
+	afterData, err := json.Marshal(map[string]any{
+		"verification_id": verificationID, "version": 1, "winner": req.Winner,
+		"score": req.Score, "verification_method": "admin_override",
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal result audit: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO audit_entries (actor_user_id, action, target_type, target_id, reason, after_data)
+		VALUES ($1::uuid, 'competition.result_admin_verified', 'match', $2::uuid, $3, $4::jsonb)`,
+		req.ActorUserID, req.MatchID, strings.TrimSpace(req.Reason), afterData); err != nil {
+		return "", fmt.Errorf("record result audit: %w", err)
 	}
 
 	eventID2, err := newUUID()
@@ -358,7 +411,7 @@ func (s Store) RecordAdminResult(ctx context.Context, req RecordResultRequest) (
 	}
 	payload, err := json.Marshal(events.MatchResultVerifiedPayload{
 		MatchID: req.MatchID, CompetitionEventID: eventID, VerificationID: verificationID,
-		Outcome: outcome, WinningSideID: winningSideID, Score: strings.TrimSpace(req.Score),
+		Outcome: outcome, WinningSideID: winningSideID, Score: req.Score,
 	})
 	if err != nil {
 		return "", fmt.Errorf("marshal result payload: %w", err)
@@ -433,25 +486,100 @@ type EventRow struct {
 	Matches    []MatchRow
 }
 
+func (e EventRow) CanCreateMatch() bool {
+	ready := 0
+	for _, team := range e.Teams {
+		if len(team.Members) > 0 && team.HasCaptain() {
+			ready++
+		}
+	}
+	return ready >= 2
+}
+
 // TeamRow is a team within an event.
 type TeamRow struct {
-	ID   string
-	Name string
+	ID      string
+	Name    string
+	Members []TeamMemberRow
+}
+
+// TeamMemberRow is an active golfer assigned to an event team.
+type TeamMemberRow struct {
+	PlayerID   string
+	PlayerName string
+	IsCaptain  bool
+}
+
+func (t TeamRow) HasCaptain() bool {
+	for _, member := range t.Members {
+		if member.IsCaptain {
+			return true
+		}
+	}
+	return false
 }
 
 // MatchRow is a match with its two sides for the admin page. Side IDs are what
 // a match market keys its selections to ("side:<id>").
 type MatchRow struct {
-	ID            string
-	Number        int
-	Format        string
-	State         string
-	Side1TeamName string
-	Side1Players  string
-	Side2TeamName string
-	Side2Players  string
-	Side1ID       string
-	Side2ID       string
+	ID                 string
+	Number             int
+	Format             string
+	State              string
+	Side1TeamName      string
+	Side1Players       string
+	Side2TeamName      string
+	Side2Players       string
+	Side1ID            string
+	Side2ID            string
+	ResultOutcome      string
+	ResultScore        string
+	ResultReason       string
+	VerificationMethod string
+	VerifiedAt         *time.Time
+}
+
+func (m MatchRow) Side1Label() string {
+	if strings.TrimSpace(m.Side1Players) != "" {
+		return m.Side1Players
+	}
+	return m.Side1TeamName
+}
+
+func (m MatchRow) Side2Label() string {
+	if strings.TrimSpace(m.Side2Players) != "" {
+		return m.Side2Players
+	}
+	return m.Side2TeamName
+}
+
+// WinnerLabel returns the golfer-first verified outcome for display.
+func (m MatchRow) WinnerLabel() string {
+	switch m.ResultOutcome {
+	case "side_1":
+		return m.Side1Label()
+	case "side_2":
+		return m.Side2Label()
+	case "tie":
+		return "Tied"
+	default:
+		return ""
+	}
+}
+
+func (m MatchRow) VerificationLabel() string {
+	switch m.VerificationMethod {
+	case "opponent":
+		return "Opponent confirmed"
+	case "captain":
+		return "Captain confirmed"
+	case "admin_override":
+		return "Admin verified"
+	case "migration":
+		return "Imported verification"
+	default:
+		return "Verified"
+	}
 }
 
 // ListEvents returns every event with its teams and matches, newest first.
@@ -499,12 +627,43 @@ func (s Store) ListEvents(ctx context.Context) ([]EventRow, error) {
 	if err := teamRows.Err(); err != nil {
 		return nil, err
 	}
+	teamIndex := make(map[string][2]int)
+	for eventIndex := range eventsList {
+		for teamPosition := range eventsList[eventIndex].Teams {
+			teamIndex[eventsList[eventIndex].Teams[teamPosition].ID] = [2]int{eventIndex, teamPosition}
+		}
+	}
+	rosterRows, err := s.Pool.Query(ctx, `
+		SELECT etm.team_id::text, p.id::text, p.display_name, etm.is_captain
+		FROM event_team_memberships etm
+		JOIN players p ON p.id = etm.player_id AND p.active
+		ORDER BY etm.team_id, etm.is_captain DESC, p.display_name`)
+	if err != nil {
+		return nil, fmt.Errorf("list team rosters: %w", err)
+	}
+	defer rosterRows.Close()
+	for rosterRows.Next() {
+		var teamID string
+		var member TeamMemberRow
+		if err := rosterRows.Scan(&teamID, &member.PlayerID, &member.PlayerName, &member.IsCaptain); err != nil {
+			return nil, err
+		}
+		if position, ok := teamIndex[teamID]; ok {
+			eventsList[position[0]].Teams[position[1]].Members = append(eventsList[position[0]].Teams[position[1]].Members, member)
+		}
+	}
+	if err := rosterRows.Err(); err != nil {
+		return nil, err
+	}
 
 	matchRows, err := s.Pool.Query(ctx, `
 		SELECT m.event_id::text, m.id::text, m.match_number, m.format, m.state,
 		       coalesce(t1.name, ''), coalesce(p1.names, ''),
 		       coalesce(t2.name, ''), coalesce(p2.names, ''),
-		       coalesce(s1.id::text, ''), coalesce(s2.id::text, '')
+		       coalesce(s1.id::text, ''), coalesce(s2.id::text, ''),
+		       coalesce(vr.outcome, ''), coalesce(vr.display_score, ''),
+		       coalesce(vr.verification_reason, ''), coalesce(vr.verification_method, ''),
+		       vr.verified_at
 		FROM matches m
 		LEFT JOIN match_sides s1 ON s1.match_id = m.id AND s1.side_number = 1
 		LEFT JOIN match_sides s2 ON s2.match_id = m.id AND s2.side_number = 2
@@ -520,6 +679,13 @@ func (s Store) ListEvents(ctx context.Context) ([]EventRow, error) {
 			FROM match_participants mp JOIN players p ON p.id = mp.player_id
 			WHERE mp.match_side_id = s2.id
 		) p2 ON true
+		LEFT JOIN LATERAL (
+			SELECT outcome, display_score, verification_reason, verification_method, verified_at
+			FROM verified_results
+			WHERE match_id = m.id
+			ORDER BY version DESC
+			LIMIT 1
+		) vr ON true
 		ORDER BY m.match_number`)
 	if err != nil {
 		return nil, fmt.Errorf("list matches: %w", err)
@@ -530,7 +696,8 @@ func (s Store) ListEvents(ctx context.Context) ([]EventRow, error) {
 		var m MatchRow
 		if err := matchRows.Scan(&eventID, &m.ID, &m.Number, &m.Format, &m.State,
 			&m.Side1TeamName, &m.Side1Players, &m.Side2TeamName, &m.Side2Players,
-			&m.Side1ID, &m.Side2ID); err != nil {
+			&m.Side1ID, &m.Side2ID, &m.ResultOutcome, &m.ResultScore,
+			&m.ResultReason, &m.VerificationMethod, &m.VerifiedAt); err != nil {
 			return nil, err
 		}
 		if i, ok := index[eventID]; ok {

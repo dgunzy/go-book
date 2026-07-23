@@ -30,3 +30,13 @@ type CompetitionSetupDeletedPayload struct {
 	Name       string `json:"name"`
 	Reason     string `json:"reason"`
 }
+
+// TeamRosterChangedPayload records an audited roster or captain change. It
+// contains only stable internal identifiers and the resulting captain flag.
+type TeamRosterChangedPayload struct {
+	EventID   string `json:"event_id"`
+	TeamID    string `json:"team_id"`
+	PlayerID  string `json:"player_id"`
+	Action    string `json:"action"`
+	IsCaptain bool   `json:"is_captain"`
+}

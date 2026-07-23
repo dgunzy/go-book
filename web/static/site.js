@@ -97,6 +97,24 @@ function participantRule(format) {
   return { count: 1, exact: false, message: "Assign at least one player per side." };
 }
 
+function filterMatchParticipants(form) {
+  ["one", "two"].forEach((sideName) => {
+    const team = form.querySelector(`[data-match-team="${sideName}"]`);
+    const players = form.querySelector(`[data-match-side="${sideName}"]`);
+    if (!(team instanceof HTMLSelectElement) || !(players instanceof HTMLSelectElement)) {
+      return;
+    }
+    Array.from(players.options).forEach((option) => {
+      const available = option.dataset.teamId === team.value;
+      option.hidden = !available;
+      option.disabled = !available;
+      if (!available) {
+        option.selected = false;
+      }
+    });
+  });
+}
+
 function assignParticipantDefaults(form) {
   const format = form.querySelector("[data-match-format]");
   const sides = [form.querySelector('[data-match-side="one"]'), form.querySelector('[data-match-side="two"]')];
@@ -114,6 +132,9 @@ function assignParticipantDefaults(form) {
     }
     const reservedForOtherSide = new Set(original.flatMap((values, index) => index === sideIndex ? [] : values));
     Array.from(side.options).forEach((option) => {
+      if (option.disabled) {
+        return;
+      }
       if (keep.length < targetCount && !keep.includes(option.value) && !used.has(option.value) && !reservedForOtherSide.has(option.value)) {
         keep.push(option.value);
       }
@@ -132,7 +153,7 @@ function validateMatchParticipants(form) {
   }
   const rule = participantRule(format.value);
   if (hint instanceof HTMLElement) {
-    hint.textContent = rule.message + " Create missing players above before creating the match.";
+    hint.textContent = rule.message + " Add missing players to their team roster first.";
   }
   const selected = sides.map((side) => Array.from(side.selectedOptions).map((option) => option.value));
   const duplicates = selected[0].some((value) => selected[1].includes(value));
@@ -140,21 +161,31 @@ function validateMatchParticipants(form) {
     const countInvalid = rule.exact ? selected[index].length !== rule.count : selected[index].length < rule.count;
     side.setCustomValidity(duplicates ? "A player cannot appear on both sides." : countInvalid ? rule.message : "");
   });
+  const teams = [form.querySelector('[data-match-team="one"]'), form.querySelector('[data-match-team="two"]')];
+  if (teams.every((team) => team instanceof HTMLSelectElement)) {
+    const sameTeam = teams[0].value === teams[1].value;
+    teams.forEach((team) => team.setCustomValidity(sameTeam ? "Choose two different teams." : ""));
+  }
 }
 
 document.querySelectorAll("[data-match-create-form]").forEach((form) => {
   if (!(form instanceof HTMLFormElement)) {
     return;
   }
+  filterMatchParticipants(form);
+  assignParticipantDefaults(form);
   validateMatchParticipants(form);
   form.addEventListener("change", (event) => {
     if (!(event.target instanceof Element)) {
       return;
     }
-    if (event.target.matches("[data-match-format]")) {
+    if (event.target.matches("[data-match-team]")) {
+      filterMatchParticipants(form);
+    }
+    if (event.target.matches("[data-match-format], [data-match-team]")) {
       assignParticipantDefaults(form);
     }
-    if (event.target.matches("[data-match-format], [data-match-side]")) {
+    if (event.target.matches("[data-match-format], [data-match-team], [data-match-side]")) {
       validateMatchParticipants(form);
     }
   });

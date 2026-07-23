@@ -2,8 +2,24 @@
 <header class="page-header section-shell">
   <p class="eyebrow dark">The record book</p>
   <h1>Statistics</h1>
-  <p>Legacy aggregate results across singles and doubles match play.</p>
+  <p>Verified event-derived records alongside the labelled legacy aggregate snapshot.</p>
 </header>
+
+{{if .VerifiedCareer}}
+<section class="section-shell leaderboard authoritative-career" aria-labelledby="verified-career">
+  <div class="leaderboard-heading">
+    <div><p class="eyebrow dark">Authoritative record</p><h2 id="verified-career">Verified career statistics</h2></div>
+    <p>Calculated from verified match events. Singles and team-format records remain separately auditable.</p>
+  </div>
+  <div class="wide-table-wrap">
+    <table class="wide-table verified-stats-table">
+      <thead><tr><th>Player</th><th colspan="5">Overall</th><th colspan="5">Singles</th><th colspan="5">Team formats</th></tr><tr><th></th><th>P</th><th>W</th><th>L</th><th>T</th><th>Pts</th><th>P</th><th>W</th><th>L</th><th>T</th><th>Pts</th><th>P</th><th>W</th><th>L</th><th>T</th><th>Pts</th></tr></thead>
+      <tbody>{{range .VerifiedCareer}}<tr><th scope="row">{{.PlayerName}}</th><td>{{.Played}}</td><td>{{.Wins}}</td><td>{{.Losses}}</td><td>{{.Ties}}</td><td><strong>{{.Points}}</strong></td><td>{{.SinglesPlayed}}</td><td>{{.SinglesWins}}</td><td>{{.SinglesLosses}}</td><td>{{.SinglesTies}}</td><td>{{.SinglesPoints}}</td><td>{{.TeamPlayed}}</td><td>{{.TeamWins}}</td><td>{{.TeamLosses}}</td><td>{{.TeamTies}}</td><td>{{.TeamPoints}}</td></tr>{{end}}</tbody>
+    </table>
+  </div>
+  <nav class="verified-season-links" aria-label="Verified season statistics"><strong>Season records:</strong>{{range .VerifiedSeasons}} <a href="/history/{{.Year}}">{{.Year}}</a>{{end}}</nav>
+</section>
+{{end}}
 
 <section class="stat-strip section-shell" aria-label="Dataset summary">
   <div><span>Players</span><strong>{{.TotalPlayers}}</strong></div>
@@ -20,8 +36,8 @@
 <section class="section-shell leaderboard">
   <div class="leaderboard-heading">
     <div>
-      <p class="eyebrow dark">Leaderboard</p>
-      <h2>Individual match record</h2>
+      <p class="eyebrow dark">Legacy snapshot</p>
+      <h2>Historical aggregate record</h2>
     </div>
     <p>Ties count as half a win, matching the legacy site's calculation.</p>
   </div>

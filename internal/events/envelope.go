@@ -29,6 +29,7 @@ const (
 	PlayerLinkedToUser        Type = "PlayerLinkedToUser.v1"
 	PlayerUnlinkedFromUser    Type = "PlayerUnlinkedFromUser.v1"
 	CompetitionSetupDeleted   Type = "CompetitionSetupDeleted.v1"
+	TeamRosterChanged         Type = "TeamRosterChanged.v1"
 	MarketCreated             Type = "MarketCreated.v1"
 	MarketOpened              Type = "MarketOpened.v1"
 	MarketClosed              Type = "MarketClosed.v1"

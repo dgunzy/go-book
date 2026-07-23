@@ -81,16 +81,12 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		return fmt.Errorf("load configuration: %w", err)
 	}
 
-	publicHandler, err := publicweb.New()
-	if err != nil {
-		return fmt.Errorf("build public web handler: %w", err)
-	}
-
 	secureDeployment := applicationConfig.Environment == "staging" || applicationConfig.Environment == "production"
 	acceptanceDeployment := applicationConfig.Environment == "staging" && applicationConfig.DatabaseMode == config.DatabaseModeTest
 	applicationHandler := http.NewServeMux()
 	var readiness func(context.Context) error
 	var dispatcher *events.Dispatcher
+	var publicCompetition publicweb.CompetitionReader
 	if applicationConfig.PrivateAppEnabled {
 		pool, err := postgresdb.Open(ctx, applicationConfig.DatabaseURL)
 		if err != nil {
@@ -98,6 +94,7 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		}
 		defer pool.Close()
 		readiness = databaseReadiness(pool)
+		publicCompetition = competitionpg.Store{Pool: pool}
 
 		provider, err := oidcclient.New(ctx, oidcclient.Config{
 			IssuerURL: applicationConfig.OIDCIssuerURL, ClientID: applicationConfig.OIDCClientID,
@@ -185,6 +182,10 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		if err != nil {
 			return fmt.Errorf("build outbox dispatcher: %w", err)
 		}
+	}
+	publicHandler, err := publicweb.NewWithCompetition(publicCompetition)
+	if err != nil {
+		return fmt.Errorf("build public web handler: %w", err)
 	}
 	applicationHandler.Handle("/", publicHandler)
 

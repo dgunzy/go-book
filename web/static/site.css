@@ -679,6 +679,21 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 
 .competition-setup-list > li { align-items: center; display: flex; flex-wrap: wrap; gap: .45rem; }
 .competition-event { max-width: none; }
+.competition-roster-grid { display: grid; gap: .8rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.competition-roster-card { background: #fff; border: 1px solid #d8ddd8; border-radius: 5px; min-width: 0; padding: .8rem; }
+.competition-roster-heading { align-items: center; display: flex; gap: .6rem; justify-content: space-between; }
+.competition-roster-heading h4 { margin: 0; }
+.private-status-warning { background: #fff4db; border-color: #d49b2f; color: #76520d; }
+.competition-roster-list { list-style: none; margin: .7rem 0 !important; padding: 0; }
+.competition-roster-list > li { align-items: center; border-top: 1px solid #e5e8e5; display: flex; gap: .5rem; justify-content: space-between; margin: 0; padding: .55rem 0; }
+.competition-captain-badge { color: #174d36; font-size: .65rem; font-weight: 800; text-transform: uppercase; }
+.competition-roster-actions { align-items: center; display: flex; flex-wrap: wrap; gap: .5rem; justify-content: flex-end; }
+.competition-roster-actions form { margin: 0; }
+.private-link-button { background: transparent; border: 0; color: #174d36; cursor: pointer; font: inherit; font-size: .7rem; font-weight: 800; padding: 0; }
+.competition-roster-add { align-items: end; display: flex; }
+.competition-roster-add label { display: grid; font-size: .68rem; font-weight: 800; gap: .2rem; }
+.competition-roster-add select { border: 1px solid #b8c1bb; border-radius: 4px; font: inherit; max-width: 12rem; padding: .3rem .5rem; }
+.competition-roster-add .betting-check { align-items: center; display: flex; flex-direction: row; font-weight: 700; }
 .competition-delete-control { font-size: .72rem; }
 .competition-delete-control summary { color: var(--danger, #b42318); cursor: pointer; font-weight: 800; }
 .competition-delete-form { align-items: end; background: #fff7f6; border: 1px solid #e7b9b4; display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .4rem; padding: .6rem; }
@@ -694,9 +709,35 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .competition-match-form label { display: grid; gap: .2rem; }
 .competition-match-form button { justify-self: start; }
 .competition-participant-rule { grid-column: 1 / -1; margin: 0; }
+.competition-result-summary { display: grid; gap: .15rem; }
+.competition-result-summary span, .competition-result-summary small { color: #69756d; }
+
+.authoritative-seasons, .verified-records, .authoritative-career { margin-top: clamp(3rem, 7vw, 6rem); }
+.authoritative-season-grid { display: grid; gap: .8rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.authoritative-season-grid a { background: var(--paper); border: 1px solid var(--line); color: var(--ink); display: grid; gap: .2rem; padding: 1rem; text-decoration: none; }
+.authoritative-season-grid a:hover { border-color: var(--green); }
+.authoritative-season-grid span { color: var(--rust); font-size: .72rem; font-weight: 800; }
+.authoritative-season-grid small { color: var(--muted); }
+.verified-records > h3 { margin-top: 2.5rem; }
+.verified-match-grid { display: grid; gap: 1rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.verified-match-card { background: var(--paper); border: 1px solid var(--line); display: grid; gap: .8rem; padding: 1rem; }
+.verified-match-meta { color: var(--muted); display: flex; font-size: .68rem; font-weight: 800; justify-content: space-between; text-transform: uppercase; }
+.verified-match-sides { align-items: center; display: grid; gap: .5rem; grid-template-columns: 1fr auto 1fr; }
+.verified-match-sides div { display: grid; }
+.verified-match-sides div:last-child { text-align: right; }
+.verified-match-sides small, .verified-match-card > small { color: var(--muted); }
+.verified-match-result { border-top: 1px solid var(--line); margin: 0; padding-top: .7rem; }
+.verified-match-result span { color: var(--muted); margin-left: .4rem; }
+.verified-compact-table { min-width: 580px; }
+.verified-stats-table { min-width: 1100px; }
+.verified-season-links { margin-top: 1rem; }
+.verified-season-links a { color: var(--green); font-weight: 800; margin-left: .5rem; }
 
 @media (max-width: 680px) {
   .competition-match-form { grid-template-columns: 1fr; }
+  .competition-roster-grid, .authoritative-season-grid, .verified-match-grid { grid-template-columns: 1fr; }
+  .competition-roster-list > li { align-items: flex-start; flex-direction: column; }
+  .competition-roster-actions { justify-content: flex-start; }
   .competition-delete-form { align-items: stretch; }
   .competition-delete-form input { min-width: 0; width: 100%; }
 }

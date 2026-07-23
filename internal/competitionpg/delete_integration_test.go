@@ -69,6 +69,14 @@ func TestCompetitionSetupDeletionLifecycle(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE players SET active = true WHERE id = $1::uuid`, player2); err != nil {
 		t.Fatal(err)
 	}
+	for _, member := range []SetTeamMemberRequest{
+		{EventID: eventID, TeamID: team1, PlayerID: player1, IsCaptain: true, ActorUserID: actor},
+		{EventID: eventID, TeamID: team2, PlayerID: player2, IsCaptain: true, ActorUserID: actor},
+	} {
+		if err := store.SetTeamMember(ctx, member); err != nil {
+			t.Fatalf("SetTeamMember() error = %v", err)
+		}
+	}
 	match, err := store.CreateMatch(ctx, CreateMatchRequest{
 		EventID: eventID, Format: "singles", Side1TeamID: team1, Side2TeamID: team2,
 		Side1PlayerIDs: []string{player1}, Side2PlayerIDs: []string{player2}, CreatedBy: actor,
@@ -124,6 +132,12 @@ func TestCompetitionSetupDeletionLifecycle(t *testing.T) {
 	}
 	if err := store.DeleteMatch(ctx, match.MatchID, actor, "repeated request"); !errors.Is(err, ErrDeleteNotFound) {
 		t.Fatalf("repeated DeleteMatch() error = %v, want ErrDeleteNotFound", err)
+	}
+	if err := store.RemoveTeamMember(ctx, eventID, team1, player1, actor, "remove unused setup roster"); err != nil {
+		t.Fatalf("RemoveTeamMember(team1) error = %v", err)
+	}
+	if err := store.RemoveTeamMember(ctx, eventID, team2, player2, actor, "remove unused setup roster"); err != nil {
+		t.Fatalf("RemoveTeamMember(team2) error = %v", err)
 	}
 	if err := store.DeleteTeam(ctx, eventID, team1, actor, "duplicate setup team"); err != nil {
 		t.Fatalf("DeleteTeam(team1) error = %v", err)

@@ -15,7 +15,8 @@
 
 <section class="help-section" aria-labelledby="help-matches">
   <h2 id="help-matches">Setting up teams and matches</h2>
-  <p>On <a href="/admin/matches">Matches</a>, create an event, add its teams, and create every golfer before setting a match. Player assignment is required: <strong>Singles need exactly one player per side</strong>; <strong>Fourball, Foursomes, and Scramble need exactly two per side</strong>; Other needs at least one. The form chooses distinct defaults when enough players exist and will not create a match with a missing, inactive, duplicated, or incorrectly counted player.</p>
+  <p>On <a href="/admin/matches">Matches</a>, create an event, add its teams, and create every golfer. Add each golfer to that event's team roster and designate at least one captain per staffed team; the first golfer added is automatically a captain. A golfer can belong to only one team in an event. Roster changes are audited, and a golfer with match history for that team cannot be removed.</p>
+  <p>Then create each match from its staffed team rosters. Both teams must have a captain. Player assignment is required: <strong>Singles need exactly one rostered player per side</strong>; <strong>Fourball, Foursomes, and Scramble need exactly two per side</strong>; Other needs at least one. Selecting a team filters the golfer list to that roster, and the form chooses the first available golfer by default. The server rejects a missing captain or a missing, inactive, duplicated, unrostered, or incorrectly counted player.</p>
   <p>If you create the wrong setup record, open its red <strong>Delete</strong> control, enter an audit reason, and confirm. Only unused matches, unused teams, and empty non-historical events can be deleted. Anything with a market, result, media, statistics, roster, or imported history is protected; use the appropriate void or correction workflow instead. Historical players are deliberately not deletable from this page.</p>
 </section>
 
@@ -52,6 +53,7 @@
     <li><strong>Match</strong> markets settle automatically once the match result is verified.</li>
     <li><strong>Future</strong> and <strong>Prop</strong> markets are settled by hand: open the market's <strong>Settle / void</strong> page, mark each selection win / loss / push (or void the whole market), and give a reason. Winning wagers are paid from escrow; a void refunds every stake.</li>
   </ul>
+  <p>When an admin records a verified match result, enter the score as it should appear publicly and give the audit reason. The winning golfers, score, verification method, and date remain visible on the Matches page. Verified results automatically appear in the public match history, cup standings, and individual overall/singles/team-format statistics; pending or disputed results do not.</p>
 </section>
 
 <section class="help-section" aria-labelledby="help-members">
@@ -63,7 +65,7 @@
 <section class="help-section" aria-labelledby="help-archive-2025">
   <h2 id="help-archive-2025">Completing the 2025 public archive</h2>
   <p>The public <a href="/history/2025">2025 Cabot Cup page</a> is intentionally blank and marked <strong>Archive in progress</strong>. Betting records and aggregate player totals are not treated as match scorecards, so the page does not guess a winner, teams, score, or individual results.</p>
-  <p>When authoritative material is available, enter the teams, players, matches, and verified results through <a href="/admin/matches">Matches</a>; prepare the tournament write-up and selected photographs separately. The placeholder has reserved sections for the write-up, match statistics, and gallery.</p>
+  <p>When authoritative material is available, enter the teams, rosters, players, matches, and verified results through <a href="/admin/matches">Matches</a>; those confirmed records will populate the placeholder's match and statistics section automatically. Prepare the tournament write-up and selected photographs separately. The placeholder has reserved sections for all three.</p>
 </section>
 
 <section class="help-section" aria-labelledby="help-test-mode">

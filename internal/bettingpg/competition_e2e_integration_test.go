@@ -44,6 +44,9 @@ func TestMatchResultDrivesSettlementEndToEnd(t *testing.T) {
 
 	admin := scanID(t, ctx, pool, `INSERT INTO users (display_name, email) VALUES ('E2E Admin', $1) RETURNING id::text`,
 		email("e2e-admin", suffix))
+	if _, err := pool.Exec(ctx, `INSERT INTO memberships (user_id, role) VALUES ($1::uuid, 'admin')`, admin); err != nil {
+		t.Fatal(err)
+	}
 	bettor := scanID(t, ctx, pool, `INSERT INTO users (display_name, email) VALUES ('E2E Bettor', $1) RETURNING id::text`,
 		email("e2e-bettor", suffix))
 	fundE2E(t, ctx, pool, bettor, 500_00)
@@ -69,6 +72,14 @@ func TestMatchResultDrivesSettlementEndToEnd(t *testing.T) {
 	playerB, err := compStore.CreatePlayer(ctx, "South Player "+itoa(suffix), "")
 	if err != nil {
 		t.Fatal(err)
+	}
+	for _, member := range []competitionpg.SetTeamMemberRequest{
+		{EventID: eventID, TeamID: teamA, PlayerID: playerA, IsCaptain: true, ActorUserID: admin},
+		{EventID: eventID, TeamID: teamB, PlayerID: playerB, IsCaptain: true, ActorUserID: admin},
+	} {
+		if err := compStore.SetTeamMember(ctx, member); err != nil {
+			t.Fatalf("SetTeamMember() error = %v", err)
+		}
 	}
 	match, err := compStore.CreateMatch(ctx, competitionpg.CreateMatchRequest{
 		EventID: eventID, Format: "singles", Side1TeamID: teamA, Side2TeamID: teamB,
@@ -105,9 +116,9 @@ func TestMatchResultDrivesSettlementEndToEnd(t *testing.T) {
 		_, _ = pool.Exec(c, `DELETE FROM match_sides WHERE match_id = $1::uuid`, match.MatchID)
 		_, _ = pool.Exec(c, `DELETE FROM matches WHERE id = $1::uuid`, match.MatchID)
 		_, _ = pool.Exec(c, `DELETE FROM matches WHERE id = $1::uuid`, invalidMatchID)
-		_, _ = pool.Exec(c, `DELETE FROM players WHERE id IN ($1::uuid, $2::uuid)`, playerA, playerB)
 		_, _ = pool.Exec(c, `DELETE FROM teams WHERE event_id = $1::uuid`, eventID)
 		_, _ = pool.Exec(c, `DELETE FROM events WHERE id = $1::uuid`, eventID)
+		_, _ = pool.Exec(c, `DELETE FROM players WHERE id IN ($1::uuid, $2::uuid)`, playerA, playerB)
 	})
 	marketable, err := betStore.ListMarketableMatches(ctx)
 	if err != nil {

@@ -1,0 +1,50 @@
+{{define "verified_records"}}
+{{$season := .VerifiedSeason}}
+{{with $season}}
+<section class="section-shell verified-records" aria-labelledby="verified-records-{{.Year}}">
+  <div class="leaderboard-heading">
+    <div>
+      <p class="eyebrow dark">Authoritative competition record</p>
+      <h2 id="verified-records-{{.Year}}">Verified {{.Year}} results</h2>
+    </div>
+    <p>{{.VerifiedCount}} verified {{if eq .VerifiedCount 1}}match{{else}}matches{{end}}. Pending and disputed results are never included.</p>
+  </div>
+
+  {{if .Teams}}
+  <h3>Cup standings</h3>
+  <div class="wide-table-wrap">
+    <table class="wide-table verified-compact-table">
+      <thead><tr><th>Team</th><th>Played</th><th>W</th><th>L</th><th>T</th><th>Points</th></tr></thead>
+      <tbody>{{range .Teams}}<tr><th scope="row">{{.TeamName}}</th><td>{{.Played}}</td><td>{{.Wins}}</td><td>{{.Losses}}</td><td>{{.Ties}}</td><td><strong>{{.Points}}</strong></td></tr>{{end}}</tbody>
+    </table>
+  </div>
+  {{end}}
+
+  <h3>Match history</h3>
+  <div class="verified-match-grid">
+    {{range .Matches}}
+    <article class="verified-match-card">
+      <div class="verified-match-meta"><span>Match {{.Number}}</span><span>{{.Format}}</span></div>
+      <div class="verified-match-sides">
+        <div><strong>{{if .Side1Players}}{{.Side1Players}}{{else}}{{.Side1Team}}{{end}}</strong><small>{{.Side1Team}}</small></div>
+        <span>vs</span>
+        <div><strong>{{if .Side2Players}}{{.Side2Players}}{{else}}{{.Side2Team}}{{end}}</strong><small>{{.Side2Team}}</small></div>
+      </div>
+      <p class="verified-match-result"><strong>{{.WinnerLabel}}{{if ne .Outcome "tie"}} won{{end}}</strong>{{if .Score}} <span>{{.Score}}</span>{{end}}</p>
+      <small>{{.VerificationLabel}} · {{.VerifiedAt.Format "Jan 2, 2006"}}</small>
+    </article>
+    {{else}}<p>No verified matches yet.</p>{{end}}
+  </div>
+
+  {{if .Players}}
+  <h3>Individual statistics</h3>
+  <div class="wide-table-wrap">
+    <table class="wide-table verified-stats-table">
+      <thead><tr><th>Player</th><th colspan="5">Overall</th><th colspan="5">Singles</th><th colspan="5">Team formats</th></tr><tr><th></th><th>P</th><th>W</th><th>L</th><th>T</th><th>Pts</th><th>P</th><th>W</th><th>L</th><th>T</th><th>Pts</th><th>P</th><th>W</th><th>L</th><th>T</th><th>Pts</th></tr></thead>
+      <tbody>{{range .Players}}<tr><th scope="row">{{.PlayerName}}</th><td>{{.Played}}</td><td>{{.Wins}}</td><td>{{.Losses}}</td><td>{{.Ties}}</td><td><strong>{{.Points}}</strong></td><td>{{.SinglesPlayed}}</td><td>{{.SinglesWins}}</td><td>{{.SinglesLosses}}</td><td>{{.SinglesTies}}</td><td>{{.SinglesPoints}}</td><td>{{.TeamPlayed}}</td><td>{{.TeamWins}}</td><td>{{.TeamLosses}}</td><td>{{.TeamTies}}</td><td>{{.TeamPoints}}</td></tr>{{end}}</tbody>
+    </table>
+  </div>
+  {{end}}
+</section>
+{{end}}
+{{end}}

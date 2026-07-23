@@ -71,6 +71,8 @@
   </section>
   {{end}}
 
+  {{if .VerifiedSeason}}{{template "verified_records" .}}{{end}}
+
   <nav class="section-shell year-nav" aria-label="Other cup years">
     <strong>More from the archive</strong>
     <div>

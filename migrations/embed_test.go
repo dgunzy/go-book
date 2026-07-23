@@ -9,10 +9,10 @@ func TestAll(t *testing.T) {
 	t.Parallel()
 
 	definitions := All()
-	if len(definitions) != 8 {
-		t.Fatalf("migration count = %d, want 8", len(definitions))
+	if len(definitions) != 9 {
+		t.Fatalf("migration count = %d, want 9", len(definitions))
 	}
-	wantNames := []string{"initial", "identity_and_legacy_book", "market_currency", "dynamic_pricing", "player_auto_approve", "credit_limit", "stat_projection_guard", "one_active_match_market"}
+	wantNames := []string{"initial", "identity_and_legacy_book", "market_currency", "dynamic_pricing", "player_auto_approve", "credit_limit", "stat_projection_guard", "one_active_match_market", "match_history_and_rosters"}
 	for index, migration := range definitions {
 		if migration.Version != int64(index+1) || migration.Name != wantNames[index] {
 			t.Fatalf("migration %d identity = %d/%q", index, migration.Version, migration.Name)

@@ -1,0 +1,10 @@
+{{define "content"}}
+{{$season := .VerifiedSeason}}
+<header class="page-header section-shell">
+  <a class="back-link dark" href="/history"><span aria-hidden="true">&larr;</span> Cup history</a>
+  <p class="eyebrow dark">{{$season.Venue}}</p>
+  <h1>{{$season.Year}} Cabot Cup</h1>
+  <p>{{$season.Name}} competition record, built from verified match events.</p>
+</header>
+{{template "verified_records" .}}
+{{end}}

@@ -20,7 +20,7 @@
 
 <section class="help-section" aria-labelledby="players">
   <h2 id="players">Players</h2>
-  <p>Players are who match results and statistics are tracked for. Add them once; assign them to a match's sides below.</p>
+  <p>Players are who match results and statistics are tracked for. Add them once, then place them on an event team roster before creating matches.</p>
   <ul>{{range .Players}}<li>{{.DisplayName}}</li>{{else}}<li>No players yet.</li>{{end}}</ul>
   <form method="post" action="/admin/players" class="betting-inline-form">
     <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
@@ -34,11 +34,45 @@
 <section class="help-section competition-event" aria-labelledby="event-{{.ID}}">
   <h2 id="event-{{.ID}}">{{.Name}} <span class="private-status">{{.SeasonYear}}</span></h2>
 
-  <h3>Teams</h3>
-  <ul class="competition-setup-list">
+  <h3>Teams and rosters</h3>
+  <div class="competition-roster-grid">
     {{range .Teams}}
-    <li>
-      <span>{{.Name}}</span>
+    {{$team := .}}
+    <article class="competition-roster-card">
+      <div class="competition-roster-heading"><h4>{{.Name}}</h4>{{if .HasCaptain}}<span class="private-status">Captain assigned</span>{{else}}<span class="private-status private-status-warning">Needs captain</span>{{end}}</div>
+      <ul class="competition-roster-list">
+        {{range .Members}}
+        <li>
+          <span><strong>{{.PlayerName}}</strong>{{if .IsCaptain}} <span class="competition-captain-badge">Captain</span>{{end}}</span>
+          <div class="competition-roster-actions">
+            <form method="post" action="/admin/events/{{$event.ID}}/teams/{{$team.ID}}/roster">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <input type="hidden" name="player_id" value="{{.PlayerID}}">
+              <input type="hidden" name="is_captain" value="{{if .IsCaptain}}false{{else}}true{{end}}">
+              <button type="submit" class="private-link-button">{{if .IsCaptain}}Remove captain role{{else}}Make captain{{end}}</button>
+            </form>
+            <details class="competition-delete-control">
+              <summary>Remove</summary>
+              <form method="post" action="/admin/events/{{$event.ID}}/teams/{{$team.ID}}/roster/{{.PlayerID}}/remove" class="competition-delete-form" data-confirm="Remove this player from the team roster?">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <label>Reason <input name="reason" maxlength="500" required placeholder="Why is the roster changing?"></label>
+                <button type="submit" class="betting-danger-button">Remove player</button>
+              </form>
+            </details>
+          </div>
+        </li>
+        {{else}}<li>No players assigned.</li>{{end}}
+      </ul>
+      {{if $.Players}}
+      <form method="post" action="/admin/events/{{$event.ID}}/teams/{{.ID}}/roster" class="betting-inline-form competition-roster-add">
+        <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+        <label>Add player
+          <select name="player_id" required><option value="">Choose unassigned player</option>{{range $.Players}}{{if not (eventHasPlayer $event .ID)}}<option value="{{.ID}}">{{.DisplayName}}</option>{{end}}{{end}}</select>
+        </label>
+        <label class="betting-check"><input type="checkbox" name="is_captain" value="true"> Captain</label>
+        <button type="submit">Add to team</button>
+      </form>
+      {{end}}
       <details class="competition-delete-control">
         <summary>Delete</summary>
         <form method="post" action="/admin/events/{{$event.ID}}/teams/{{.ID}}/delete" class="competition-delete-form" data-confirm="Delete this unused team? This cannot be undone.">
@@ -47,9 +81,9 @@
           <button type="submit" class="betting-danger-button">Delete unused team</button>
         </form>
       </details>
-    </li>
-    {{else}}<li>No teams yet.</li>{{end}}
-  </ul>
+    </article>
+    {{else}}<p>No teams yet.</p>{{end}}
+  </div>
   <form method="post" action="/admin/events/{{.ID}}/teams" class="betting-inline-form">
     <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
     <input name="name" maxlength="120" required placeholder="Team name" aria-label="Team name">
@@ -58,30 +92,30 @@
 
   {{if ge (len .Teams) 2}}
   <h3>New match</h3>
-  {{if ge (len $.Players) 2}}
+  {{if and (ge (len $.Players) 2) .CanCreateMatch}}
   <form method="post" action="/admin/matches" class="members-role-form competition-match-form" data-match-create-form>
     <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
     <input type="hidden" name="event_id" value="{{.ID}}">
     <label>Side 1
-      <select name="side1_team_id" required>{{range $i, $team := .Teams}}<option value="{{$team.ID}}" {{if eq $i 0}}selected{{end}}>{{$team.Name}}</option>{{end}}</select>
+      <select name="side1_team_id" required data-match-team="one">{{range $i, $team := .Teams}}<option value="{{$team.ID}}" {{if eq $i 0}}selected{{end}}>{{$team.Name}}</option>{{end}}</select>
     </label>
     <label>Side 2
-      <select name="side2_team_id" required>{{range $i, $team := .Teams}}<option value="{{$team.ID}}" {{if eq $i 1}}selected{{end}}>{{$team.Name}}</option>{{end}}</select>
+      <select name="side2_team_id" required data-match-team="two">{{range $i, $team := .Teams}}<option value="{{$team.ID}}" {{if eq $i 1}}selected{{end}}>{{$team.Name}}</option>{{end}}</select>
     </label>
     <label>Format
       <select name="format" data-match-format><option value="singles">Singles</option><option value="fourball">Fourball (2v2)</option><option value="foursomes">Foursomes (2v2)</option><option value="scramble">Scramble (2v2)</option><option value="other">Other</option></select>
     </label>
     <label>Side 1 players
-      <select name="side1_players" multiple size="5" required data-match-side="one" aria-describedby="participant-rule-{{.ID}}">{{range $i, $player := $.Players}}<option value="{{$player.ID}}" {{if eq $i 0}}selected{{end}}>{{$player.DisplayName}}</option>{{end}}</select>
+      <select name="side1_players" multiple size="5" required data-match-side="one" aria-describedby="participant-rule-{{.ID}}">{{range $teamIndex, $team := .Teams}}{{range $memberIndex, $member := $team.Members}}<option value="{{$member.PlayerID}}" data-team-id="{{$team.ID}}" {{if and (eq $teamIndex 0) (eq $memberIndex 0)}}selected{{end}}>{{$member.PlayerName}}</option>{{end}}{{end}}</select>
     </label>
     <label>Side 2 players
-      <select name="side2_players" multiple size="5" required data-match-side="two" aria-describedby="participant-rule-{{.ID}}">{{range $i, $player := $.Players}}<option value="{{$player.ID}}" {{if eq $i 1}}selected{{end}}>{{$player.DisplayName}}</option>{{end}}</select>
+      <select name="side2_players" multiple size="5" required data-match-side="two" aria-describedby="participant-rule-{{.ID}}">{{range $teamIndex, $team := .Teams}}{{range $memberIndex, $member := $team.Members}}<option value="{{$member.PlayerID}}" data-team-id="{{$team.ID}}" {{if and (eq $teamIndex 1) (eq $memberIndex 0)}}selected{{end}}>{{$member.PlayerName}}</option>{{end}}{{end}}</select>
     </label>
-    <p id="participant-rule-{{.ID}}" class="betting-hint competition-participant-rule" data-match-participant-rule>Singles require one player per side. Create missing players above before creating the match.</p>
+    <p id="participant-rule-{{.ID}}" class="betting-hint competition-participant-rule" data-match-participant-rule>Singles require one rostered player per side. Add missing players to their team roster first.</p>
     <button type="submit">Create match</button>
   </form>
   {{else}}
-  <p class="betting-form-error">Create at least two players above before setting a match.</p>
+  <p class="betting-form-error">Staff at least two team rosters and assign each a captain before setting a match.</p>
   {{end}}
   {{end}}
 
@@ -104,12 +138,18 @@
           <td>{{.Format}}</td>
           <td><span class="private-status">{{.State}}</span></td>
           <td>
-            {{if eq .State "verified"}}Verified{{else}}
+            {{if eq .State "verified"}}
+            <div class="competition-result-summary">
+              <strong>{{.WinnerLabel}}{{if ne .ResultOutcome "tie"}} won{{end}}</strong>
+              {{if .ResultScore}}<span>{{.ResultScore}}</span>{{end}}
+              <small>{{.VerificationLabel}}{{if .VerifiedAt}} · {{whenPtr .VerifiedAt}}{{end}}</small>
+            </div>
+            {{else}}
             <form method="post" action="/admin/matches/{{.ID}}/result" class="members-role-form">
               <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
               <select name="winner" aria-label="Winner">
-                <option value="side_1">{{.Side1TeamName}} won</option>
-                <option value="side_2">{{.Side2TeamName}} won</option>
+                <option value="side_1">{{.Side1Label}} won</option>
+                <option value="side_2">{{.Side2Label}} won</option>
                 <option value="tie">Tie</option>
               </select>
               <input name="score" placeholder="score (e.g. 3 &amp; 2)" aria-label="Score">

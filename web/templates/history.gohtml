@@ -35,6 +35,20 @@
   {{end}}
 </section>
 
+{{if .VerifiedSeasons}}
+<section class="section-shell authoritative-seasons" aria-labelledby="authoritative-history">
+  <div class="leaderboard-heading">
+    <div><p class="eyebrow dark">Event-derived record</p><h2 id="authoritative-history">Verified match history</h2></div>
+    <p>These seasons come directly from confirmed match events and update as results are verified.</p>
+  </div>
+  <div class="authoritative-season-grid">
+    {{range .VerifiedSeasons}}
+    <a href="/history/{{.Year}}"><span>{{.Year}}</span><strong>{{.Name}}</strong><small>{{.VerifiedCount}} verified {{if eq .VerifiedCount 1}}match{{else}}matches{{end}}</small></a>
+    {{end}}
+  </div>
+</section>
+{{end}}
+
 <aside class="section-shell archive-note" aria-label="Data source note">
   <strong>{{.SnapshotLabel}}</strong>
   <p>{{.SnapshotNote}}</p>

@@ -16,10 +16,12 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dgunzy/go-book/internal/competition"
 	"github.com/dgunzy/go-book/internal/competitionpg"
 	"github.com/dgunzy/go-book/internal/privateweb"
+	"github.com/dgunzy/go-book/internal/webtime"
 	publicassets "github.com/dgunzy/go-book/web"
 )
 
@@ -42,6 +44,8 @@ type CompetitionStore interface {
 	CreateEvent(context.Context, competitionpg.CreateEventRequest) (string, error)
 	CreatePlayer(ctx context.Context, displayName, linkedUserID string) (string, error)
 	CreateTeam(ctx context.Context, eventID, name, createdBy string) (string, error)
+	SetTeamMember(context.Context, competitionpg.SetTeamMemberRequest) error
+	RemoveTeamMember(ctx context.Context, eventID, teamID, playerID, actorUserID, reason string) error
 	CreateMatch(context.Context, competitionpg.CreateMatchRequest) (competitionpg.MatchCreated, error)
 	RecordAdminResult(context.Context, competitionpg.RecordResultRequest) (string, error)
 	DeleteMatch(ctx context.Context, matchID, actorUserID, reason string) error
@@ -66,7 +70,25 @@ func New(deps Dependencies) (*Handler, error) {
 	if deps.Sessions == nil || deps.Competition == nil {
 		return nil, errors.New("competition web dependencies must be configured")
 	}
-	tmpl, err := template.New("private_layout").ParseFS(publicassets.Files,
+	tmpl, err := template.New("private_layout").Funcs(template.FuncMap{
+		"when": webtime.Format,
+		"whenPtr": func(value *time.Time) string {
+			if value == nil {
+				return ""
+			}
+			return webtime.Format(*value)
+		},
+		"eventHasPlayer": func(event competitionpg.EventRow, playerID string) bool {
+			for _, team := range event.Teams {
+				for _, member := range team.Members {
+					if member.PlayerID == playerID {
+						return true
+					}
+				}
+			}
+			return false
+		},
+	}).ParseFS(publicassets.Files,
 		"templates/private_layout.gohtml", "templates/admin_matches.gohtml")
 	if err != nil {
 		return nil, fmt.Errorf("parse matches template: %w", err)
@@ -76,6 +98,8 @@ func New(deps Dependencies) (*Handler, error) {
 	h.mux.HandleFunc("POST /admin/events", h.createEvent)
 	h.mux.HandleFunc("POST /admin/players", h.createPlayer)
 	h.mux.HandleFunc("POST /admin/events/{id}/teams", h.createTeam)
+	h.mux.HandleFunc("POST /admin/events/{id}/teams/{teamID}/roster", h.setTeamMember)
+	h.mux.HandleFunc("POST /admin/events/{id}/teams/{teamID}/roster/{playerID}/remove", h.removeTeamMember)
 	h.mux.HandleFunc("POST /admin/events/{id}/delete", h.deleteEvent)
 	h.mux.HandleFunc("POST /admin/events/{id}/teams/{teamID}/delete", h.deleteTeam)
 	h.mux.HandleFunc("POST /admin/matches", h.createMatch)
@@ -175,6 +199,71 @@ func (h *Handler) createTeam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/admin/matches", http.StatusSeeOther)
+}
+
+func (h *Handler) setTeamMember(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	eventID, teamID := r.PathValue("id"), r.PathValue("teamID")
+	playerID := strings.TrimSpace(r.PostForm.Get("player_id"))
+	if !isUUID(eventID) || !isUUID(teamID) || !isUUID(playerID) {
+		h.renderList(w, r, session, pageData{FormError: "Pick a valid event, team, and player."})
+		return
+	}
+	err := h.deps.Competition.SetTeamMember(r.Context(), competitionpg.SetTeamMemberRequest{
+		EventID: eventID, TeamID: teamID, PlayerID: playerID,
+		IsCaptain: r.PostForm.Get("is_captain") == "true", ActorUserID: session.UserID,
+	})
+	if err != nil {
+		h.renderRosterError(w, r, session, err)
+		return
+	}
+	h.renderList(w, r, session, pageData{Notice: "Team roster updated."})
+}
+
+func (h *Handler) removeTeamMember(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	eventID, teamID, playerID := r.PathValue("id"), r.PathValue("teamID"), r.PathValue("playerID")
+	if !isUUID(eventID) || !isUUID(teamID) || !isUUID(playerID) {
+		h.renderList(w, r, session, pageData{FormError: "That roster member was not found."})
+		return
+	}
+	reason := strings.TrimSpace(r.PostForm.Get("reason"))
+	if reason == "" || len(reason) > 500 {
+		h.renderList(w, r, session, pageData{FormError: "Enter a roster removal reason of at most 500 characters."})
+		return
+	}
+	if err := h.deps.Competition.RemoveTeamMember(r.Context(), eventID, teamID, playerID, session.UserID, reason); err != nil {
+		h.renderRosterError(w, r, session, err)
+		return
+	}
+	h.renderList(w, r, session, pageData{Notice: "Player removed from the team roster. The change remains in the audit history."})
+}
+
+func (h *Handler) renderRosterError(w http.ResponseWriter, r *http.Request, session privateweb.Session, err error) {
+	message := "Could not update that team roster."
+	switch {
+	case errors.Is(err, competitionpg.ErrRosterNotFound), errors.Is(err, competitionpg.ErrDeleteNotFound):
+		message = "That roster member or team was not found."
+	case errors.Is(err, competitionpg.ErrRosterProtected):
+		message = "That player has match history for this team and cannot be removed."
+	case errors.Is(err, competitionpg.ErrLastCaptain):
+		message = "Assign another captain before removing or demoting the team's final captain."
+	case errors.Is(err, competition.ErrInvalid):
+		message = competitionValidationMessage(err)
+	}
+	h.renderList(w, r, session, pageData{FormError: message})
 }
 
 func (h *Handler) createMatch(w http.ResponseWriter, r *http.Request) {

@@ -40,6 +40,9 @@ var statProjectionGuardSQL string
 //go:embed 000008_one_active_match_market.up.sql
 var oneActiveMatchMarketSQL string
 
+//go:embed 000009_match_history_and_rosters.up.sql
+var matchHistoryAndRostersSQL string
+
 // All returns migrations in application order.
 func All() []Definition {
 	return []Definition{
@@ -51,6 +54,7 @@ func All() []Definition {
 		newDefinition(6, "credit_limit", creditLimitSQL),
 		newDefinition(7, "stat_projection_guard", statProjectionGuardSQL),
 		newDefinition(8, "one_active_match_market", oneActiveMatchMarketSQL),
+		newDefinition(9, "match_history_and_rosters", matchHistoryAndRostersSQL),
 	}
 }
 

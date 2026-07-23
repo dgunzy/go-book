@@ -53,9 +53,19 @@ cert-manager certificate, and Google callback are configured for the separate
 independently in Flux, both select `DATABASE_MODE=test`, and the route is marked
 no-index. Production remains permanently pinned to `DATABASE_MODE=real`.
 
+Competition operations now maintain explicit per-event team rosters and captains.
+Only active golfers on the selected team may be assigned to a match; singles and
+2v2 formats enforce their exact participant counts in both the UI and PostgreSQL
+service. Roster changes are audited and emitted through the outbox, and roster
+membership with match history is protected. Verified results persist their public
+score and feed authoritative public match history, team cup standings, and separate
+overall/singles/team-format season and career projections. These records are clearly
+separated from the labelled legacy aggregate snapshot.
+
 PostgreSQL repositories for markets/wagers/settlement, the verified-result
-settlement consumer, betting HTTP routes, dispatcher wiring in the server process,
-S3 uploads, and the final Turso import remain follow-on implementation slices.
+settlement consumer, betting HTTP routes, and dispatcher wiring are implemented.
+Participant/opponent result confirmation and corrected-result workflows, S3 uploads,
+and the final Turso import remain follow-on implementation slices.
 
 ## 1. Outcome
 
@@ -432,6 +442,8 @@ logs.
 Deliverables:
 
 - Admin event, team, roster, captain, and singles/doubles match management.
+- Persisted verified match score display plus public event match history, team
+  standings, and overall/singles/team-format season and career projections.
 - Participant/captain result submission, opposing-side confirmation, rejection,
   dispute, admin override, and corrected-result flows.
 - Verified-result event emission and idempotent statistics projection/rebuild.

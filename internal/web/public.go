@@ -2,6 +2,7 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -9,6 +10,7 @@ import (
 	"sort"
 	"strconv"
 
+	"github.com/dgunzy/go-book/internal/competitionpg"
 	"github.com/dgunzy/go-book/internal/legacy"
 	publicassets "github.com/dgunzy/go-book/web"
 )
@@ -16,30 +18,46 @@ import (
 const mediaHost = "https://d18fc2989jrcic.cloudfront.net"
 
 type Handler struct {
-	mux       *http.ServeMux
-	templates map[string]*template.Template
-	snapshot  legacy.Snapshot
+	mux         *http.ServeMux
+	templates   map[string]*template.Template
+	snapshot    legacy.Snapshot
+	competition CompetitionReader
+}
+
+// CompetitionReader supplies authoritative verified match history. It is
+// optional so the static public archive remains independently testable.
+type CompetitionReader interface {
+	PublicCompetition(context.Context) (competitionpg.PublicCompetitionSnapshot, error)
 }
 
 type pageData struct {
-	Title          string
-	Description    string
-	Current        string
-	SnapshotLabel  string
-	SnapshotNote   string
-	Players        []legacy.Player
-	Events         []legacy.Event
-	Event          *legacy.Event
-	Sort           string
-	TotalPlayers   int
-	TotalEvents    int
-	CupAppearances int
-	MatchEntries   int
-	Leader         *legacy.Player
+	Title           string
+	Description     string
+	Current         string
+	SnapshotLabel   string
+	SnapshotNote    string
+	Players         []legacy.Player
+	Events          []legacy.Event
+	Event           *legacy.Event
+	Sort            string
+	TotalPlayers    int
+	TotalEvents     int
+	CupAppearances  int
+	MatchEntries    int
+	Leader          *legacy.Player
+	VerifiedSeasons []competitionpg.PublicSeasonRow
+	VerifiedSeason  *competitionpg.PublicSeasonRow
+	VerifiedCareer  []competitionpg.PublicPlayerStatRow
 }
 
 // New builds an independent handler for all public routes and assets.
 func New() (*Handler, error) {
+	return NewWithCompetition(nil)
+}
+
+// NewWithCompetition builds the public handler with authoritative verified
+// match and statistics read models in addition to the legacy snapshot.
+func NewWithCompetition(reader CompetitionReader) (*Handler, error) {
 	snapshot, err := legacy.Load()
 	if err != nil {
 		return nil, err
@@ -50,9 +68,10 @@ func New() (*Handler, error) {
 	}
 
 	h := &Handler{
-		mux:       http.NewServeMux(),
-		templates: templates,
-		snapshot:  snapshot,
+		mux:         http.NewServeMux(),
+		templates:   templates,
+		snapshot:    snapshot,
+		competition: reader,
 	}
 	h.routes()
 	return h, nil
@@ -91,8 +110,14 @@ func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "home", data)
 }
 
-func (h *Handler) history(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) history(w http.ResponseWriter, r *http.Request) {
 	data := h.baseData("Cup history", "Explore the Cabot Cup archive from 2019 through the 2025 placeholder.", "history")
+	verified, err := h.verifiedCompetition(r.Context())
+	if err != nil {
+		h.internalError(w)
+		return
+	}
+	data.VerifiedSeasons = verified.Seasons
 	h.render(w, "history", data)
 }
 
@@ -102,13 +127,33 @@ func (h *Handler) historyDetail(w http.ResponseWriter, r *http.Request) {
 		h.notFound(w)
 		return
 	}
+	verified, readErr := h.verifiedCompetition(r.Context())
+	if readErr != nil {
+		h.internalError(w)
+		return
+	}
+	var verifiedSeason *competitionpg.PublicSeasonRow
+	for i := range verified.Seasons {
+		if verified.Seasons[i].Year == year {
+			verifiedSeason = &verified.Seasons[i]
+			break
+		}
+	}
 	for i := range h.snapshot.Events {
 		if h.snapshot.Events[i].Year == year {
 			data := h.baseData(fmt.Sprintf("%d Cabot Cup", year), fmt.Sprintf("Story and photographs from the %d Cabot Cup.", year), "history")
 			data.Event = &h.snapshot.Events[i]
+			data.VerifiedSeason = verifiedSeason
 			h.render(w, "event", data)
 			return
 		}
+	}
+	if verifiedSeason != nil {
+		data := h.baseData(fmt.Sprintf("%d Cabot Cup", year), fmt.Sprintf("Verified match history from the %d Cabot Cup.", year), "history")
+		data.VerifiedSeason = verifiedSeason
+		data.VerifiedSeasons = verified.Seasons
+		h.render(w, "verified_event", data)
+		return
 	}
 	h.notFound(w)
 }
@@ -141,7 +186,7 @@ func (h *Handler) players(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "players", data)
 }
 
-func (h *Handler) stats(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) stats(w http.ResponseWriter, r *http.Request) {
 	players := append([]legacy.Player(nil), h.snapshot.Players...)
 	sort.SliceStable(players, func(i, j int) bool {
 		if players[i].WinningPercentage() == players[j].WinningPercentage() {
@@ -151,6 +196,13 @@ func (h *Handler) stats(w http.ResponseWriter, _ *http.Request) {
 	})
 
 	data := h.baseData("Statistics", "Aggregate records from the legacy Cabot Cup dataset.", "stats")
+	verified, err := h.verifiedCompetition(r.Context())
+	if err != nil {
+		h.internalError(w)
+		return
+	}
+	data.VerifiedSeasons = verified.Seasons
+	data.VerifiedCareer = verified.Career
 	data.Players = players
 	for _, player := range players {
 		data.CupAppearances += player.CupsPlayed()
@@ -160,6 +212,13 @@ func (h *Handler) stats(w http.ResponseWriter, _ *http.Request) {
 		data.Leader = &players[0]
 	}
 	h.render(w, "stats", data)
+}
+
+func (h *Handler) verifiedCompetition(ctx context.Context) (competitionpg.PublicCompetitionSnapshot, error) {
+	if h.competition == nil {
+		return competitionpg.PublicCompetitionSnapshot{}, nil
+	}
+	return h.competition.PublicCompetition(ctx)
 }
 
 func (h *Handler) baseData(title, description, current string) pageData {
@@ -177,6 +236,10 @@ func (h *Handler) render(w http.ResponseWriter, name string, data pageData) {
 	if err := h.templates[name].ExecuteTemplate(w, "layout", data); err != nil {
 		http.Error(w, "Unable to render this page", http.StatusInternalServerError)
 	}
+}
+
+func (h *Handler) internalError(w http.ResponseWriter) {
+	http.Error(w, "Unable to load verified competition records", http.StatusInternalServerError)
 }
 
 func (h *Handler) notFound(w http.ResponseWriter) {
@@ -201,13 +264,14 @@ func cacheAssets(next http.Handler) http.Handler {
 }
 
 func parseTemplates() (map[string]*template.Template, error) {
-	pages := []string{"home", "history", "event", "players", "stats", "not_found"}
+	pages := []string{"home", "history", "event", "verified_event", "players", "stats", "not_found"}
 	result := make(map[string]*template.Template, len(pages))
 	functions := template.FuncMap{
 		"add1": func(value int) int { return value + 1 },
 	}
 	for _, page := range pages {
-		tmpl, err := template.New("layout").Funcs(functions).ParseFS(publicassets.Files, "templates/layout.gohtml", "templates/"+page+".gohtml")
+		tmpl, err := template.New("layout").Funcs(functions).ParseFS(publicassets.Files,
+			"templates/layout.gohtml", "templates/verified_records.gohtml", "templates/"+page+".gohtml")
 		if err != nil {
 			return nil, fmt.Errorf("parse public %s template: %w", page, err)
 		}
