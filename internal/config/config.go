@@ -34,6 +34,10 @@ type Config struct {
 	// automatically on placement; larger wagers wait for manual admin approval.
 	// Zero disables auto-approval entirely.
 	WagerAutoApproveMaxCents int64
+	// PricingLiquidityDefaultCents is the default dynamic-pricing liquidity ("b",
+	// in cents) applied to a new market when the admin enables dynamic pricing
+	// without typing a value. Larger = the line moves less per dollar of action.
+	PricingLiquidityDefaultCents int64
 }
 
 // Load reads and validates configuration using lookup. Passing os.LookupEnv keeps
@@ -72,6 +76,11 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 
 	autoApproveMaxCents, err := parseAutoApproveThreshold(valueOrDefault(lookup, "WAGER_AUTO_APPROVE_MAX_CENTS", strconv.FormatInt(defaultAutoApproveMaxCents, 10)))
+	if err != nil {
+		return Config{}, err
+	}
+
+	pricingLiquidityDefaultCents, err := parsePricingLiquidityDefault(valueOrDefault(lookup, "PRICING_LIQUIDITY_DEFAULT_CENTS", strconv.FormatInt(defaultPricingLiquidityCents, 10)))
 	if err != nil {
 		return Config{}, err
 	}
@@ -115,30 +124,44 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 
 	return Config{
-		Environment:              environment,
-		Address:                  net.JoinHostPort(host, strconv.Itoa(port)),
-		PublicBaseURL:            publicBaseURL,
-		PrivateAppEnabled:        privateEnabled,
-		DatabaseMode:             databaseMode,
-		DatabaseURL:              databaseURL,
-		OIDCIssuerURL:            oidcIssuerURL,
-		OIDCClientID:             oidcClientID,
-		OIDCClientSecret:         oidcClientSecret,
-		OIDCRedirectURL:          oidcRedirectURL,
-		SessionTTL:               sessionTTL,
-		LoginAttemptTTL:          loginAttemptTTL,
-		ShutdownTimeout:          shutdownTimeout,
-		WagerAutoApproveMaxCents: autoApproveMaxCents,
+		Environment:                  environment,
+		Address:                      net.JoinHostPort(host, strconv.Itoa(port)),
+		PublicBaseURL:                publicBaseURL,
+		PrivateAppEnabled:            privateEnabled,
+		DatabaseMode:                 databaseMode,
+		DatabaseURL:                  databaseURL,
+		OIDCIssuerURL:                oidcIssuerURL,
+		OIDCClientID:                 oidcClientID,
+		OIDCClientSecret:             oidcClientSecret,
+		OIDCRedirectURL:              oidcRedirectURL,
+		SessionTTL:                   sessionTTL,
+		LoginAttemptTTL:              loginAttemptTTL,
+		ShutdownTimeout:              shutdownTimeout,
+		WagerAutoApproveMaxCents:     autoApproveMaxCents,
+		PricingLiquidityDefaultCents: pricingLiquidityDefaultCents,
 	}, nil
 }
 
 // defaultAutoApproveMaxCents is the default largest auto-approved stake: $100.
 const defaultAutoApproveMaxCents = 10_000
 
+// defaultPricingLiquidityCents is the default dynamic-pricing liquidity: $3,000.
+// This keeps line moves gentle for a friends' book — a few hundred dollars of
+// action nudges the line a handful of points rather than swinging it.
+const defaultPricingLiquidityCents = 300_000
+
 func parseAutoApproveThreshold(value string) (int64, error) {
 	cents, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
 	if err != nil || cents < 0 {
 		return 0, fmt.Errorf("WAGER_AUTO_APPROVE_MAX_CENTS must be a non-negative integer number of cents")
+	}
+	return cents, nil
+}
+
+func parsePricingLiquidityDefault(value string) (int64, error) {
+	cents, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || cents <= 0 {
+		return 0, fmt.Errorf("PRICING_LIQUIDITY_DEFAULT_CENTS must be a positive integer number of cents")
 	}
 	return cents, nil
 }

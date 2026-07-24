@@ -86,14 +86,18 @@ type Dependencies struct {
 	// placement; larger wagers stay pending for manual approval. Zero disables
 	// auto-approval.
 	AutoApproveMaxCents int64
+	// PricingLiquidityDefaultCents is the dynamic-pricing liquidity used when an
+	// admin enables dynamic pricing on a new market without typing a value.
+	PricingLiquidityDefaultCents int64
 }
 
 type Handler struct {
-	mux                 *http.ServeMux
-	deps                Dependencies
-	templates           map[string]*template.Template
-	newID               func() (string, error)
-	autoApproveMaxCents int64
+	mux                          *http.ServeMux
+	deps                         Dependencies
+	templates                    map[string]*template.Template
+	newID                        func() (string, error)
+	autoApproveMaxCents          int64
+	pricingLiquidityDefaultCents int64
 }
 
 func New(deps Dependencies) (*Handler, error) {
@@ -104,9 +108,14 @@ func New(deps Dependencies) (*Handler, error) {
 	if err != nil {
 		return nil, err
 	}
+	pricingLiquidityDefaultCents := deps.PricingLiquidityDefaultCents
+	if pricingLiquidityDefaultCents <= 0 {
+		pricingLiquidityDefaultCents = bettingpg.DefaultPricingLiquidityCents
+	}
 	handler := &Handler{
 		mux: http.NewServeMux(), deps: deps, templates: templates,
-		autoApproveMaxCents: deps.AutoApproveMaxCents,
+		autoApproveMaxCents:          deps.AutoApproveMaxCents,
+		pricingLiquidityDefaultCents: pricingLiquidityDefaultCents,
 		newID: func() (string, error) {
 			id, err := betting.NewEventID()
 			return string(id), err
@@ -150,7 +159,7 @@ func (h *Handler) adminHelp(w http.ResponseWriter, r *http.Request) {
 	h.render(w, "admin_help", pageData{
 		Title: "How to run the book", Current: "admin-help", Session: session,
 		AutoApproveDollars:       formatCentsDollars(h.autoApproveMaxCents),
-		DefaultLineWeightDollars: formatCentsDollars(bettingpg.DefaultPricingLiquidityCents),
+		DefaultLineWeightDollars: formatCentsDollars(h.pricingLiquidityDefaultCents),
 	})
 }
 
@@ -351,7 +360,7 @@ func (h *Handler) adminMarketNew(w http.ResponseWriter, r *http.Request) {
 	}
 	h.render(w, "admin_market_new", pageData{
 		Title: "New market", Current: "admin-markets", Session: session,
-		NewMarketID: marketID, Form: defaultMarketForm(), SelectionSlots: selectionSlots(), MarketableMatches: matches,
+		NewMarketID: marketID, Form: defaultMarketForm(h.pricingLiquidityDefaultCents), SelectionSlots: selectionSlots(), MarketableMatches: matches,
 	})
 }
 
@@ -367,6 +376,11 @@ func (h *Handler) adminCreateMarket(w http.ResponseWriter, r *http.Request) {
 	if formError != "" {
 		h.rerenderCreateForm(w, r, session, formError)
 		return
+	}
+	// When dynamic pricing is on but the admin cleared the liquidity field, apply
+	// the configured book default so the operator knob is the single source.
+	if request.DynamicPricing && request.PricingLiquidityCents <= 0 {
+		request.PricingLiquidityCents = h.pricingLiquidityDefaultCents
 	}
 	if request.Type == betting.MarketMatch {
 		match, ok, err := h.findMarketableMatch(r.Context(), request.MatchID)
@@ -799,10 +813,12 @@ func storeErrorStatus(err error) (int, string) {
 // --- create-market form parsing --------------------------------------------
 
 // defaultMarketForm pre-fills a fresh create-market form so dynamic pricing is
-// on with a $500 liquidity by default and the admin need not enter it.
-func defaultMarketForm() url.Values {
+// on by default, pre-filled with the configured liquidity, and the admin need
+// not enter it.
+func defaultMarketForm(liquidityDefaultCents int64) url.Values {
 	return url.Values{
-		"market_type": {"future"}, "dynamic_pricing": {"1"}, "pricing_liquidity": {"500.00"}, "currency": {"CAD"},
+		"market_type": {"future"}, "dynamic_pricing": {"1"},
+		"pricing_liquidity": {formatCentsDollars(liquidityDefaultCents)}, "currency": {"CAD"},
 		"match_sign_1": {"-"}, "match_odds_1": {"110"},
 		"match_sign_2": {"-"}, "match_odds_2": {"110"},
 	}

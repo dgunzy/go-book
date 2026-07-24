@@ -335,8 +335,12 @@ func (s Store) RecordAdminResult(ctx context.Context, req RecordResultRequest) (
 	if req.Winner != "side_1" && req.Winner != "side_2" && req.Winner != "tie" {
 		return "", errors.New("winner must be side_1, side_2, or tie")
 	}
-	if strings.TrimSpace(req.Reason) == "" {
-		return "", errors.New("a reason is required to record a result")
+	// A reason is optional for the admin. The verified_results schema requires a
+	// non-empty verification_reason for an admin_override, so default it when the
+	// admin leaves it blank rather than forcing them to type one.
+	req.Reason = strings.TrimSpace(req.Reason)
+	if req.Reason == "" {
+		req.Reason = "Recorded by admin"
 	}
 	req.Score = strings.TrimSpace(req.Score)
 	if len(req.Score) > 120 {

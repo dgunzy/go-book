@@ -51,9 +51,13 @@ type CreateMarketRequest struct {
 // malformed request cannot insert an unbounded number of rows.
 const maxSelectionsPerMarket = 20
 
-// DefaultPricingLiquidityCents is the line-movement sensitivity ("b") applied
-// when dynamic pricing is enabled without an explicit value: $500.
-const DefaultPricingLiquidityCents = 50_000
+// DefaultPricingLiquidityCents is the compiled-in fallback line-movement
+// sensitivity ("b") used when dynamic pricing is enabled without an explicit
+// value and no configured default reaches this layer (direct callers, seeds,
+// tests): $3,000. The operator knob is PRICING_LIQUIDITY_DEFAULT_CENTS (see
+// internal/config); the web layer passes the configured value down, so keep
+// this in sync with config.defaultPricingLiquidityCents. Larger = gentler moves.
+const DefaultPricingLiquidityCents = 300_000
 
 // CreateMarket validates the market and its selections through the domain
 // rules in internal/betting, then persists them atomically together with a

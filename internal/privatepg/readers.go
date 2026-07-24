@@ -311,10 +311,27 @@ SELECT placed_at, market, selection, accepted_american_odds, stake_cents,
 FROM (
     SELECT w.placed_at, m.title AS market, w.accepted_terms AS selection,
            w.accepted_american_odds, w.stake_cents, w.currency::text AS currency,
-           w.potential_profit_cents, w.state AS status, false AS legacy_row,
+           w.potential_profit_cents,
+           CASE
+               WHEN w.state = 'settled' THEN
+                   CASE ws.result
+                       WHEN 'win' THEN 'Won'
+                       WHEN 'loss' THEN 'Lost'
+                       WHEN 'push' THEN 'Push'
+                       WHEN 'void' THEN 'Void'
+                       ELSE 'Settled'
+                   END
+               ELSE w.state
+           END AS status,
+           false AS legacy_row,
            0 AS source_rank, w.id::text AS source_id
     FROM wagers w
     JOIN markets m ON m.id = w.market_id
+    LEFT JOIN LATERAL (
+        SELECT result FROM wager_settlements ws
+        WHERE ws.wager_id = w.id
+        ORDER BY settled_at DESC LIMIT 1
+    ) ws ON true
     WHERE w.user_id = $1::uuid
     UNION ALL
     SELECT lw.placed_at, 'Legacy archive' AS market, lw.accepted_terms AS selection,

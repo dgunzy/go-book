@@ -349,10 +349,6 @@ func (h *Handler) recordResult(w http.ResponseWriter, r *http.Request) {
 		h.renderList(w, r, session, pageData{FormError: "That match was not found."})
 		return
 	}
-	if reason == "" {
-		h.renderList(w, r, session, pageData{FormError: "A reason is required to record a result."})
-		return
-	}
 	if _, err := h.deps.Competition.RecordAdminResult(r.Context(), competitionpg.RecordResultRequest{
 		MatchID: matchID, Winner: r.PostForm.Get("winner"), Score: r.PostForm.Get("score"),
 		ActorUserID: session.UserID, Reason: reason,

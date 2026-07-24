@@ -26,6 +26,24 @@ func TestLoadDefaults(t *testing.T) {
 	if config.ShutdownTimeout != 10*time.Second {
 		t.Errorf("ShutdownTimeout = %s", config.ShutdownTimeout)
 	}
+	if config.WagerAutoApproveMaxCents != 10_000 {
+		t.Errorf("WagerAutoApproveMaxCents = %d, want 10000", config.WagerAutoApproveMaxCents)
+	}
+	if config.PricingLiquidityDefaultCents != 300_000 {
+		t.Errorf("PricingLiquidityDefaultCents = %d, want 300000", config.PricingLiquidityDefaultCents)
+	}
+}
+
+func TestLoadPricingLiquidityOverride(t *testing.T) {
+	t.Parallel()
+
+	config, err := Load(mapLookup(map[string]string{"PRICING_LIQUIDITY_DEFAULT_CENTS": "150000"}))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if config.PricingLiquidityDefaultCents != 150_000 {
+		t.Errorf("PricingLiquidityDefaultCents = %d, want 150000", config.PricingLiquidityDefaultCents)
+	}
 }
 
 func TestLoadProduction(t *testing.T) {
@@ -158,6 +176,8 @@ func TestLoadRejectsInvalidConfiguration(t *testing.T) {
 		{name: "production test database", env: privateConfig(map[string]string{"DATABASE_MODE": "test", "TEST_DATABASE_URL": "postgres://test-copy"}), want: "not allowed in production"},
 		{name: "session TTL", env: map[string]string{"SESSION_TTL": "8d"}, want: "SESSION_TTL"},
 		{name: "duration", env: map[string]string{"SHUTDOWN_TIMEOUT": "0s"}, want: "SHUTDOWN_TIMEOUT"},
+		{name: "pricing liquidity zero", env: map[string]string{"PRICING_LIQUIDITY_DEFAULT_CENTS": "0"}, want: "PRICING_LIQUIDITY_DEFAULT_CENTS"},
+		{name: "pricing liquidity non-numeric", env: map[string]string{"PRICING_LIQUIDITY_DEFAULT_CENTS": "lots"}, want: "PRICING_LIQUIDITY_DEFAULT_CENTS"},
 	}
 
 	for _, test := range tests {
