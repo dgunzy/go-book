@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -454,8 +453,7 @@ func (h *Handler) renderDeleteError(w http.ResponseWriter, r *http.Request, sess
 func (h *Handler) requireAdmin(w http.ResponseWriter, r *http.Request) (privateweb.Session, bool) {
 	session, err := h.deps.Sessions.CurrentSession(r)
 	if errors.Is(err, privateweb.ErrNoSession) {
-		query := url.Values{"next": []string{r.URL.RequestURI()}}
-		http.Redirect(w, r, (&url.URL{Path: "/login", RawQuery: query.Encode()}).String(), http.StatusSeeOther)
+		http.Redirect(w, r, privateweb.LoginRedirectURL(r), http.StatusSeeOther)
 		return privateweb.Session{}, false
 	}
 	if err != nil {

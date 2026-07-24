@@ -625,9 +625,7 @@ func (h *Handler) adminRejectWager(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) requireMember(w http.ResponseWriter, r *http.Request) (privateweb.Session, bool) {
 	session, err := h.deps.Sessions.CurrentSession(r)
 	if errors.Is(err, privateweb.ErrNoSession) {
-		query := url.Values{"next": []string{r.URL.RequestURI()}}
-		destination := (&url.URL{Path: "/login", RawQuery: query.Encode()}).String()
-		http.Redirect(w, r, destination, http.StatusSeeOther)
+		http.Redirect(w, r, privateweb.LoginRedirectURL(r), http.StatusSeeOther)
 		return privateweb.Session{}, false
 	}
 	if err != nil {

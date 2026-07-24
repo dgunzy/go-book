@@ -113,6 +113,22 @@ func TestMemberForbidden(t *testing.T) {
 	}
 }
 
+func TestExpiredSessionPostReturnsToMemberBookAfterLogin(t *testing.T) {
+	h := handler(t, privateweb.RoleAdmin, &fakeComp{})
+	h.deps.Sessions = fakeSessions{err: privateweb.ErrNoSession}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, post(
+		"/admin/events/33333333-3333-3333-3333-333333333333/teams/44444444-4444-4444-4444-444444444444/roster",
+		url.Values{"csrf_token": {csrf}, "player_id": {"66666666-6666-6666-6666-666666666666"}},
+	))
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("status=%d, want 303", rec.Code)
+	}
+	if got, want := rec.Header().Get("Location"), "/login?next=%2Fbook"; got != want {
+		t.Fatalf("Location=%q, want %q", got, want)
+	}
+}
+
 func TestRecordResultRequiresCSRF(t *testing.T) {
 	comp := &fakeComp{}
 	h := handler(t, privateweb.RoleAdmin, comp)

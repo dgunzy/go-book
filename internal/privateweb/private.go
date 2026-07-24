@@ -211,9 +211,7 @@ func (h *Handler) admin(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) requireMember(w http.ResponseWriter, r *http.Request) (Session, bool) {
 	session, err := h.deps.Sessions.CurrentSession(r)
 	if errors.Is(err, ErrNoSession) {
-		query := url.Values{"next": []string{r.URL.RequestURI()}}
-		destination := (&url.URL{Path: "/login", RawQuery: query.Encode()}).String()
-		http.Redirect(w, r, destination, http.StatusSeeOther)
+		http.Redirect(w, r, LoginRedirectURL(r), http.StatusSeeOther)
 		return Session{}, false
 	}
 	if err != nil {
@@ -225,6 +223,19 @@ func (h *Handler) requireMember(w http.ResponseWriter, r *http.Request) (Session
 		return Session{}, false
 	}
 	return session, true
+}
+
+// LoginRedirectURL preserves a requested page after authentication, but never
+// points OAuth back at a state-changing action. Login callbacks are GET
+// requests, so returning to a POST-only route would produce Method Not Allowed;
+// replaying the original form automatically would be unsafe.
+func LoginRedirectURL(r *http.Request) string {
+	next := "/book"
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		next = r.URL.RequestURI()
+	}
+	query := url.Values{"next": []string{next}}
+	return (&url.URL{Path: "/login", RawQuery: query.Encode()}).String()
 }
 
 func validMemberRole(role Role) bool {

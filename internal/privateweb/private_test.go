@@ -108,6 +108,41 @@ func TestUnauthenticatedRequestsRedirectToLogin(t *testing.T) {
 	}
 }
 
+func TestLoginRedirectURLDoesNotReturnToMutation(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		target string
+		want   string
+	}{
+		{
+			name: "get preserves requested page", method: http.MethodGet,
+			target: "/book/wagers?status=open",
+			want:   "/login?next=%2Fbook%2Fwagers%3Fstatus%3Dopen",
+		},
+		{
+			name: "head preserves requested page", method: http.MethodHead,
+			target: "/admin/matches",
+			want:   "/login?next=%2Fadmin%2Fmatches",
+		},
+		{
+			name: "post returns to member landing", method: http.MethodPost,
+			target: "/admin/events/event-id/teams/team-id/roster",
+			want:   "/login?next=%2Fbook",
+		},
+	}
+	for _, test := range tests {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			request := httptest.NewRequest(test.method, test.target, nil)
+			if got := LoginRedirectURL(request); got != test.want {
+				t.Fatalf("LoginRedirectURL() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestMemberPagesRenderReadModels(t *testing.T) {
 	deps, reader := testDependencies(Session{UserID: "user-7", DisplayName: "Dan & Co", Role: RoleMember, Active: true})
 	handler := newHandler(t, deps)

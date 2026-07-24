@@ -431,6 +431,9 @@ Deliverables:
   `member`/`admin`/`owner` authorization.
 - Add hashed database sessions, rotation, logout/revocation, secure cookies, CSRF,
   login throttling, and security headers.
+- Preserve local page destinations when an expired GET/HEAD session reauthenticates.
+  Expired form submissions authenticate back to `/book` and are never replayed or
+  used as GET destinations for POST-only action routes.
 - Add member/player linking and audited invitation/role administration.
 
 Gate: uninvited Google users cannot become members; provider subject identity is used;
