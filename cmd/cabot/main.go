@@ -173,10 +173,7 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		}
 		applicationHandler.Handle("/admin/members", membersHandler)
 		applicationHandler.Handle("/admin/members/", membersHandler)
-		applicationHandler.Handle("/admin/matches", competitionHandler)
-		applicationHandler.Handle("/admin/matches/", competitionHandler)
-		applicationHandler.Handle("/admin/events", competitionHandler)
-		applicationHandler.Handle("/admin/events/", competitionHandler)
+		mountCompetitionRoutes(applicationHandler, competitionHandler)
 		applicationHandler.Handle("/invite/", authHandler)
 
 		dispatcher, err = newOutboxDispatcher(pool, logger)
@@ -226,6 +223,16 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 	stopDispatcher()
 	dispatcherDone.Wait()
 	return serverErr
+}
+
+func mountCompetitionRoutes(mux *http.ServeMux, handler http.Handler) {
+	for _, path := range []string{
+		"/admin/players",
+		"/admin/matches", "/admin/matches/",
+		"/admin/events", "/admin/events/",
+	} {
+		mux.Handle(path, handler)
+	}
 }
 
 // Outbox dispatcher tuning. Polling is the correctness mechanism (no

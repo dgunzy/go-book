@@ -78,6 +78,37 @@ func TestUnknownRouteUsesPublicHandler(t *testing.T) {
 	}
 }
 
+func TestCompetitionRoutesReachCompetitionHandler(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	competitionHandler := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusNoContent)
+	})
+	mountCompetitionRoutes(mux, competitionHandler)
+
+	for _, test := range []struct {
+		method string
+		path   string
+	}{
+		{http.MethodPost, "/admin/players"},
+		{http.MethodGet, "/admin/matches"},
+		{http.MethodPost, "/admin/matches/11111111-1111-1111-1111-111111111111/result"},
+		{http.MethodPost, "/admin/events"},
+		{http.MethodPost, "/admin/events/11111111-1111-1111-1111-111111111111/teams"},
+	} {
+		test := test
+		t.Run(test.method+" "+test.path, func(t *testing.T) {
+			t.Parallel()
+			response := httptest.NewRecorder()
+			mux.ServeHTTP(response, httptest.NewRequest(test.method, test.path, nil))
+			if response.Code != http.StatusNoContent {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusNoContent)
+			}
+		})
+	}
+}
+
 func TestReadinessReportsDatabaseFailureWithoutLeakingIt(t *testing.T) {
 	t.Parallel()
 
