@@ -560,7 +560,16 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 /* Betting slice */
 .betting-market-card { background: var(--white); border: 1px solid #d8ddd8; margin-bottom: 1.1rem; padding: 1rem; }
 .betting-market-card .private-table-wrap { border: 0; border-top: 1px solid #e1e5e1; }
-.betting-market-card .private-table { min-width: 520px; }
+/* Every market renders its own table, so auto layout sized each one to its own
+   longest selection name and the columns zig-zagged down the page. Fixed widths
+   line all the cards up, and the Odds header sits over its right-aligned numbers
+   instead of floating to the left of them. */
+.betting-market-card .private-table { min-width: 560px; table-layout: fixed; }
+.betting-market-card .private-table th:nth-child(2),
+.betting-market-card .private-table td:nth-child(2) { text-align: right; width: 7rem; }
+.betting-market-card .private-table th:nth-child(3),
+.betting-market-card .private-table td:nth-child(3) { width: 12.5rem; }
+.betting-market-card .private-table tbody th { overflow-wrap: anywhere; }
 .betting-market-head h2 { font-size: 1.02rem; margin: 0 0 .2rem; }
 .betting-market-meta { color: #5b6760; font-size: .72rem; margin: 0 0 .8rem; }
 .betting-place-form { align-items: center; display: flex; flex-wrap: wrap; gap: .45rem; }
