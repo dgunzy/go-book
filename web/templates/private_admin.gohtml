@@ -1,8 +1,139 @@
 {{define "private_content"}}
 <header class="private-page-heading">
-  <div><p class="private-kicker">Financial controls</p><h1>Reconciliation</h1></div>
-  <p>Snapshot as of {{when .Reconciliation.AsOf}}.</p>
+  <div><p class="private-kicker">Book administration</p><h1>Dashboard</h1></div>
+  <p>How the book is doing, what is still at risk, and who is running hot. Snapshot as of {{when .Pulse.AsOf}} · CAD.</p>
 </header>
+
+<section class="pulse-hero" aria-labelledby="house-result-heading">
+  <div class="pulse-hero-figure {{if lt .Pulse.HouseResult.Cents 0}}is-down{{else}}is-up{{end}}">
+    <span id="house-result-heading">House result</span>
+    <strong>{{money .Pulse.HouseResult}}</strong>
+    <small>{{if lt .Pulse.HouseResult.Cents 0}}The book is behind on settled action.{{else}}Banked from settled action.{{end}}</small>
+  </div>
+  <dl class="pulse-hero-stats">
+    <div><dt>In escrow</dt><dd>{{money .Pulse.Escrow}}</dd><span>Stake held on live bets</span></div>
+    <div><dt>Handle</dt><dd>{{money .Pulse.Handle}}</dd><span>Total action taken</span></div>
+    <div><dt>Open markets</dt><dd>{{.Pulse.OpenMarkets}}</dd><span>Taking bets now</span></div>
+  </dl>
+</section>
+
+<section aria-labelledby="swing-heading">
+  <div class="private-section-heading"><h2 id="swing-heading">If everything lands</h2></div>
+  <div class="pulse-swing">
+    <article class="is-worst">
+      <span>Worst case</span>
+      <strong>{{money .Pulse.WorstCase}}</strong>
+      <small>Every unsettled market lands on the side that hurts the book most.</small>
+    </article>
+    <article class="is-best">
+      <span>Best case</span>
+      <strong>{{money .Pulse.BestCase}}</strong>
+      <small>Every unsettled market lands the book's way.</small>
+    </article>
+    <article>
+      <span>Waiting on you</span>
+      <strong>{{.Pulse.PendingWagers}}</strong>
+      <small>{{money .Pulse.PendingStake}} pending. <a href="/admin/wagers">Review wagers</a>.</small>
+    </article>
+    <article>
+      <span>Live bets</span>
+      <strong>{{.Pulse.OpenWagerCount}}</strong>
+      <small>Accepted and waiting on a result.</small>
+    </article>
+  </div>
+</section>
+
+<section aria-labelledby="exposure-heading">
+  <div class="private-section-heading"><h2 id="exposure-heading">Exposure by market</h2></div>
+  <p class="pulse-note">What the house nets on each outcome: every stake in the market less what that side would be paid. The row that costs the book most is marked.</p>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide">
+      <thead><tr><th scope="col">Market</th><th scope="col">Outcome</th><th scope="col">Bets</th><th scope="col">Stake on it</th><th scope="col">Pays out</th><th scope="col">House nets</th></tr></thead>
+      <tbody>
+        {{range .Pulse.Exposure}}
+        {{$market := .}}
+        {{range $index, $outcome := .Outcomes}}
+        <tr{{if $outcome.Worst}} class="is-worst-outcome"{{end}}>
+          {{if eq $index 0}}
+          <th scope="row" rowspan="{{len $market.Outcomes}}">{{$market.Market}}<small>{{$market.State}} · closes {{when $market.ClosesAt}} · {{money $market.Stake}} in</small></th>
+          {{end}}
+          <td>{{$outcome.Selection}}</td>
+          <td>{{$outcome.Wagers}}</td>
+          <td class="private-money">{{money $outcome.Stake}}</td>
+          <td class="private-money">{{money $outcome.Payout}}</td>
+          <td class="private-money{{if lt $outcome.HouseNet.Cents 0}} is-behind-text{{end}}">{{money $outcome.HouseNet}}</td>
+        </tr>
+        {{end}}
+        {{else}}
+        <tr><td colspan="6" class="private-empty-cell">No market is carrying risk right now.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="standings-heading">
+  <div class="private-section-heading"><h2 id="standings-heading">Player standings</h2></div>
+  <p class="pulse-note">Each member's realized profit or loss against the book, straight from the ledger. Live bets do not count until they settle.</p>
+  {{if .Pulse.Players}}
+  <figure class="pulse-chart">
+    <figcaption>
+      <span class="pulse-key"><i class="pulse-swatch is-ahead"></i>Ahead of the book</span>
+      <span class="pulse-key"><i class="pulse-swatch is-behind"></i>Behind the book</span>
+      <span class="pulse-key-scale">Longest bar = {{money .Pulse.PlayerScale}}</span>
+    </figcaption>
+    <div class="private-table-wrap">
+      <table class="private-table pulse-standings">
+        <thead><tr><th scope="col">Player</th><th scope="col">Net</th><th scope="col">Ahead / behind</th><th scope="col">Record</th><th scope="col">Live</th><th scope="col">Handle</th></tr></thead>
+        <tbody>
+          {{range .Pulse.Players}}
+          <tr>
+            <th scope="row">{{.Name}}</th>
+            <td class="private-money{{if .Ahead}} is-ahead-text{{else if lt .Net.Cents 0}} is-behind-text{{end}}">{{money .Net}}</td>
+            <td class="pulse-plot">
+              <div class="pulse-track" title="{{.Name}}: {{money .Net}}">
+                <div class="pulse-half is-left">{{if lt .Net.Cents 0}}<div class="pulse-bar is-behind" style="width:{{.BarPercent}}%"></div>{{end}}</div>
+                <div class="pulse-half is-right">{{if .Ahead}}<div class="pulse-bar is-ahead" style="width:{{.BarPercent}}%"></div>{{end}}</div>
+              </div>
+            </td>
+            <td>{{.Won}}&ndash;{{.Lost}}{{if .Pushed}} <small>({{.Pushed}} push)</small>{{end}}</td>
+            <td>{{.Open}}</td>
+            <td class="private-money">{{money .Handle}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </figure>
+  {{else}}
+  <p class="private-empty">Nobody has action yet. Once wagers settle, the standings show up here.</p>
+  {{end}}
+</section>
+
+<section aria-labelledby="open-action-heading">
+  <div class="private-section-heading"><h2 id="open-action-heading">Action on the board</h2></div>
+  <p class="pulse-note">Accepted bets still waiting on a result, newest first.</p>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide">
+      <thead><tr><th scope="col">Placed</th><th scope="col">Member</th><th scope="col">Market</th><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Stake</th><th scope="col">To win</th></tr></thead>
+      <tbody>
+        {{range .Pulse.OpenWagers}}
+        <tr>
+          <td>{{when .PlacedAt}}</td>
+          <th scope="row">{{.Member}}</th>
+          <td>{{.Market}}</td>
+          <td>{{.Selection}}</td>
+          <td class="private-odds">{{odds .Odds}}</td>
+          <td class="private-money">{{money .Stake}}</td>
+          <td class="private-money">{{money .ToWin}}</td>
+        </tr>
+        {{else}}
+        <tr><td colspan="7" class="private-empty-cell">No bets are live right now.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
 
 <section class="reconciliation-state {{if .Reconciliation.LedgerBalanced}}is-clear{{else}}is-alert{{end}}" aria-labelledby="ledger-state-heading">
   <div>

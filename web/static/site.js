@@ -97,19 +97,30 @@ function participantRule(format) {
   return { count: 1, exact: false, message: "Assign at least one player per side." };
 }
 
+function matchPlayerInputs(side) {
+  if (!(side instanceof HTMLElement)) {
+    return [];
+  }
+  return Array.from(side.querySelectorAll("[data-match-player]"))
+    .filter((input) => input instanceof HTMLInputElement);
+}
+
 function filterMatchParticipants(form) {
   ["one", "two"].forEach((sideName) => {
     const team = form.querySelector(`[data-match-team="${sideName}"]`);
-    const players = form.querySelector(`[data-match-side="${sideName}"]`);
-    if (!(team instanceof HTMLSelectElement) || !(players instanceof HTMLSelectElement)) {
+    const side = form.querySelector(`[data-match-side="${sideName}"]`);
+    if (!(team instanceof HTMLSelectElement) || !(side instanceof HTMLElement)) {
       return;
     }
-    Array.from(players.options).forEach((option) => {
-      const available = option.dataset.teamId === team.value;
-      option.hidden = !available;
-      option.disabled = !available;
+    matchPlayerInputs(side).forEach((input) => {
+      const available = input.dataset.teamId === team.value;
+      const option = input.closest("[data-match-player-option]");
+      if (option instanceof HTMLElement) {
+        option.hidden = !available;
+      }
+      input.disabled = !available;
       if (!available) {
-        option.selected = false;
+        input.checked = false;
       }
     });
   });
@@ -118,28 +129,29 @@ function filterMatchParticipants(form) {
 function assignParticipantDefaults(form) {
   const format = form.querySelector("[data-match-format]");
   const sides = [form.querySelector('[data-match-side="one"]'), form.querySelector('[data-match-side="two"]')];
-  if (!(format instanceof HTMLSelectElement) || sides.some((side) => !(side instanceof HTMLSelectElement))) {
+  if (!(format instanceof HTMLSelectElement) || sides.some((side) => !(side instanceof HTMLElement))) {
     return;
   }
   const rule = participantRule(format.value);
   const used = new Set();
-  const original = sides.map((side) => Array.from(side.selectedOptions).map((option) => option.value));
+  const original = sides.map((side) => matchPlayerInputs(side).filter((input) => input.checked).map((input) => input.value));
   sides.forEach((side, sideIndex) => {
-    let keep = Array.from(side.selectedOptions).map((option) => option.value).filter((value) => !used.has(value));
+    const inputs = matchPlayerInputs(side);
+    let keep = inputs.filter((input) => input.checked).map((input) => input.value).filter((value) => !used.has(value));
     const targetCount = rule.exact ? rule.count : Math.max(rule.count, keep.length);
     if (rule.exact && keep.length > targetCount) {
       keep = keep.slice(0, targetCount);
     }
     const reservedForOtherSide = new Set(original.flatMap((values, index) => index === sideIndex ? [] : values));
-    Array.from(side.options).forEach((option) => {
-      if (option.disabled) {
+    inputs.forEach((input) => {
+      if (input.disabled) {
         return;
       }
-      if (keep.length < targetCount && !keep.includes(option.value) && !used.has(option.value) && !reservedForOtherSide.has(option.value)) {
-        keep.push(option.value);
+      if (keep.length < targetCount && !keep.includes(input.value) && !used.has(input.value) && !reservedForOtherSide.has(input.value)) {
+        keep.push(input.value);
       }
     });
-    Array.from(side.options).forEach((option) => { option.selected = keep.includes(option.value); });
+    inputs.forEach((input) => { input.checked = keep.includes(input.value); });
     keep.forEach((value) => used.add(value));
   });
 }
@@ -148,18 +160,25 @@ function validateMatchParticipants(form) {
   const format = form.querySelector("[data-match-format]");
   const sides = [form.querySelector('[data-match-side="one"]'), form.querySelector('[data-match-side="two"]')];
   const hint = form.querySelector("[data-match-participant-rule]");
-  if (!(format instanceof HTMLSelectElement) || sides.some((side) => !(side instanceof HTMLSelectElement))) {
+  if (!(format instanceof HTMLSelectElement) || sides.some((side) => !(side instanceof HTMLElement))) {
     return;
   }
   const rule = participantRule(format.value);
   if (hint instanceof HTMLElement) {
-    hint.textContent = rule.message + " Add missing players to their team roster first.";
+    hint.textContent = rule.message + " Tick each player, and add missing players to their team roster first.";
   }
-  const selected = sides.map((side) => Array.from(side.selectedOptions).map((option) => option.value));
+  const selected = sides.map((side) => matchPlayerInputs(side).filter((input) => input.checked).map((input) => input.value));
   const duplicates = selected[0].some((value) => selected[1].includes(value));
   sides.forEach((side, index) => {
+    const inputs = matchPlayerInputs(side);
     const countInvalid = rule.exact ? selected[index].length !== rule.count : selected[index].length < rule.count;
-    side.setCustomValidity(duplicates ? "A player cannot appear on both sides." : countInvalid ? rule.message : "");
+    const message = duplicates ? "A player cannot appear on both sides." : countInvalid ? rule.message : "";
+    inputs.forEach((input) => input.setCustomValidity(""));
+    const validationTarget = inputs.find((input) => !input.disabled);
+    if (validationTarget instanceof HTMLInputElement) {
+      validationTarget.setCustomValidity(message);
+    }
+    side.setAttribute("aria-invalid", message === "" ? "false" : "true");
   });
   const teams = [form.querySelector('[data-match-team="one"]'), form.querySelector('[data-match-team="two"]')];
   if (teams.every((team) => team instanceof HTMLSelectElement)) {
@@ -185,7 +204,7 @@ document.querySelectorAll("[data-match-create-form]").forEach((form) => {
     if (event.target.matches("[data-match-format], [data-match-team]")) {
       assignParticipantDefaults(form);
     }
-    if (event.target.matches("[data-match-format], [data-match-team], [data-match-side]")) {
+    if (event.target.matches("[data-match-format], [data-match-team], [data-match-player]")) {
       validateMatchParticipants(form);
     }
   });

@@ -5,35 +5,89 @@
 </header>
 
 <section aria-labelledby="balances-heading">
-  <div class="private-section-heading"><h2 id="balances-heading">Balances</h2><a href="/book/ledger">View ledger <span aria-hidden="true">&rarr;</span></a></div>
-  <p class="private-credit-line">Credit available to bet: <strong>{{money .Dashboard.CreditAvailable}}</strong> <span>(limit {{money .Dashboard.CreditLimit}})</span></p>
+  <div class="private-section-heading"><h2 id="balances-heading">Balances and limits</h2><a href="/book/ledger">View ledger <span aria-hidden="true">&rarr;</span></a></div>
   <div class="balance-grid">
     {{range .Dashboard.Balances}}
     <article class="balance-card">
       <span>{{.Label}}</span>
       <strong>{{money .Amount}}</strong>
-      <small>{{.Account}}</small>
+      {{if .Note}}<small>{{.Note}}</small>{{end}}
     </article>
     {{else}}
     <p class="private-empty">No balances are available.</p>
     {{end}}
+    <article class="balance-card balance-card-accent">
+      <span>Credit available to bet</span>
+      <strong>{{money .Dashboard.CreditAvailable}}</strong>
+      <small>Your credit limit is {{money .Dashboard.CreditLimit}}. Stakes are held until a wager settles.</small>
+    </article>
+    <article class="balance-card">
+      <span>Auto-approve limit</span>
+      <strong>{{money .Dashboard.AutoApproveLimit}}</strong>
+      <small>
+        {{if .Dashboard.AutoApproveLimit.Cents}}
+          Wagers at or under this fill instantly; anything larger waits for admin approval.{{if .Dashboard.AutoApprovePersonal}} This limit was set for you personally.{{end}}
+        {{else}}
+          Every wager you place waits for admin approval.
+        {{end}}
+      </small>
+    </article>
   </div>
 </section>
 
 <section class="private-metrics" aria-label="Wager summary">
-  <div><span>Open</span><strong>{{.Dashboard.OpenWagers}}</strong></div>
-  <div><span>Pending approval</span><strong>{{.Dashboard.PendingWagers}}</strong></div>
-  <div><span>Settled</span><strong>{{.Dashboard.SettledWagers}}</strong></div>
+  <div>
+    <span>Open</span><strong>{{.Dashboard.OpenWagers}}</strong>
+    <small>{{money .Dashboard.OpenStake}} at risk &middot; {{money .Dashboard.OpenToWin}} to win</small>
+  </div>
+  <div>
+    <span>Pending approval</span><strong>{{.Dashboard.PendingWagers}}</strong>
+    <small>{{money .Dashboard.PendingStake}} awaiting a decision</small>
+  </div>
+  <div>
+    <span>Settled</span><strong>{{.Dashboard.SettledWagers}}</strong>
+    <small>Results are posted to your ledger</small>
+  </div>
+</section>
+
+<section aria-labelledby="active-heading">
+  <div class="private-section-heading"><h2 id="active-heading">What you have riding</h2><a href="/book/wagers">All wagers <span aria-hidden="true">&rarr;</span></a></div>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide">
+      <thead><tr><th scope="col">Placed</th><th scope="col">Market</th><th scope="col">Your pick</th><th scope="col">Odds</th><th scope="col">Stake</th><th scope="col">To win</th><th scope="col">Status</th></tr></thead>
+      <tbody>
+        {{range .Dashboard.ActiveWagers}}
+        <tr>
+          <td>{{when .PlacedAt}}</td>
+          <th scope="row">{{.Market}}<small>Closes {{when .ClosesAt}}</small></th>
+          <td>{{.Selection}}</td>
+          <td class="private-odds">{{odds .Odds}}</td>
+          <td class="private-money">{{money .Stake}}</td>
+          <td class="private-money">{{money .PotentialProfit}}</td>
+          <td><span class="private-status{{if .Pending}} private-status-warning{{end}}">{{.Status}}</span></td>
+        </tr>
+        {{else}}
+        <tr><td colspan="7" class="private-empty-cell">Nothing riding right now. <a href="/book/markets">Browse the markets</a> to place a wager.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{if .Dashboard.MoreActiveWagers}}<p class="private-table-note">{{.Dashboard.MoreActiveWagers}} more open or pending &mdash; <a href="/book/wagers">see all wagers</a>.</p>{{end}}
 </section>
 
 <section aria-labelledby="activity-heading">
   <div class="private-section-heading"><h2 id="activity-heading">Recent activity</h2><a href="/book/ledger">All activity <span aria-hidden="true">&rarr;</span></a></div>
   <div class="private-table-wrap">
     <table class="private-table">
-      <thead><tr><th scope="col">Date</th><th scope="col">Activity</th><th scope="col">Reference</th><th scope="col">Amount</th></tr></thead>
+      <thead><tr><th scope="col">Date</th><th scope="col">Activity</th><th scope="col">Wager</th><th scope="col">Amount</th></tr></thead>
       <tbody>
         {{range .Dashboard.RecentActivity}}
-        <tr><td>{{when .OccurredAt}}</td><th scope="row">{{.Description}}<small>{{.TransactionType}}</small></th><td>{{.Reference}}</td><td class="private-money">{{money .Amount}}</td></tr>
+        <tr>
+          <td>{{when .OccurredAt}}</td>
+          <th scope="row">{{.Description}}<small>{{.TransactionType}}</small></th>
+          <td>{{if .ReferenceLabel}}{{.ReferenceLabel}}{{else}}<span class="private-reference">{{.Reference}}</span>{{end}}</td>
+          <td class="private-money">{{money .Amount}}</td>
+        </tr>
         {{else}}
         <tr><td colspan="4" class="private-empty-cell">No ledger activity yet.</td></tr>
         {{end}}

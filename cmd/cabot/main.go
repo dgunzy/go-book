@@ -119,13 +119,15 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		if err != nil {
 			return fmt.Errorf("build authentication handler: %w", err)
 		}
-		readers, err := privatepg.New(pool)
+		readers, err := privatepg.NewWithSettings(pool, privatepg.Settings{
+			AutoApproveDefaultCents: applicationConfig.WagerAutoApproveMaxCents,
+		})
 		if err != nil {
 			return fmt.Errorf("build private read models: %w", err)
 		}
 		privateHandler, err := privateweb.New(privateweb.Dependencies{
 			Sessions: authHandler.SessionReader(), Dashboard: readers, Ledger: readers,
-			Wagers: readers, Reconciliation: readers,
+			Wagers: readers, Reconciliation: readers, BookPulse: readers,
 		})
 		if err != nil {
 			return fmt.Errorf("build private web handler: %w", err)
@@ -161,16 +163,7 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		applicationHandler.Handle("/book", privateHandler)
 		applicationHandler.Handle("/book/", privateHandler)
 		applicationHandler.Handle("/admin", privateHandler)
-		// The betting UI owns its specific routes; these more-specific
-		// patterns take precedence over privateweb's /book/ subtree.
-		for _, path := range []string{
-			"/book/markets", "/book/wagers",
-			"/admin/markets", "/admin/markets/",
-			"/admin/wagers", "/admin/wagers/",
-			"/admin/help",
-		} {
-			applicationHandler.Handle(path, bettingHandler)
-		}
+		mountBettingRoutes(applicationHandler, bettingHandler)
 		applicationHandler.Handle("/admin/members", membersHandler)
 		applicationHandler.Handle("/admin/members/", membersHandler)
 		mountCompetitionRoutes(applicationHandler, competitionHandler)
@@ -223,6 +216,23 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 	stopDispatcher()
 	dispatcherDone.Wait()
 	return serverErr
+}
+
+// mountBettingRoutes gives the betting UI its own routes inside privateweb's
+// /book/ and /admin subtrees. Go's ServeMux prefers the most specific pattern,
+// so these win over "/book/". Subtree patterns (a trailing slash) are required
+// wherever a route carries an ID — "/book/wagers" alone would send
+// /book/wagers/{id}/cancel to privateweb, which has no such route.
+func mountBettingRoutes(mux *http.ServeMux, handler http.Handler) {
+	for _, path := range []string{
+		"/book/markets",
+		"/book/wagers", "/book/wagers/",
+		"/admin/markets", "/admin/markets/",
+		"/admin/wagers", "/admin/wagers/",
+		"/admin/help",
+	} {
+		mux.Handle(path, handler)
+	}
 }
 
 func mountCompetitionRoutes(mux *http.ServeMux, handler http.Handler) {

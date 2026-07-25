@@ -59,6 +59,19 @@
   <p>When an admin records a verified match result, enter the score as it should appear publicly and give the audit reason. The winning golfers, score, verification method, and date remain visible on the Matches page. Verified results automatically appear in the public match history, cup standings, and individual overall/singles/team-format statistics; pending or disputed results do not.</p>
 </section>
 
+<section class="help-section" aria-labelledby="help-dashboard">
+  <h2 id="help-dashboard">Reading the admin dashboard</h2>
+  <p>The <a href="/admin">Admin</a> page is the book's scoreboard. All figures are CAD.</p>
+  <ul>
+    <li><strong>House result</strong> — what the book has actually won or lost on settled action. <strong>In escrow</strong> is the stake being held on live bets, and <strong>handle</strong> is every dollar of action taken.</li>
+    <li><strong>If everything lands</strong> — the worst and best the book can net across every unsettled market, plus the wagers waiting on your approval and the bets already live.</li>
+    <li><strong>Exposure by market</strong> — for each outcome: what is staked on it, what it would pay out, and what the house nets (every stake in that market less that side's payout). The row that costs the book most is marked, so you can see where you are one result away from a bad day.</li>
+    <li><strong>Player standings</strong> — each member's realized profit or loss against the book, read straight from the ledger, with their record and total action. Bars run right of the line for players who are ahead of the book and left for those behind. Live bets are not counted until they settle.</li>
+    <li><strong>Action on the board</strong> — the accepted bets still waiting on a result.</li>
+  </ul>
+  <p>The ledger state and outbox queues stay at the bottom of the page: if <strong>Unbalanced</strong> is anything other than zero, or failed outbox events pile up, tell your operator.</p>
+</section>
+
 <section class="help-section" aria-labelledby="help-members">
   <h2 id="help-members">Adding people and linking their golf history</h2>
   <p>On the <a href="/admin/members">Members</a> page, generate a one-time <strong>invite link</strong> and send it to someone. They open it, sign in with Google, and join automatically — no need to pre-enter their email. Admins can invite members; only an owner can invite admins or change roles.</p>
@@ -75,6 +88,18 @@
   <h2 id="help-test-mode">Testing without touching the live ledger</h2>
   <p>The production process always uses the real database. Do not switch that process to test mode: sessions, identities, wagers, settlements, and the outbox worker all use the selected database together.</p>
   <p>Use the separate <a href="https://test.cabotcup.ca">Cabot Cup acceptance site</a> to rehearse match results, automatic settlement, voids, reversals, and migration checks. Its private pages display a full-width red <strong>Test book</strong> banner. It runs with <code>APP_ENV=staging</code> and <code>DATABASE_MODE=test</code> against the isolated <code>cabot_cup_test</code> database. The acceptance site uses normal Google sign-in and has its own memberships, sessions, wagers, ledger, and outbox; nothing entered there appears in the live book.</p>
+</section>
+
+<section class="help-section" aria-labelledby="help-overview">
+  <h2 id="help-overview">What a member sees on their overview</h2>
+  <p>The <a href="/book">Member book</a> overview answers "where do I stand and what have I got riding" without anyone having to decode a ledger reference:</p>
+  <ul>
+    <li><strong>Balances and limits</strong> — available cash (negative means money owed to the book, drawn against their credit line), credit still available to bet against their credit limit, and <strong>their own auto-approve limit</strong>, so they know before placing a wager whether it fills instantly or waits for you. A per-player override set on the <a href="/admin/members">Members</a> page shows there instead of the book default, and an override of <code>0</code> reads as "every wager waits for admin approval".</li>
+    <li><strong>Open / Pending approval / Settled</strong> counts, each with the money behind it: stake at risk and what it would return if it all lands, and the stake sitting in the approval queue.</li>
+    <li><strong>What you have riding</strong> — their open and pending wagers by market, pick, locked-in odds, stake, and payout, with the pending ones flagged. Only the most recent few are listed; the rest are on their <a href="/book/wagers">Wagers</a> page.</li>
+    <li><strong>Recent activity</strong> — each ledger line names the market and pick behind it rather than showing a bare wager ID. The full <a href="/book/ledger">Ledger</a> still shows the underlying reference for audit.</li>
+  </ul>
+  <p>Everything here is scoped to the signed-in member; nobody sees another member's balances or wagers from these pages.</p>
 </section>
 
 <section class="help-section" aria-labelledby="help-settings">

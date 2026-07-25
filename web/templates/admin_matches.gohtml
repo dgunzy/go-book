@@ -105,13 +105,25 @@
     <label>Format
       <select name="format" data-match-format><option value="singles">Singles</option><option value="fourball">Fourball (2v2)</option><option value="foursomes">Foursomes (2v2)</option><option value="scramble">Scramble (2v2)</option><option value="other">Other</option></select>
     </label>
-    <label>Side 1 players
-      <select name="side1_players" multiple size="5" required data-match-side="one" aria-describedby="participant-rule-{{.ID}}">{{range $teamIndex, $team := .Teams}}{{range $memberIndex, $member := $team.Members}}<option value="{{$member.PlayerID}}" data-team-id="{{$team.ID}}" {{if and (eq $teamIndex 0) (eq $memberIndex 0)}}selected{{end}}>{{$member.PlayerName}}</option>{{end}}{{end}}</select>
-    </label>
-    <label>Side 2 players
-      <select name="side2_players" multiple size="5" required data-match-side="two" aria-describedby="participant-rule-{{.ID}}">{{range $teamIndex, $team := .Teams}}{{range $memberIndex, $member := $team.Members}}<option value="{{$member.PlayerID}}" data-team-id="{{$team.ID}}" {{if and (eq $teamIndex 1) (eq $memberIndex 0)}}selected{{end}}>{{$member.PlayerName}}</option>{{end}}{{end}}</select>
-    </label>
-    <p id="participant-rule-{{.ID}}" class="betting-hint competition-participant-rule" data-match-participant-rule>Singles require one rostered player per side. Add missing players to their team roster first.</p>
+    <fieldset class="competition-player-picker" data-match-side="one" aria-describedby="participant-rule-{{.ID}}">
+      <legend>Side 1 players</legend>
+      {{range $teamIndex, $team := .Teams}}{{range $memberIndex, $member := $team.Members}}
+      <label class="competition-player-option" data-match-player-option data-team-id="{{$team.ID}}">
+        <input type="checkbox" name="side1_players" value="{{$member.PlayerID}}" data-match-player data-team-id="{{$team.ID}}" {{if and (eq $teamIndex 0) (eq $memberIndex 0)}}checked{{end}}>
+        <span>{{$member.PlayerName}}</span>
+      </label>
+      {{end}}{{end}}
+    </fieldset>
+    <fieldset class="competition-player-picker" data-match-side="two" aria-describedby="participant-rule-{{.ID}}">
+      <legend>Side 2 players</legend>
+      {{range $teamIndex, $team := .Teams}}{{range $memberIndex, $member := $team.Members}}
+      <label class="competition-player-option" data-match-player-option data-team-id="{{$team.ID}}">
+        <input type="checkbox" name="side2_players" value="{{$member.PlayerID}}" data-match-player data-team-id="{{$team.ID}}" {{if and (eq $teamIndex 1) (eq $memberIndex 0)}}checked{{end}}>
+        <span>{{$member.PlayerName}}</span>
+      </label>
+      {{end}}{{end}}
+    </fieldset>
+    <p id="participant-rule-{{.ID}}" class="betting-hint competition-participant-rule" data-match-participant-rule>Singles require exactly one rostered player per side. Tick each player, and add missing players to their team roster first.</p>
     <button type="submit">Create match</button>
   </form>
   {{else}}

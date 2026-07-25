@@ -236,3 +236,49 @@ func TestBootstrapRoleValidatesInput(t *testing.T) {
 		})
 	}
 }
+
+func TestBettingRoutesWinOverThePrivateBookSubtree(t *testing.T) {
+	t.Parallel()
+
+	mux := http.NewServeMux()
+	// privateweb owns the /book/ subtree; the betting UI carves specific
+	// routes out of it, exactly as runServer wires them.
+	private := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusTeapot)
+	})
+	mux.Handle("/book", private)
+	mux.Handle("/book/", private)
+	mux.Handle("/admin", private)
+	betting := http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.WriteHeader(http.StatusNoContent)
+	})
+	mountBettingRoutes(mux, betting)
+
+	for _, test := range []struct {
+		method string
+		path   string
+		want   int
+	}{
+		{http.MethodGet, "/book/markets", http.StatusNoContent},
+		{http.MethodGet, "/book/wagers", http.StatusNoContent},
+		{http.MethodPost, "/book/wagers", http.StatusNoContent},
+		{http.MethodPost, "/book/wagers/11111111-1111-1111-1111-111111111111/cancel", http.StatusNoContent},
+		{http.MethodGet, "/admin/wagers", http.StatusNoContent},
+		{http.MethodPost, "/admin/wagers/11111111-1111-1111-1111-111111111111/accept", http.StatusNoContent},
+		{http.MethodGet, "/admin/help", http.StatusNoContent},
+		// Everything else in the subtree still belongs to privateweb.
+		{http.MethodGet, "/book", http.StatusTeapot},
+		{http.MethodGet, "/book/ledger", http.StatusTeapot},
+		{http.MethodGet, "/admin", http.StatusTeapot},
+	} {
+		test := test
+		t.Run(test.method+" "+test.path, func(t *testing.T) {
+			t.Parallel()
+			response := httptest.NewRecorder()
+			mux.ServeHTTP(response, httptest.NewRequest(test.method, test.path, nil))
+			if response.Code != test.want {
+				t.Fatalf("status = %d, want %d", response.Code, test.want)
+			}
+		})
+	}
+}

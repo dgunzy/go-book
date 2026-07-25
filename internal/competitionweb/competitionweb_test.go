@@ -176,6 +176,37 @@ func TestCreateMatchPointsToReadableMarketPicker(t *testing.T) {
 	}
 }
 
+func TestCreateMatchAcceptsTwoCheckboxValuesPerSide(t *testing.T) {
+	comp := &fakeComp{created: competitionpg.MatchCreated{MatchID: matchID, Side1ID: "s1", Side2ID: "s2"}}
+	h := handler(t, privateweb.RoleAdmin, comp)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, post("/admin/matches", url.Values{
+		"csrf_token": {csrf}, "event_id": {"33333333-3333-3333-3333-333333333333"},
+		"side1_team_id": {"44444444-4444-4444-4444-444444444444"},
+		"side2_team_id": {"55555555-5555-5555-5555-555555555555"}, "format": {"fourball"},
+		"side1_players": {
+			"66666666-6666-6666-6666-666666666666",
+			"77777777-7777-7777-7777-777777777777",
+		},
+		"side2_players": {
+			"88888888-8888-8888-8888-888888888888",
+			"99999999-9999-9999-9999-999999999999",
+		},
+	}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%q", rec.Code, rec.Body.String())
+	}
+	if len(comp.matchReqs) != 1 {
+		t.Fatalf("CreateMatch calls=%d, want 1", len(comp.matchReqs))
+	}
+	if got := strings.Join(comp.matchReqs[0].Side1PlayerIDs, ","); got != "66666666-6666-6666-6666-666666666666,77777777-7777-7777-7777-777777777777" {
+		t.Fatalf("side 1 players=%q", got)
+	}
+	if got := strings.Join(comp.matchReqs[0].Side2PlayerIDs, ","); got != "88888888-8888-8888-8888-888888888888,99999999-9999-9999-9999-999999999999" {
+		t.Fatalf("side 2 players=%q", got)
+	}
+}
+
 func TestCreateMatchRequiresPlayersForFormat(t *testing.T) {
 	comp := &fakeComp{}
 	h := handler(t, privateweb.RoleAdmin, comp)
@@ -257,14 +288,25 @@ func TestMatchPageShowsPlayersDistinctDefaultsAndConfirmations(t *testing.T) {
 	const team2ID = "55555555-5555-5555-5555-555555555555"
 	const player1ID = "66666666-6666-6666-6666-666666666666"
 	const player2ID = "77777777-7777-7777-7777-777777777777"
+	const player3ID = "99999999-9999-9999-9999-999999999999"
+	const player4ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 	verifiedAt := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
 	comp := &fakeComp{
-		players: []competitionpg.PlayerRow{{ID: player1ID, DisplayName: "Alex"}, {ID: player2ID, DisplayName: "Bill"}},
+		players: []competitionpg.PlayerRow{
+			{ID: player1ID, DisplayName: "Alex"}, {ID: player2ID, DisplayName: "Bill"},
+			{ID: player3ID, DisplayName: "Bradford"}, {ID: player4ID, DisplayName: "Walker"},
+		},
 		events: []competitionpg.EventRow{{
 			ID: eventID, Name: "Cabot Cup", SeasonYear: 2026,
 			Teams: []competitionpg.TeamRow{
-				{ID: team1ID, Name: "Bears", Members: []competitionpg.TeamMemberRow{{PlayerID: player1ID, PlayerName: "Alex", IsCaptain: true}}},
-				{ID: team2ID, Name: "Flamingos", Members: []competitionpg.TeamMemberRow{{PlayerID: player2ID, PlayerName: "Bill", IsCaptain: true}}},
+				{ID: team1ID, Name: "Bears", Members: []competitionpg.TeamMemberRow{
+					{PlayerID: player1ID, PlayerName: "Alex", IsCaptain: true},
+					{PlayerID: player3ID, PlayerName: "Bradford"},
+				}},
+				{ID: team2ID, Name: "Flamingos", Members: []competitionpg.TeamMemberRow{
+					{PlayerID: player2ID, PlayerName: "Bill", IsCaptain: true},
+					{PlayerID: player4ID, PlayerName: "Walker"},
+				}},
 			},
 			Matches: []competitionpg.MatchRow{{
 				ID: matchID, Number: 1, Format: "singles", State: "open",
@@ -283,9 +325,12 @@ func TestMatchPageShowsPlayersDistinctDefaultsAndConfirmations(t *testing.T) {
 	body := rec.Body.String()
 	for _, want := range []string{
 		`value="` + team1ID + `" selected`, `value="` + team2ID + `" selected`,
-		`value="` + player1ID + `" data-team-id="` + team1ID + `" selected`,
-		`value="` + player2ID + `" data-team-id="` + team2ID + `" selected`,
-		"Alex", "Bill", "Captain assigned", `data-match-create-form`, `data-match-format`, `data-match-side="one"`,
+		`name="side1_players" value="` + player1ID + `" data-match-player data-team-id="` + team1ID + `" checked`,
+		`name="side2_players" value="` + player2ID + `" data-match-player data-team-id="` + team2ID + `" checked`,
+		`name="side1_players" value="` + player3ID + `" data-match-player data-team-id="` + team1ID + `"`,
+		`name="side2_players" value="` + player4ID + `" data-match-player data-team-id="` + team2ID + `"`,
+		"Alex", "Bill", "Bradford", "Walker", "Captain assigned", `type="checkbox"`, `data-match-player-option`,
+		`data-match-create-form`, `data-match-format`, `data-match-side="one"`, `data-match-side="two"`,
 		`data-team-id="` + team1ID + `"`, `data-team-id="` + team2ID + `"`,
 		"Alex won", "3 &amp; 2", "Admin verified", "Jul 22, 2026 09:00 ADT",
 		`data-confirm="Delete this unused match?`, `Delete empty event`,
@@ -293,6 +338,9 @@ func TestMatchPageShowsPlayersDistinctDefaultsAndConfirmations(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("rendered page missing %q; body=%q", want, body)
 		}
+	}
+	if strings.Contains(body, `select name="side1_players"`) || strings.Contains(body, `select name="side2_players"`) {
+		t.Fatal("match form still renders command-click multi-select controls")
 	}
 }
 

@@ -55,18 +55,28 @@ type ReconciliationReader interface {
 	ReconciliationSummary(context.Context) (AdminReconciliationSummary, error)
 }
 
+// BookPulseReader supplies the book-wide numbers on the admin dashboard. Every
+// row it returns names other members, so it must only be read for admins.
+type BookPulseReader interface {
+	BookPulse(context.Context) (BookPulse, error)
+}
+
 type Dependencies struct {
 	Sessions       SessionReader
 	Dashboard      DashboardReader
 	Ledger         LedgerReader
 	Wagers         WagerReader
 	Reconciliation ReconciliationReader
+	BookPulse      BookPulseReader
 }
 
 type BalanceRow struct {
 	Label   string
 	Account string
-	Amount  ledger.Money
+	// Note explains the balance in plain language, so a negative cash balance
+	// reads as credit drawn rather than an error.
+	Note   string
+	Amount ledger.Money
 }
 
 type DashboardSummary struct {
@@ -77,13 +87,30 @@ type DashboardSummary struct {
 	RecentActivity  []LedgerRow
 	CreditLimit     ledger.Money
 	CreditAvailable ledger.Money
+	// AutoApproveLimit is the largest stake that fills without admin approval.
+	// AutoApprovePersonal reports whether it is a per-player override of the
+	// book-wide default.
+	AutoApproveLimit    ledger.Money
+	AutoApprovePersonal bool
+	// OpenStake and OpenToWin are the member's live exposure and the profit it
+	// would return; PendingStake is staked on wagers awaiting approval.
+	OpenStake    ledger.Money
+	OpenToWin    ledger.Money
+	PendingStake ledger.Money
+	// ActiveWagers previews the open and pending wagers by name;
+	// MoreActiveWagers counts those beyond the preview.
+	ActiveWagers     []WagerRow
+	MoreActiveWagers int
 }
 
 type LedgerRow struct {
-	OccurredAt        time.Time
-	Description       string
-	TransactionType   string
-	Reference         string
+	OccurredAt      time.Time
+	Description     string
+	TransactionType string
+	Reference       string
+	// ReferenceLabel names the market and selection behind a wager reference;
+	// it is empty when the transaction has no wager to point at.
+	ReferenceLabel    string
 	Account           string
 	Amount            ledger.Money
 	RunningBalance    ledger.Money
@@ -98,7 +125,93 @@ type WagerRow struct {
 	Stake           ledger.Money
 	PotentialProfit ledger.Money
 	Status          string
+	// Pending and ClosesAt are populated for the overview's active wagers; the
+	// full wager history, which unions legacy rows, leaves them zero.
+	Pending  bool
+	ClosesAt time.Time
 }
+
+// BookPulse is the admin dashboard's view of how the book is doing: what the
+// house has won, what is still at risk, and how each player is running.
+type BookPulse struct {
+	AsOf time.Time
+	// HouseResult is the book's realized profit or loss on settled action:
+	// the house clearing balance. Positive means the book is ahead.
+	HouseResult ledger.Money
+	// Escrow is the stake currently held on accepted, unsettled wagers.
+	Escrow ledger.Money
+	// Handle is every dollar of stake the book has taken (accepted or settled).
+	Handle ledger.Money
+	// WorstCase is what the house nets across all unsettled markets if every
+	// one of them lands on its worst outcome for the book. Negative is a loss.
+	WorstCase ledger.Money
+	// BestCase is the same across the outcomes that pay the book best.
+	BestCase       ledger.Money
+	OpenMarkets    int
+	PendingWagers  int
+	PendingStake   ledger.Money
+	OpenWagerCount int
+	Exposure       []MarketExposure
+	OpenWagers     []OpenWagerRow
+	Players        []PlayerResult
+	// PlayerScale is the largest absolute player result, used to size the
+	// standings bars. Zero when nobody has a result yet.
+	PlayerScale ledger.Money
+}
+
+// MarketExposure is one unsettled market and what each of its outcomes would
+// do to the house.
+type MarketExposure struct {
+	Market   string
+	State    string
+	ClosesAt time.Time
+	Wagers   int
+	Stake    ledger.Money
+	Outcomes []ExposureOutcome
+}
+
+// ExposureOutcome is one selection's side of a market: what is on it and what
+// the house nets if it wins.
+type ExposureOutcome struct {
+	Selection string
+	Wagers    int
+	Stake     ledger.Money
+	// Payout is stake plus profit returned to the members on this side.
+	Payout ledger.Money
+	// HouseNet is every stake in the market less this side's payout.
+	HouseNet ledger.Money
+	// Worst marks the outcome that costs the house most in this market, so
+	// the template can highlight the row that matters.
+	Worst bool
+}
+
+type OpenWagerRow struct {
+	PlacedAt  time.Time
+	Member    string
+	Market    string
+	Selection string
+	Odds      ledger.AmericanOdds
+	Stake     ledger.Money
+	ToWin     ledger.Money
+}
+
+// PlayerResult is one member's running record against the book.
+type PlayerResult struct {
+	Name string
+	// Net is the member's realized profit or loss from settled wagers.
+	Net    ledger.Money
+	Won    int
+	Lost   int
+	Pushed int
+	Open   int
+	Handle ledger.Money
+	// BarPercent is Net as a share of the largest absolute result on the
+	// board, 0-100, so the standings bars can be drawn without template math.
+	BarPercent int
+}
+
+// Ahead reports whether this player is up on the book.
+func (p PlayerResult) Ahead() bool { return p.Net.Cents > 0 }
 
 type AdminReconciliationSummary struct {
 	AsOf                   time.Time
@@ -124,10 +237,12 @@ type pageData struct {
 	LedgerRows     []LedgerRow
 	WagerRows      []WagerRow
 	Reconciliation AdminReconciliationSummary
+	Pulse          BookPulse
 }
 
 func New(deps Dependencies) (*Handler, error) {
-	if deps.Sessions == nil || deps.Dashboard == nil || deps.Ledger == nil || deps.Wagers == nil || deps.Reconciliation == nil {
+	if deps.Sessions == nil || deps.Dashboard == nil || deps.Ledger == nil || deps.Wagers == nil ||
+		deps.Reconciliation == nil || deps.BookPulse == nil {
 		return nil, errors.New("private web dependencies must all be configured")
 	}
 	templates, err := parseTemplates()
@@ -205,7 +320,13 @@ func (h *Handler) admin(w http.ResponseWriter, r *http.Request) {
 		h.internalError(w)
 		return
 	}
-	h.render(w, "admin", pageData{Title: "Reconciliation", Current: "admin", Session: session, Reconciliation: summary})
+	pulse, err := h.deps.BookPulse.BookPulse(r.Context())
+	if err != nil {
+		h.internalError(w)
+		return
+	}
+	h.render(w, "admin", pageData{Title: "Book dashboard", Current: "admin", Session: session,
+		Reconciliation: summary, Pulse: pulse})
 }
 
 func (h *Handler) requireMember(w http.ResponseWriter, r *http.Request) (Session, bool) {

@@ -98,6 +98,7 @@ jobs:
           LEGACYBOOK_PROMOTION_TEST_DATABASE_URL="$DATABASE_URL" go test -count=1 -run TestPostgresPromotionIntegration ./internal/migration/legacybook
           EVENTSPG_TEST_DATABASE_URL="$DATABASE_URL" go test -count=1 ./internal/eventspg
           BETTINGPG_TEST_DATABASE_URL="$DATABASE_URL" go test -count=1 ./internal/bettingpg
+          PRIVATEPG_TEST_DATABASE_URL="$DATABASE_URL" go test -count=1 ./internal/privatepg
           # legacy_import_records = 74 public-seed rows + 7 from the promotion
           # fixture (2 Users, 2 UserBalances, 2 UserBalanceSettlements, 1 Promotion).
           reconciliation="$(psql -Atqc "

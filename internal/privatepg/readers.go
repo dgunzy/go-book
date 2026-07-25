@@ -19,13 +19,31 @@ type DB interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
 
-type Readers struct{ db DB }
+// Settings carry the book-wide policy defaults the member views surface.
+// AutoApproveDefaultCents mirrors config.WagerAutoApproveMaxCents and applies
+// to every member who has no per-player override on users.
+type Settings struct {
+	AutoApproveDefaultCents int64
+}
+
+// activeWagerPreview caps how many open or pending wagers the overview lists
+// before deferring to the full wagers page.
+const activeWagerPreview = 6
+
+type Readers struct {
+	db       DB
+	settings Settings
+}
 
 func New(db DB) (*Readers, error) {
+	return NewWithSettings(db, Settings{})
+}
+
+func NewWithSettings(db DB, settings Settings) (*Readers, error) {
 	if db == nil {
 		return nil, errors.New("private PostgreSQL readers require a database")
 	}
-	return &Readers{db: db}, nil
+	return &Readers{db: db, settings: settings}, nil
 }
 
 func (r *Readers) DashboardSummary(ctx context.Context, userID string) (privateweb.DashboardSummary, error) {
@@ -38,7 +56,10 @@ func (r *Readers) DashboardSummary(ctx context.Context, userID string) (privatew
 	}
 
 	var open, pending, settled int64
-	if err = r.db.QueryRow(ctx, dashboardCountsSQL, userID).Scan(&open, &pending, &settled); err != nil {
+	var openStake, openProfit, pendingStake int64
+	if err = r.db.QueryRow(ctx, dashboardCountsSQL, userID).Scan(
+		&open, &pending, &settled, &openStake, &openProfit, &pendingStake,
+	); err != nil {
 		return privateweb.DashboardSummary{}, fmt.Errorf("load wager summary: %w", err)
 	}
 	openCount, err := countToInt(open)
@@ -59,23 +80,40 @@ func (r *Readers) DashboardSummary(ctx context.Context, userID string) (privatew
 		return privateweb.DashboardSummary{}, fmt.Errorf("load recent ledger activity: %w", err)
 	}
 
+	active, err := r.activeWagerRows(ctx, userID, activeWagerPreview)
+	if err != nil {
+		return privateweb.DashboardSummary{}, fmt.Errorf("load active wagers: %w", err)
+	}
+
 	// Credit line: how much the member can still bet = credit limit plus their
-	// current cash balance (which may be negative when they owe the book).
+	// current cash balance (which may be negative when they owe the book). The
+	// nullable auto-approve column is a per-player override of the book default.
 	var creditLimit, cashBalance int64
-	if err := r.db.QueryRow(ctx, `
-		SELECT u.credit_limit_cents,
-		       coalesce((SELECT balance_cents FROM ledger_account_balances b
-		                 WHERE b.owner_user_id = u.id AND b.account_type = 'user_cash' AND b.currency = 'CAD'), 0)
-		FROM users u WHERE u.id = $1::uuid`, userID).Scan(&creditLimit, &cashBalance); err != nil {
+	var autoApproveOverride *int64
+	if err := r.db.QueryRow(ctx, creditLineSQL, userID).Scan(&creditLimit, &cashBalance, &autoApproveOverride); err != nil {
 		return privateweb.DashboardSummary{}, fmt.Errorf("load credit line: %w", err)
 	}
-	creditMoney := func(cents int64) ledger.Money { m, _ := ledger.NewMoney(cents, ledger.CAD); return m }
+	autoApprove := r.settings.AutoApproveDefaultCents
+	if autoApproveOverride != nil {
+		autoApprove = *autoApproveOverride
+	}
+
+	// Aggregates cover the book's CAD accounting; per-wager rows keep their own
+	// recorded currency.
+	bookMoney := func(cents int64) ledger.Money { m, _ := ledger.NewMoney(cents, ledger.CAD); return m }
 
 	return privateweb.DashboardSummary{
 		Balances: balances, OpenWagers: openCount, PendingWagers: pendingCount,
 		SettledWagers: settledCount, RecentActivity: recent,
-		CreditLimit:     creditMoney(creditLimit),
-		CreditAvailable: creditMoney(creditLimit + cashBalance),
+		CreditLimit:         bookMoney(creditLimit),
+		CreditAvailable:     bookMoney(creditLimit + cashBalance),
+		AutoApproveLimit:    bookMoney(autoApprove),
+		AutoApprovePersonal: autoApproveOverride != nil,
+		OpenStake:           bookMoney(openStake),
+		OpenToWin:           bookMoney(openProfit),
+		PendingStake:        bookMoney(pendingStake),
+		ActiveWagers:        active,
+		MoreActiveWagers:    max(openCount+pendingCount-len(active), 0),
 	}, nil
 }
 
@@ -141,6 +179,49 @@ func (r *Readers) WagerRows(ctx context.Context, userID string) ([]privateweb.Wa
 	return result, nil
 }
 
+// activeWagerRows lists the wagers a member currently has riding — accepted
+// wagers awaiting a result and wagers still waiting on admin approval — so the
+// overview can name them instead of showing bare ledger references.
+func (r *Readers) activeWagerRows(ctx context.Context, userID string, limit int) ([]privateweb.WagerRow, error) {
+	rows, err := r.db.Query(ctx, activeWagersSQL, userID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]privateweb.WagerRow, 0, limit)
+	for rows.Next() {
+		var row privateweb.WagerRow
+		var odds int32
+		var stakeCents, potentialProfitCents int64
+		var currencyCode string
+		if err = rows.Scan(
+			&row.PlacedAt, &row.Market, &row.Selection, &odds, &stakeCents,
+			&currencyCode, &potentialProfitCents, &row.Status, &row.Pending, &row.ClosesAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan active wager: %w", err)
+		}
+		currency, err := ledger.ParseCurrency(strings.TrimSpace(currencyCode))
+		if err != nil {
+			return nil, fmt.Errorf("active wager currency: %w", err)
+		}
+		if row.Stake, err = ledger.NewMoney(stakeCents, currency); err != nil {
+			return nil, fmt.Errorf("active wager stake: %w", err)
+		}
+		if row.Odds, err = ledger.NewAmericanOdds(odds); err != nil {
+			return nil, fmt.Errorf("active wager odds: %w", err)
+		}
+		if row.PotentialProfit, err = ledger.NewMoney(potentialProfitCents, currency); err != nil {
+			return nil, fmt.Errorf("active wager potential profit: %w", err)
+		}
+		result = append(result, row)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate active wagers: %w", err)
+	}
+	return result, nil
+}
+
 func (r *Readers) ReconciliationSummary(ctx context.Context) (privateweb.AdminReconciliationSummary, error) {
 	var summary privateweb.AdminReconciliationSummary
 	var transactions, unbalanced, pending, failed int64
@@ -185,7 +266,10 @@ func (r *Readers) balanceRows(ctx context.Context, userID string) ([]privateweb.
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, privateweb.BalanceRow{Label: balanceLabel(accountType), Account: accountName, Amount: amount})
+		result = append(result, privateweb.BalanceRow{
+			Label: balanceLabel(accountType), Account: accountName,
+			Note: balanceNote(accountType, cents), Amount: amount,
+		})
 	}
 	if err = rows.Err(); err != nil {
 		return nil, err
@@ -205,7 +289,8 @@ func (r *Readers) ledgerRows(ctx context.Context, userID string, limit int) ([]p
 		var amountCents, balanceCents int64
 		var currencyCode string
 		if err = rows.Scan(
-			&row.OccurredAt, &row.Description, &row.TransactionType, &row.Reference, &row.Account,
+			&row.OccurredAt, &row.Description, &row.TransactionType, &row.Reference,
+			&row.ReferenceLabel, &row.Account,
 			&amountCents, &currencyCode, &balanceCents, &row.HasRunningBalance,
 		); err != nil {
 			return nil, err
@@ -255,6 +340,23 @@ func balanceLabel(accountType string) string {
 	}
 }
 
+// balanceNote explains a balance in plain language. A negative cash balance is
+// normal here — members bet against a credit line — so it is described as money
+// owed rather than left looking like an error.
+func balanceNote(accountType string, cents int64) string {
+	switch accountType {
+	case "user_cash":
+		if cents < 0 {
+			return "Owed to the book, drawn against your credit limit"
+		}
+		return "Settled cash held with the book"
+	case "user_free_play":
+		return "Promotional balance"
+	default:
+		return ""
+	}
+}
+
 const balancesSQL = `
 SELECT b.account_type, a.name, b.currency::text, b.balance_cents
 FROM ledger_account_balances b
@@ -266,18 +368,56 @@ const dashboardCountsSQL = `
 SELECT count(*) FILTER (WHERE state = 'accepted'),
        count(*) FILTER (WHERE state = 'pending'),
        count(*) FILTER (WHERE state = 'settled') +
-           (SELECT count(*) FROM legacy_book_wagers WHERE user_id = $1::uuid AND approved)
+           (SELECT count(*) FROM legacy_book_wagers WHERE user_id = $1::uuid AND approved),
+       coalesce(sum(stake_cents) FILTER (WHERE state = 'accepted'), 0)::bigint,
+       coalesce(sum(potential_profit_cents) FILTER (WHERE state = 'accepted'), 0)::bigint,
+       coalesce(sum(stake_cents) FILTER (WHERE state = 'pending'), 0)::bigint
 FROM wagers
 WHERE user_id = $1::uuid`
 
+const creditLineSQL = `
+SELECT u.credit_limit_cents,
+       coalesce((SELECT balance_cents FROM ledger_account_balances b
+                 WHERE b.owner_user_id = u.id AND b.account_type = 'user_cash' AND b.currency = 'CAD'), 0),
+       u.wager_auto_approve_max_cents
+FROM users u WHERE u.id = $1::uuid`
+
+const activeWagersSQL = `
+SELECT w.placed_at, m.title, w.accepted_terms, w.accepted_american_odds,
+       w.stake_cents, w.currency::text, w.potential_profit_cents,
+       CASE w.state WHEN 'pending' THEN 'Pending approval' ELSE 'Open' END AS status,
+       w.state = 'pending' AS pending,
+       m.closes_at
+FROM wagers w
+JOIN markets m ON m.id = w.market_id
+WHERE w.user_id = $1::uuid AND w.state IN ('pending', 'accepted')
+ORDER BY w.placed_at DESC, w.id DESC
+LIMIT NULLIF($2, 0)`
+
+// Ledger references are opaque UUIDs. Acceptance and settlement transactions
+// both link back to exactly one wager through unique columns
+// (wagers.acceptance_ledger_transaction_id and
+// wager_settlements.ledger_transaction_id), so each row can name the market and
+// selection the member actually bet on.
 const ledgerRowsSQL = `
-SELECT occurred_at, description, transaction_type, reference, account,
+SELECT occurred_at, description, transaction_type, reference, reference_label, account,
        amount_cents, currency::text, running_balance_cents, has_running_balance
 FROM (
     SELECT t.occurred_at,
            coalesce(nullif(t.reason, ''), initcap(replace(t.transaction_type, '_', ' '))) AS description,
            t.transaction_type,
            concat(t.source_type, ':', coalesce(t.source_id::text, t.id::text)) AS reference,
+           coalesce(
+               (SELECT m.title || ' — ' || w.accepted_terms
+                FROM wagers w JOIN markets m ON m.id = w.market_id
+                WHERE w.acceptance_ledger_transaction_id = t.id),
+               (SELECT m.title || ' — ' || w.accepted_terms
+                FROM wager_settlements ws
+                JOIN wagers w ON w.id = ws.wager_id
+                JOIN markets m ON m.id = w.market_id
+                WHERE ws.ledger_transaction_id = t.id),
+               ''
+           ) AS reference_label,
            a.name AS account,
            p.amount_cents,
            t.currency,
@@ -297,6 +437,7 @@ FROM (
 	UNION ALL
 	SELECT lt.occurred_at, lt.description, 'legacy_' || lt.transaction_type,
 	       'legacy-transaction:' || lt.source_transaction_id::text,
+	       '',
 	       'Legacy archive', lt.amount_cents, lt.currency,
 	       0::bigint, false, NULL::uuid, lt.source_transaction_id::text, 1
 	FROM legacy_book_transactions lt

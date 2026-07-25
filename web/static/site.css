@@ -720,6 +720,13 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .competition-match-form { align-items: end; display: grid; gap: .6rem; grid-template-columns: repeat(3, minmax(9rem, 1fr)); }
 .competition-match-form label { display: grid; gap: .2rem; }
 .competition-match-form button { justify-self: start; }
+.competition-player-picker { align-self: stretch; background: #fff; border: 1px solid #b8c1bb; border-radius: 4px; margin: 0; max-height: 11rem; min-width: 0; overflow-y: auto; padding: .35rem; }
+.competition-player-picker[aria-invalid="true"] { border-color: var(--danger, #b42318); }
+.competition-player-picker legend { font-size: .78rem; font-weight: 800; padding: 0 .2rem; }
+.competition-match-form .competition-player-option { align-items: center; border-radius: 3px; cursor: pointer; display: flex; font-size: .78rem; gap: .45rem; padding: .35rem .4rem; }
+.competition-player-option:hover { background: #f1f4f1; }
+.competition-player-option input { accent-color: #174d36; flex: 0 0 auto; height: 1rem; margin: 0; width: 1rem; }
+.competition-player-option input:focus-visible { outline: 2px solid #174d36; outline-offset: 2px; }
 .competition-participant-rule { grid-column: 1 / -1; margin: 0; }
 .competition-result-summary { display: grid; gap: .15rem; }
 .competition-result-summary span, .competition-result-summary small { color: #69756d; }
@@ -769,3 +776,72 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 @media (max-width: 680px) {
   .market-form-grid, .match-market-sides, .outcome-entry { grid-template-columns: 1fr; }
 }
+
+/* Admin dashboard (book pulse) */
+.pulse-hero { align-items: stretch; display: grid; gap: .8rem; grid-template-columns: minmax(240px, .8fr) 1.2fr; margin-bottom: 1.6rem; }
+.pulse-hero-figure { background: #fff; border: 1px solid #d8ddd8; border-left: 5px solid #174d36; display: flex; flex-direction: column; padding: 1.1rem 1.2rem; }
+.pulse-hero-figure.is-down { border-left-color: #b03a2e; }
+.pulse-hero-figure span { color: #5b6760; font-size: .7rem; font-weight: 800; text-transform: uppercase; }
+.pulse-hero-figure strong { font-size: 2.9rem; letter-spacing: -.02em; line-height: 1.05; margin-top: auto; }
+.pulse-hero-figure.is-down strong { color: #b03a2e; }
+.pulse-hero-figure small { color: #5b6760; font-size: .72rem; margin-top: .35rem; }
+.pulse-hero-stats { background: #fff; border: 1px solid #d8ddd8; display: grid; gap: 1px; grid-template-columns: repeat(3, 1fr); margin: 0; }
+.pulse-hero-stats > div { border-left: 1px solid #e1e5e1; display: flex; flex-direction: column; padding: 1.1rem 1rem; }
+.pulse-hero-stats > div:first-child { border-left: 0; }
+.pulse-hero-stats dt { color: #5b6760; font-size: .7rem; font-weight: 800; text-transform: uppercase; }
+.pulse-hero-stats dd { font-size: 1.55rem; font-weight: 800; margin: .3rem 0 auto; overflow-wrap: anywhere; }
+.pulse-hero-stats span { color: #6c7770; font-size: .68rem; margin-top: .4rem; }
+.pulse-swing { display: grid; gap: .8rem; grid-template-columns: repeat(4, 1fr); }
+.pulse-swing article { background: #fff; border: 1px solid #d8ddd8; border-top: 3px solid #c9cfc9; display: flex; flex-direction: column; min-height: 132px; padding: .9rem 1rem; }
+.pulse-swing article.is-worst { border-top-color: #b03a2e; }
+.pulse-swing article.is-best { border-top-color: #0f6f96; }
+.pulse-swing span { color: #5b6760; font-size: .7rem; font-weight: 800; text-transform: uppercase; }
+.pulse-swing strong { font-size: 1.7rem; margin: .35rem 0 .4rem; overflow-wrap: anywhere; }
+.pulse-swing article.is-worst strong { color: #b03a2e; }
+.pulse-swing small { color: #5b6760; font-size: .7rem; margin-top: auto; }
+.pulse-swing a { color: var(--green); font-weight: 800; }
+.pulse-note { color: #5b6760; font-size: .78rem; margin: -.2rem 0 .7rem; max-width: 62ch; }
+.private-table tbody tr.is-worst-outcome { background: #fdf6f4; }
+.private-table tbody tr.is-worst-outcome:hover { background: #f9edec; }
+.private-table .is-behind-text { color: #b03a2e; }
+.private-table .is-ahead-text { color: #0f6f96; }
+.pulse-chart { margin: 0; }
+.pulse-chart figcaption { align-items: center; color: #5b6760; display: flex; flex-wrap: wrap; font-size: .72rem; gap: .9rem; margin-bottom: .5rem; }
+.pulse-key { align-items: center; display: inline-flex; gap: .35rem; }
+.pulse-swatch { border-radius: 2px; display: inline-block; height: .7rem; width: .7rem; }
+.pulse-swatch.is-ahead { background: #0f6f96; }
+.pulse-swatch.is-behind { background: #b03a2e; }
+.pulse-key-scale { margin-left: auto; }
+.pulse-standings { min-width: 760px; }
+.pulse-standings .pulse-plot { padding-block: .55rem; width: 42%; }
+.pulse-track { background: #f3f5f2; display: grid; grid-template-columns: 1fr 1fr; position: relative; }
+.pulse-track::before { background: #8d968f; bottom: -.2rem; content: ""; left: 50%; position: absolute; top: -.2rem; transform: translateX(-1px); width: 2px; }
+.pulse-half { display: flex; height: 1.2rem; }
+.pulse-half.is-left { justify-content: flex-end; }
+.pulse-bar { border-radius: 3px; height: 100%; min-width: 2px; }
+.pulse-bar.is-ahead { background: #0f6f96; border-bottom-left-radius: 0; border-top-left-radius: 0; }
+.pulse-bar.is-behind { background: #b03a2e; border-bottom-right-radius: 0; border-top-right-radius: 0; }
+.pulse-standings tbody td small { color: #6c7770; }
+.private-main section + .reconciliation-state { margin-top: 1.6rem; }
+
+@media (max-width: 900px) {
+  .pulse-hero { grid-template-columns: 1fr; }
+  .pulse-swing { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 680px) {
+  .pulse-hero-figure strong { font-size: 2.2rem; }
+  .pulse-hero-stats { grid-template-columns: 1fr; }
+  .pulse-hero-stats > div { border-left: 0; border-top: 1px solid #e1e5e1; }
+  .pulse-hero-stats > div:first-child { border-top: 0; }
+  .pulse-swing { grid-template-columns: 1fr; }
+  .pulse-swing article { min-height: auto; }
+}
+
+/* Member overview: balances, limits, and what a member has riding */
+.balance-card small { line-height: 1.35; }
+.balance-card-accent { border-left: 4px solid #174d36; }
+.private-metrics > div small { color: #6c7770; font-size: .7rem; margin-top: .3rem; }
+.private-metrics strong { line-height: 1.2; }
+.private-reference { color: #8a938c; display: block; font-size: .68rem; overflow-wrap: anywhere; }
+.private-table-note { color: #5b6760; font-size: .78rem; margin: .6rem 0 0; }
+.private-table-note a, .private-empty-cell a { color: #174d36; font-weight: 700; }

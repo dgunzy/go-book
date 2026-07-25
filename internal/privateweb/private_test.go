@@ -30,6 +30,8 @@ type fakeReader struct {
 	err             error
 	userIDs         []string
 	reconciliations int
+	pulse           BookPulse
+	pulses          int
 }
 
 func (f *fakeReader) DashboardSummary(_ context.Context, userID string) (DashboardSummary, error) {
@@ -52,6 +54,11 @@ func (f *fakeReader) ReconciliationSummary(context.Context) (AdminReconciliation
 	return f.reconciliation, f.err
 }
 
+func (f *fakeReader) BookPulse(context.Context) (BookPulse, error) {
+	f.pulses++
+	return f.pulse, f.err
+}
+
 func testDependencies(session Session) (Dependencies, *fakeReader) {
 	if session.Active && session.CSRFToken == "" {
 		session.CSRFToken = "test-csrf-token"
@@ -60,17 +67,62 @@ func testDependencies(session Session) (Dependencies, *fakeReader) {
 	reader := &fakeReader{
 		dashboard: DashboardSummary{
 			Balances: []BalanceRow{
-				{Label: "Available", Account: "Cash", Amount: ledger.Money{Cents: 12_345, Currency: ledger.CAD}},
+				{Label: "Available", Account: "Cash", Note: "Settled cash held with the book", Amount: ledger.Money{Cents: 12_345, Currency: ledger.CAD}},
 				{Label: "At risk", Account: "Escrow", Amount: ledger.Money{Cents: 2_000, Currency: ledger.CAD}},
 			},
 			OpenWagers: 2, PendingWagers: 1, SettledWagers: 7,
-			RecentActivity: []LedgerRow{{OccurredAt: now, Description: "Wager accepted", TransactionType: "wager_acceptance", Reference: "W-1042", Amount: ledger.Money{Cents: -2_000, Currency: ledger.CAD}}},
+			RecentActivity:   []LedgerRow{{OccurredAt: now, Description: "Wager accepted", TransactionType: "wager_acceptance", Reference: "W-1042", ReferenceLabel: "2026 Singles — Alex to win", Amount: ledger.Money{Cents: -2_000, Currency: ledger.CAD}}},
+			CreditLimit:      ledger.Money{Cents: 300_000, Currency: ledger.CAD},
+			CreditAvailable:  ledger.Money{Cents: 196_364, Currency: ledger.CAD},
+			AutoApproveLimit: ledger.Money{Cents: 10_000, Currency: ledger.CAD},
+			OpenStake:        ledger.Money{Cents: 80_000, Currency: ledger.CAD},
+			OpenToWin:        ledger.Money{Cents: 120_000, Currency: ledger.CAD},
+			PendingStake:     ledger.Money{Cents: 50_000, Currency: ledger.CAD},
+			ActiveWagers: []WagerRow{{
+				PlacedAt: now, Market: "2026 Singles", Selection: "Alex to win", Odds: ledger.AmericanOdds(150),
+				Stake: ledger.Money{Cents: 50_000, Currency: ledger.CAD}, PotentialProfit: ledger.Money{Cents: 75_000, Currency: ledger.CAD},
+				Status: "Pending approval", Pending: true, ClosesAt: now.Add(time.Hour),
+			}},
+			MoreActiveWagers: 2,
 		},
 		ledger:         []LedgerRow{{OccurredAt: now, Description: "Opening balance", TransactionType: "migration_adjustment", Reference: "M-1", Amount: ledger.Money{Cents: 12_345, Currency: ledger.CAD}, RunningBalance: ledger.Money{Cents: 12_345, Currency: ledger.CAD}}},
 		wagers:         []WagerRow{{PlacedAt: now, Market: "2026 Singles", Selection: "Alex to win", Odds: ledger.AmericanOdds(150), Stake: ledger.Money{Cents: 2_000, Currency: ledger.CAD}, PotentialProfit: ledger.Money{Cents: 3_000, Currency: ledger.CAD}, Status: "accepted"}},
 		reconciliation: AdminReconciliationSummary{AsOf: now, LedgerBalanced: true, LedgerTransactions: 91, PendingOutboxEvents: 3, MigrationDifference: ledger.Money{Cents: -28_200, Currency: ledger.CAD}},
 	}
-	return Dependencies{Sessions: &fakeSessions{session: session}, Dashboard: reader, Ledger: reader, Wagers: reader, Reconciliation: reader}, reader
+	reader.pulse = BookPulse{
+		AsOf:        now,
+		HouseResult: ledger.Money{Cents: 25_000, Currency: ledger.CAD},
+		Escrow:      ledger.Money{Cents: 80_000, Currency: ledger.CAD},
+		Handle:      ledger.Money{Cents: 300_000, Currency: ledger.CAD},
+		WorstCase:   ledger.Money{Cents: -4_000, Currency: ledger.CAD},
+		BestCase:    ledger.Money{Cents: 10_400, Currency: ledger.CAD},
+		OpenMarkets: 2, PendingWagers: 1, OpenWagerCount: 3,
+		PendingStake: ledger.Money{Cents: 30_000, Currency: ledger.CAD},
+		Exposure: []MarketExposure{{
+			Market: "Cabot Cup 2026 Match 4", State: "open", ClosesAt: now, Wagers: 3,
+			Stake: ledger.Money{Cents: 70_000, Currency: ledger.CAD},
+			Outcomes: []ExposureOutcome{
+				{Selection: "Bill, DC to win", Wagers: 2, Stake: ledger.Money{Cents: 50_000, Currency: ledger.CAD},
+					Payout: ledger.Money{Cents: 74_000, Currency: ledger.CAD}, HouseNet: ledger.Money{Cents: -4_000, Currency: ledger.CAD}, Worst: true},
+				{Selection: "Alex, Mau to win", Wagers: 1, Stake: ledger.Money{Cents: 20_000, Currency: ledger.CAD},
+					Payout: ledger.Money{Cents: 59_600, Currency: ledger.CAD}, HouseNet: ledger.Money{Cents: 10_400, Currency: ledger.CAD}},
+			},
+		}},
+		OpenWagers: []OpenWagerRow{{
+			PlacedAt: now, Member: "Dan Guns", Market: "Cabot Cup 2026 Match 4", Selection: "Bill, DC to win",
+			Odds: ledger.AmericanOdds(-208), Stake: ledger.Money{Cents: 30_000, Currency: ledger.CAD},
+			ToWin: ledger.Money{Cents: 14_423, Currency: ledger.CAD},
+		}},
+		Players: []PlayerResult{
+			{Name: "Dan Guns", Net: ledger.Money{Cents: 40_000, Currency: ledger.CAD}, Won: 6, Lost: 2, Pushed: 1, Open: 1,
+				Handle: ledger.Money{Cents: 120_000, Currency: ledger.CAD}, BarPercent: 100},
+			{Name: "Bill C", Net: ledger.Money{Cents: -10_000, Currency: ledger.CAD}, Won: 1, Lost: 3, Open: 2,
+				Handle: ledger.Money{Cents: 60_000, Currency: ledger.CAD}, BarPercent: 25},
+		},
+		PlayerScale: ledger.Money{Cents: 40_000, Currency: ledger.CAD},
+	}
+	return Dependencies{Sessions: &fakeSessions{session: session}, Dashboard: reader, Ledger: reader,
+		Wagers: reader, Reconciliation: reader, BookPulse: reader}, reader
 }
 
 func newHandler(t *testing.T, deps Dependencies) http.Handler {
@@ -184,6 +236,30 @@ func TestMemberPagesRenderReadModels(t *testing.T) {
 	}
 }
 
+// The overview must name the wagers a member has riding and state the limit
+// that decides whether a stake fills instantly, so nobody has to decode a bare
+// ledger reference to know what they bet on.
+func TestOverviewNamesActiveWagersAndApprovalLimit(t *testing.T) {
+	deps, _ := testDependencies(Session{UserID: "user-7", DisplayName: "Dan Guns", Role: RoleMember, Active: true})
+	response := httptest.NewRecorder()
+	newHandler(t, deps).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/book", nil))
+	body := response.Body.String()
+	for _, expected := range []string{
+		"What you have riding", "2026 Singles", "Alex to win", "Pending approval",
+		"CA$500.00", "Auto-approve limit", "CA$100.00",
+		"CA$800.00", "CA$1200.00", // open stake at risk and profit if it all lands
+		"2 more open or pending",
+		"2026 Singles — Alex to win", // the ledger reference, named
+	} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("overview does not contain %q", expected)
+		}
+	}
+	if strings.Contains(body, "W-1042") {
+		t.Error("overview shows a raw ledger reference in place of the wager it names")
+	}
+}
+
 func TestAcceptanceSessionRendersPersistentTestBanner(t *testing.T) {
 	deps, _ := testDependencies(Session{UserID: "test-owner", DisplayName: "Test Owner", Role: RoleOwner, Active: true, Acceptance: true})
 	response := httptest.NewRecorder()
@@ -206,8 +282,8 @@ func TestAdminAuthorization(t *testing.T) {
 		if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), "Access denied") {
 			t.Fatalf("response = %d %s", response.Code, response.Body.String())
 		}
-		if reader.reconciliations != 0 {
-			t.Fatal("member request reached reconciliation reader")
+		if reader.reconciliations != 0 || reader.pulses != 0 {
+			t.Fatal("a member request reached the book-wide admin readers")
 		}
 	})
 
@@ -219,13 +295,13 @@ func TestAdminAuthorization(t *testing.T) {
 			if response.Code != http.StatusOK {
 				t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
 			}
-			for _, expected := range []string{"<h1>Reconciliation</h1>", "Balanced", "91", "-CA$282.00", "href=\"/admin\""} {
+			for _, expected := range []string{"<h1>Dashboard</h1>", "Balanced", "91", "-CA$282.00", "href=\"/admin\""} {
 				if !strings.Contains(response.Body.String(), expected) {
 					t.Errorf("body does not contain %q", expected)
 				}
 			}
-			if reader.reconciliations != 1 {
-				t.Fatalf("reconciliation calls = %d", reader.reconciliations)
+			if reader.reconciliations != 1 || reader.pulses != 1 {
+				t.Fatalf("reconciliation calls = %d, book pulse calls = %d", reader.reconciliations, reader.pulses)
 			}
 		})
 	}
@@ -299,5 +375,69 @@ func TestFormattingFinancialValues(t *testing.T) {
 	}
 	if got, want := formatOdds(ledger.AmericanOdds(-110)), "-110"; got != want {
 		t.Errorf("formatOdds() = %q, want %q", got, want)
+	}
+}
+
+func TestAdminDashboardRendersTheBookPulse(t *testing.T) {
+	deps, _ := testDependencies(Session{UserID: "admin-1", DisplayName: "Book Admin", Role: RoleAdmin, Active: true})
+	response := httptest.NewRecorder()
+	newHandler(t, deps).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d", response.Code)
+	}
+	body := response.Body.String()
+	for _, expected := range []string{
+		"CA$250.00",              // house result
+		"CA$800.00",              // escrow
+		"CA$3000.00",             // handle
+		"-CA$40.00",              // worst case
+		"CA$104.00",              // best case
+		"Cabot Cup 2026 Match 4", // exposure roll-up
+		"Bill, DC to win",
+		"is-worst-outcome", // the outcome that costs the house most is marked
+		"Dan Guns",         // player standings
+		"CA$400.00",        // leading player's net
+		"6&ndash;2",        // record
+		"width:100%",       // the leader's bar fills the track
+		"width:25%",        // the trailing player's bar is scaled against it
+		"pulse-bar is-ahead", "pulse-bar is-behind",
+		"Longest bar = CA$400.00",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("dashboard does not contain %q", expected)
+		}
+	}
+}
+
+func TestAdminDashboardSurvivesAnEmptyBook(t *testing.T) {
+	deps, reader := testDependencies(Session{UserID: "admin-1", DisplayName: "Book Admin", Role: RoleAdmin, Active: true})
+	reader.pulse = BookPulse{AsOf: time.Date(2026, time.July, 16, 14, 30, 0, 0, time.UTC)}
+	response := httptest.NewRecorder()
+	newHandler(t, deps).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin", nil))
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	}
+	body := response.Body.String()
+	for _, expected := range []string{
+		"No market is carrying risk right now.",
+		"Nobody has action yet.",
+		"No bets are live right now.",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("empty dashboard does not contain %q", expected)
+		}
+	}
+}
+
+func TestAdminDashboardFailsClosedWhenThePulseIsUnavailable(t *testing.T) {
+	deps, reader := testDependencies(Session{UserID: "admin-1", DisplayName: "Book Admin", Role: RoleAdmin, Active: true})
+	reader.err = errors.New("database is down")
+	response := httptest.NewRecorder()
+	newHandler(t, deps).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin", nil))
+
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", response.Code)
 	}
 }

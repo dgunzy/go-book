@@ -123,20 +123,32 @@ func assign(dest, values []any) error {
 	return nil
 }
 
-func TestDashboardSummaryIsUserScoped(t *testing.T) {
-	now := time.Date(2026, time.July, 16, 12, 0, 0, 0, time.UTC)
-	db := &scriptedDB{t: t, calls: []expectedCall{
+func dashboardCalls(t *testing.T, now time.Time, autoApproveOverride *int64) []expectedCall {
+	t.Helper()
+	return []expectedCall{
 		{kind: "query", contains: "WHERE b.owner_user_id = $1::uuid", args: []any{"user-7"}, rows: rows(
 			[]any{"user_cash", "Member cash", "CAD", int64(12_345)},
 			[]any{"user_free_play", "Member free play", "CAD", int64(500)},
 		)},
-		{kind: "row", contains: "FROM wagers", args: []any{"user-7"}, row: fakeRow{values: []any{int64(2), int64(1), int64(8)}}},
+		{kind: "row", contains: "FROM wagers", args: []any{"user-7"}, row: fakeRow{values: []any{
+			int64(2), int64(1), int64(8), int64(80_000), int64(120_000), int64(50_000),
+		}}},
 		{kind: "query", contains: "WHERE a.owner_user_id = $1::uuid", args: []any{"user-7", 5}, rows: rows(
-			[]any{now, "Wager accepted", "wager_acceptance", "wager:abc", "Member cash", int64(-2_000), "CAD", int64(10_345), true},
+			[]any{now, "Wager accepted", "wager_acceptance", "wager:abc", "2026 singles — Alex to win", "Member cash", int64(-2_000), "CAD", int64(10_345), true},
 		)},
-		{kind: "row", contains: "u.credit_limit_cents", args: []any{"user-7"}, row: fakeRow{values: []any{int64(100_000), int64(12_345)}}},
-	}}
-	reader, err := New(db)
+		{kind: "query", contains: "w.state IN ('pending', 'accepted')", args: []any{"user-7", activeWagerPreview}, rows: rows(
+			[]any{now, "2026 singles", "Alex to win", int32(150), int64(50_000), "CAD", int64(75_000), "Pending approval", true, now.Add(time.Hour)},
+		)},
+		{kind: "row", contains: "u.wager_auto_approve_max_cents", args: []any{"user-7"}, row: fakeRow{values: []any{
+			int64(100_000), int64(12_345), autoApproveOverride,
+		}}},
+	}
+}
+
+func TestDashboardSummaryIsUserScoped(t *testing.T) {
+	now := time.Date(2026, time.July, 16, 12, 0, 0, 0, time.UTC)
+	db := &scriptedDB{t: t, calls: dashboardCalls(t, now, nil)}
+	reader, err := NewWithSettings(db, Settings{AutoApproveDefaultCents: 10_000})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,15 +160,58 @@ func TestDashboardSummaryIsUserScoped(t *testing.T) {
 	if len(summary.Balances) != 2 || summary.Balances[0].Label != "Available cash" || summary.Balances[0].Amount.Cents != 12_345 {
 		t.Fatalf("balances = %+v", summary.Balances)
 	}
+	if summary.Balances[0].Note == "" {
+		t.Fatal("cash balance has no plain-language note")
+	}
 	if summary.OpenWagers != 2 || summary.PendingWagers != 1 || summary.SettledWagers != 8 {
 		t.Fatalf("wager counts = %+v", summary)
+	}
+	if summary.OpenStake.Cents != 80_000 || summary.OpenToWin.Cents != 120_000 || summary.PendingStake.Cents != 50_000 {
+		t.Fatalf("exposure = %+v", summary)
 	}
 	if len(summary.RecentActivity) != 1 || summary.RecentActivity[0].RunningBalance.Cents != 10_345 {
 		t.Fatalf("activity = %+v", summary.RecentActivity)
 	}
+	if summary.RecentActivity[0].ReferenceLabel != "2026 singles — Alex to win" {
+		t.Fatalf("activity reference label = %q", summary.RecentActivity[0].ReferenceLabel)
+	}
 	// Credit available = limit ($1000) + cash balance ($123.45) = $1123.45.
 	if summary.CreditAvailable.Cents != 112_345 || summary.CreditLimit.Cents != 100_000 {
 		t.Fatalf("credit = available %d limit %d", summary.CreditAvailable.Cents, summary.CreditLimit.Cents)
+	}
+	// No per-player override, so the book-wide default applies.
+	if summary.AutoApproveLimit.Cents != 10_000 || summary.AutoApprovePersonal {
+		t.Fatalf("auto-approve = %d personal %v", summary.AutoApproveLimit.Cents, summary.AutoApprovePersonal)
+	}
+	if len(summary.ActiveWagers) != 1 {
+		t.Fatalf("active wagers = %+v", summary.ActiveWagers)
+	}
+	active := summary.ActiveWagers[0]
+	if active.Market != "2026 singles" || active.Selection != "Alex to win" || active.Stake.Cents != 50_000 ||
+		active.PotentialProfit.Cents != 75_000 || active.Status != "Pending approval" || !active.Pending {
+		t.Fatalf("active wager = %+v", active)
+	}
+	if active.ClosesAt != now.Add(time.Hour) {
+		t.Fatalf("active wager closes at %v", active.ClosesAt)
+	}
+	// Three wagers are open or pending and one was previewed.
+	if summary.MoreActiveWagers != 2 {
+		t.Fatalf("more active wagers = %d", summary.MoreActiveWagers)
+	}
+}
+
+func TestDashboardSummaryPrefersPerPlayerAutoApproveOverride(t *testing.T) {
+	now := time.Date(2026, time.July, 16, 12, 0, 0, 0, time.UTC)
+	override := int64(25_000)
+	db := &scriptedDB{t: t, calls: dashboardCalls(t, now, &override)}
+	reader, _ := NewWithSettings(db, Settings{AutoApproveDefaultCents: 10_000})
+	summary, err := reader.DashboardSummary(context.Background(), "user-7")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.done()
+	if summary.AutoApproveLimit.Cents != 25_000 || !summary.AutoApprovePersonal {
+		t.Fatalf("auto-approve = %d personal %v", summary.AutoApproveLimit.Cents, summary.AutoApprovePersonal)
 	}
 }
 
@@ -164,7 +219,7 @@ func TestLedgerRowsMapsSignedMoneyAndRunningBalance(t *testing.T) {
 	now := time.Date(2026, time.July, 16, 12, 0, 0, 0, time.UTC)
 	db := &scriptedDB{t: t, calls: []expectedCall{{
 		kind: "query", contains: "PARTITION BY p.account_id", args: []any{"member-id", 0}, rows: rows(
-			[]any{now, "Legacy opening balance", "migration_adjustment", "legacy-cabot-book:tx", "Member cash", int64(-500), "CAD ", int64(-500), true},
+			[]any{now, "Legacy opening balance", "migration_adjustment", "legacy-cabot-book:tx", "", "Member cash", int64(-500), "CAD ", int64(-500), true},
 		),
 	}}}
 	reader, _ := New(db)
@@ -237,7 +292,8 @@ func TestReadersRejectMissingUserBeforeQuery(t *testing.T) {
 func TestQueriesRemainReadOnly(t *testing.T) {
 	for name, query := range map[string]string{
 		"balances": balancesSQL, "dashboard": dashboardCountsSQL, "ledger": ledgerRowsSQL,
-		"wagers": wagersSQL, "reconciliation": reconciliationSQL,
+		"wagers": wagersSQL, "active wagers": activeWagersSQL, "credit line": creditLineSQL,
+		"reconciliation": reconciliationSQL,
 	} {
 		upper := strings.ToUpper(query)
 		for _, forbidden := range []string{"INSERT ", "UPDATE ", "DELETE ", "FOR UPDATE", "LOCK "} {
