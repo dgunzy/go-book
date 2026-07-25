@@ -23,6 +23,10 @@ func TestRecordSettlementClearsWhatAMemberOwes(t *testing.T) {
 
 	// The member bets $100 and loses it, leaving them $100 down.
 	placeAndAccept(t, ctx, store, f, f.UserA, f.SelectionAID, 10_000, 1)
+	// A market must stop taking action before it can be graded.
+	if err := store.CloseMarket(ctx, f.MarketID, f.UserB); err != nil {
+		t.Fatalf("CloseMarket() error = %v", err)
+	}
 	if _, err := store.SettleMarket(ctx, SettleMarketRequest{
 		MarketID: f.MarketID, ActorUserID: f.UserB, Reason: "match played, graded by hand",
 		Outcome: map[string]betting.SettlementResult{
@@ -50,6 +54,9 @@ func TestRecordSettlementClearsWhatAMemberOwes(t *testing.T) {
 		t.Fatal(err)
 	}
 	placeAndAccept(t, ctx, store, g, f.UserA, g.SelectionAID, 5_000, 2)
+	if err := store.CloseMarket(ctx, g.MarketID, f.UserB); err != nil {
+		t.Fatalf("CloseMarket(second) error = %v", err)
+	}
 	if _, err := store.SettleMarket(ctx, SettleMarketRequest{
 		MarketID: g.MarketID, ActorUserID: f.UserB, Reason: "match played, graded by hand",
 		Outcome: map[string]betting.SettlementResult{
