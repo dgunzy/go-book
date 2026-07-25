@@ -264,6 +264,7 @@ func TestBettingRoutesWinOverThePrivateBookSubtree(t *testing.T) {
 		{http.MethodPost, "/book/wagers", http.StatusNoContent},
 		{http.MethodPost, "/book/wagers/11111111-1111-1111-1111-111111111111/cancel", http.StatusNoContent},
 		{http.MethodGet, "/admin/wagers", http.StatusNoContent},
+		{http.MethodGet, "/admin/wagers/record", http.StatusNoContent},
 		{http.MethodPost, "/admin/wagers/11111111-1111-1111-1111-111111111111/accept", http.StatusNoContent},
 		{http.MethodGet, "/admin/help", http.StatusNoContent},
 		{http.MethodGet, "/admin/settle-up", http.StatusNoContent},

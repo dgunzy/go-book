@@ -1,0 +1,48 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Book administration</p><h1>Wager record</h1></div>
+  <p>Every wager the book has taken, with the line it opened at, the price the member got, and where it closed. <a href="/admin/wagers">Back to pending wagers</a>.</p>
+</header>
+
+<p class="pulse-note">A member who repeatedly takes a better number than the close is beating the book on price, whether or not the bets land. While a market is still open there is no closing line yet, so the comparison is withheld rather than guessed at.</p>
+
+<section aria-labelledby="wager-record-heading">
+  <h2 id="wager-record-heading" class="visually-hidden">Wager record</h2>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide private-table-stack wager-record">
+      <thead><tr><th scope="col">Placed</th><th scope="col">Member</th><th scope="col">Market &amp; pick</th><th scope="col">Opening</th><th scope="col">Taken</th><th scope="col">Closing</th><th scope="col">Against the close</th><th scope="col">Stake</th><th scope="col">Outcome</th></tr></thead>
+      <tbody>
+        {{range .WagerRecord}}
+        <tr{{if .BeatTheClose}} class="is-line-moved"{{end}}>
+          <td data-label="Placed">{{when .PlacedAt}}</td>
+          <th scope="row">{{.MemberName}}</th>
+          <td class="wager-record-pick" data-label="Market &amp; pick">{{.SelectionTerms}}<small>{{.MarketTitle}}</small></td>
+          <td class="private-odds" data-label="Opening">{{odds .OpeningOdds}}</td>
+          <td class="private-odds" data-label="Taken"><strong>{{odds .TakenOdds}}</strong></td>
+          <td class="private-odds" data-label="Closing">
+            {{if .CloseIsFinal}}{{odds .ClosingOdds}}{{else}}<span class="betting-line-flag">{{odds .ClosingOdds}} &middot; still moving</span>{{end}}
+          </td>
+          <td class="private-odds betting-line-cell is-stack-block" data-label="Against the close">
+            {{if .BeatTheClose}}
+              <span class="betting-line-flag is-warning">Beat the close</span>
+              <small>{{money .Edge}} better than the close</small>
+            {{else if .BehindClose}}
+              <span class="betting-line-flag is-ok">Behind the close</span>
+              <small class="betting-line-note">{{money .Edge}} vs the close</small>
+            {{else if .CloseIsFinal}}
+              <span class="betting-line-flag">Level</span>
+            {{else}}
+              <span class="betting-line-flag">Market still open</span>
+            {{end}}
+          </td>
+          <td class="private-money" data-label="Stake">{{money .Stake}}<small>to win {{money .PotentialProfit}}</small></td>
+          <td data-label="Outcome"><span class="private-status">{{if .Settled}}{{.Result}}{{else}}{{.State}}{{end}}</span></td>
+        </tr>
+        {{else}}
+        <tr><td colspan="9" class="private-empty-cell">No wagers have been placed yet.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}

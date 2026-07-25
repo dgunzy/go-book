@@ -70,6 +70,7 @@ type WagerStore interface {
 	RejectWager(ctx context.Context, wagerID, actorUserID, reason string) (betting.Wager, error)
 	CancelWager(ctx context.Context, wagerID, userID string) (betting.Wager, error)
 	ListWagersByState(context.Context, betting.WagerState) ([]bettingpg.AdminWagerRow, error)
+	ListWagerRecord(ctx context.Context, limit int) ([]bettingpg.WagerRecordRow, error)
 	ListWagersForUser(context.Context, string) ([]bettingpg.UserWagerRow, error)
 	AutoApproveLimitForUser(ctx context.Context, userID string) (int64, bool, error)
 }
@@ -154,6 +155,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /admin/markets/{id}/settle", h.adminSettleForm)
 	h.mux.HandleFunc("POST /admin/markets/{id}/settle", h.adminSettleMarket)
 	h.mux.HandleFunc("GET /admin/wagers", h.adminWagers)
+	h.mux.HandleFunc("GET /admin/wagers/record", h.adminWagerRecord)
 	h.mux.HandleFunc("POST /admin/wagers/{id}/accept", h.adminAcceptWager)
 	h.mux.HandleFunc("POST /admin/wagers/{id}/reject", h.adminRejectWager)
 	h.mux.HandleFunc("GET /admin/settle-up", h.adminSettleUp)
@@ -353,6 +355,7 @@ type pageData struct {
 	MemberWagers      []memberWagerView
 	AdminWagers       []adminWagerView
 	Outstanding       []settleUpView
+	WagerRecord       []wagerRecordView
 	Settlements       []bettingpg.SettlementRow
 	FormError         string
 	Notice            string
@@ -1225,6 +1228,7 @@ func parseTemplates() (map[string]*template.Template, error) {
 		"admin_market_settle": "templates/admin_market_settle.gohtml",
 		"admin_wagers":        "templates/admin_wagers.gohtml",
 		"admin_settle_up":     "templates/admin_settle_up.gohtml",
+		"admin_wager_record":  "templates/admin_wager_record.gohtml",
 		"admin_help":          "templates/admin_help.gohtml",
 		"message":             "templates/betting_message.gohtml",
 		"forbidden":           "templates/private_forbidden.gohtml",

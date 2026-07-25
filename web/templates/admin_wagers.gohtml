@@ -1,7 +1,7 @@
 {{define "private_content"}}
 <header class="private-page-heading">
   <div><p class="private-kicker">Book administration</p><h1>Pending wagers</h1></div>
-  <p>Accepting a wager moves the member's stake into escrow at the recorded odds. <a href="/admin/markets">Manage markets</a>.</p>
+  <p>Accepting a wager moves the member's stake into escrow at the recorded odds. <a href="/admin/wagers/record">Full wager record</a> &middot; <a href="/admin/markets">Manage markets</a>.</p>
 </header>
 
 {{$stale := 0}}{{range .AdminWagers}}{{if .MovedToMember}}{{$stale = 1}}{{end}}{{end}}

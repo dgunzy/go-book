@@ -94,6 +94,8 @@ type fakeWagers struct {
 	cancelCalls   []struct{ id, user string }
 	pending       []bettingpg.AdminWagerRow
 	mine          []bettingpg.UserWagerRow
+	record        []bettingpg.WagerRecordRow
+	recordLimit   int
 }
 
 func (f *fakeWagers) PlaceWager(_ context.Context, req bettingpg.PlaceWagerRequest) (betting.Wager, error) {
@@ -134,6 +136,10 @@ func (f *fakeWagers) CancelWager(_ context.Context, wagerID, userID string) (bet
 }
 func (f *fakeWagers) ListWagersByState(context.Context, betting.WagerState) ([]bettingpg.AdminWagerRow, error) {
 	return f.pending, nil
+}
+func (f *fakeWagers) ListWagerRecord(_ context.Context, limit int) ([]bettingpg.WagerRecordRow, error) {
+	f.recordLimit = limit
+	return f.record, nil
 }
 func (f *fakeWagers) ListWagersForUser(context.Context, string) ([]bettingpg.UserWagerRow, error) {
 	return f.mine, nil
@@ -1111,5 +1117,110 @@ func TestReverseSettlementNeedsAReasonAndReportsADoubleReversal(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "already been reversed") {
 		t.Fatalf("body = %q", w.Body.String())
+	}
+}
+
+func recordRowFixture(opening, taken, closing int32, marketState betting.MarketState,
+	result betting.SettlementResult) bettingpg.WagerRecordRow {
+	openingOdds, _ := ledger.NewAmericanOdds(opening)
+	takenOdds, _ := ledger.NewAmericanOdds(taken)
+	closingOdds, _ := ledger.NewAmericanOdds(closing)
+	stake := ledger.Money{Cents: 30_000, Currency: ledger.CAD}
+	profit, _ := takenOdds.Profit(stake)
+	state := betting.WagerAccepted
+	if result != "" {
+		state = betting.WagerSettled
+	}
+	return bettingpg.WagerRecordRow{
+		ID: testWagerID, PlacedAt: time.Now().UTC(), MemberName: "Dan Guns",
+		MarketTitle: "Cabot Cup 2026 Match 4", MarketState: marketState,
+		SelectionTerms: "Bill, DC to win", OpeningOdds: openingOdds, TakenOdds: takenOdds,
+		ClosingOdds: closingOdds, Stake: stake, PotentialProfit: profit,
+		State: state, Result: result,
+	}
+}
+
+func TestWagerRecordJudgesAgainstTheClosingLine(t *testing.T) {
+	wagers := &fakeWagers{record: []bettingpg.WagerRecordRow{
+		// Took -208 on a market that closed at -271: a better price than the
+		// close, so the member beat the book on price.
+		recordRowFixture(-180, -208, -271, betting.MarketSettled, betting.ResultLoss),
+	}}
+	handler := newTestHandlerWithSettlements(t, adminSession(), &fakeMarkets{}, wagers, &fakeSettlements{})
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/wagers/record", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %q)", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	for _, expected := range []string{"-180", "-208", "-271", "Beat the close", "loss", "Dan Guns"} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("record page does not contain %q", expected)
+		}
+	}
+	// $300 at -208 wins $144.23; at the -271 close it would win $110.70, so
+	// the member got $33.53 more than the close was paying.
+	if !strings.Contains(body, "CA$33.53") {
+		t.Error("record page does not quantify the edge against the close")
+	}
+}
+
+func TestWagerRecordReportsBehindAndLevel(t *testing.T) {
+	wagers := &fakeWagers{record: []bettingpg.WagerRecordRow{
+		recordRowFixture(-180, -271, -208, betting.MarketSettled, betting.ResultWin),
+		recordRowFixture(-110, -110, -110, betting.MarketClosed, ""),
+	}}
+	handler := newTestHandlerWithSettlements(t, adminSession(), &fakeMarkets{}, wagers, &fakeSettlements{})
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/wagers/record", nil))
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Behind the close") {
+		t.Error("a worse price than the close should read as behind it")
+	}
+	if !strings.Contains(body, "Level") {
+		t.Error("an unmoved line should read as level")
+	}
+}
+
+// A line that is still moving is not a closing line, so the record must not
+// pass judgement on a wager whose market is still taking action.
+func TestWagerRecordWithholdsTheVerdictWhileTheMarketIsOpen(t *testing.T) {
+	wagers := &fakeWagers{record: []bettingpg.WagerRecordRow{
+		recordRowFixture(-180, -208, -271, betting.MarketOpen, ""),
+	}}
+	handler := newTestHandlerWithSettlements(t, adminSession(), &fakeMarkets{}, wagers, &fakeSettlements{})
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/wagers/record", nil))
+
+	body := w.Body.String()
+	if strings.Contains(body, "Beat the close") || strings.Contains(body, "Behind the close") {
+		t.Fatal("the record judged a wager against a line that is still moving")
+	}
+	for _, expected := range []string{"still moving", "Market still open"} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("record page does not contain %q", expected)
+		}
+	}
+}
+
+func TestWagerRecordIsAdminOnly(t *testing.T) {
+	wagers := &fakeWagers{record: []bettingpg.WagerRecordRow{
+		recordRowFixture(-180, -208, -271, betting.MarketSettled, betting.ResultLoss),
+	}}
+	handler := newTestHandlerWithSettlements(t, memberSession(), &fakeMarkets{}, wagers, &fakeSettlements{})
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/wagers/record", nil))
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", w.Code)
+	}
+	if strings.Contains(w.Body.String(), "Dan Guns") {
+		t.Fatal("a member saw another member's wager record")
 	}
 }

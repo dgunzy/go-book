@@ -906,3 +906,15 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
   .private-table-stack .settle-up-form input[name="reason"] { flex: 1 0 100%; }
   .private-table-stack .settle-up-form input[name="amount"] { flex: 1 1 6rem; }
 }
+
+/* Wager record: three prices per row, so each cell's secondary line needs to
+   sit under its value rather than run on beside it. */
+.wager-record tbody td small { color: #6c7770; display: block; font-size: .68rem; font-weight: 500; margin-top: .15rem; }
+.wager-record .wager-record-pick { min-width: 12rem; }
+.wager-record .betting-line-cell { min-width: 9rem; }
+.wager-record .betting-line-cell small { margin-left: auto; }
+@media (max-width: 680px) {
+  .wager-record tbody td small { text-align: right; }
+  .wager-record .wager-record-pick, .wager-record .betting-line-cell { min-width: 0; }
+}
+.wager-record .private-status { white-space: nowrap; }
