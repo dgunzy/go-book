@@ -46,6 +46,9 @@ var matchHistoryAndRostersSQL string
 //go:embed 000010_credit_limit_default.up.sql
 var creditLimitDefaultSQL string
 
+//go:embed 000011_manual_line_moves.up.sql
+var manualLineMovesSQL string
+
 // All returns migrations in application order.
 func All() []Definition {
 	return []Definition{
@@ -59,6 +62,7 @@ func All() []Definition {
 		newDefinition(8, "one_active_match_market", oneActiveMatchMarketSQL),
 		newDefinition(9, "match_history_and_rosters", matchHistoryAndRostersSQL),
 		newDefinition(10, "credit_limit_default", creditLimitDefaultSQL),
+		newDefinition(11, "manual_line_moves", manualLineMovesSQL),
 	}
 }
 
