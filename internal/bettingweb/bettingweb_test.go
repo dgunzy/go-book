@@ -142,12 +142,62 @@ func (f *fakeWagers) AutoApproveLimitForUser(context.Context, string) (int64, bo
 	return f.overrideCents, f.hasOverride, nil
 }
 
+type fakeSettlements struct {
+	balances    []bettingpg.MemberBalanceRow
+	history     []bettingpg.SettlementRow
+	recordErr   error
+	reverseErr  error
+	recorded    []bettingpg.RecordSettlementRequest
+	reversals   []struct{ id, actor, reason string }
+	listedLimit int
+}
+
+func (f *fakeSettlements) RecordSettlement(_ context.Context, req bettingpg.RecordSettlementRequest) (bettingpg.SettlementRow, error) {
+	f.recorded = append(f.recorded, req)
+	if f.recordErr != nil {
+		return bettingpg.SettlementRow{}, f.recordErr
+	}
+	return bettingpg.SettlementRow{
+		AdjustmentID: req.AdjustmentID, UserID: req.UserID, MemberName: "Dan Guns",
+		Direction: req.Direction, Amount: ledger.Money{Cents: req.AmountCents, Currency: req.Currency},
+		Reason: req.Reason,
+	}, nil
+}
+
+func (f *fakeSettlements) ReverseSettlement(_ context.Context, adjustmentID, actorUserID, reason string) (bettingpg.SettlementRow, error) {
+	f.reversals = append(f.reversals, struct{ id, actor, reason string }{adjustmentID, actorUserID, reason})
+	if f.reverseErr != nil {
+		return bettingpg.SettlementRow{}, f.reverseErr
+	}
+	return bettingpg.SettlementRow{
+		AdjustmentID: adjustmentID, MemberName: "Dan Guns", Reversed: true,
+		Direction: betting.AdjustmentPaymentReceived,
+		Amount:    ledger.Money{Cents: 50_000, Currency: ledger.CAD},
+	}, nil
+}
+
+func (f *fakeSettlements) ListSettlements(_ context.Context, limit int) ([]bettingpg.SettlementRow, error) {
+	f.listedLimit = limit
+	return f.history, nil
+}
+
+func (f *fakeSettlements) ListMemberBalances(context.Context, ledger.Currency) ([]bettingpg.MemberBalanceRow, error) {
+	return f.balances, nil
+}
+
 func newTestHandler(t *testing.T, session privateweb.Session, markets *fakeMarkets, wagers *fakeWagers) *Handler {
 	t.Helper()
+	return newTestHandlerWithSettlements(t, session, markets, wagers, &fakeSettlements{})
+}
+
+func newTestHandlerWithSettlements(t *testing.T, session privateweb.Session, markets *fakeMarkets,
+	wagers *fakeWagers, settlements *fakeSettlements) *Handler {
+	t.Helper()
 	handler, err := New(Dependencies{
-		Sessions: fakeSessions{session: session},
-		Markets:  markets,
-		Wagers:   wagers,
+		Sessions:    fakeSessions{session: session},
+		Markets:     markets,
+		Wagers:      wagers,
+		Settlements: settlements,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -548,7 +598,7 @@ func TestPlaceWagerAutoApprovesUnderThreshold(t *testing.T) {
 	h, err := New(Dependencies{
 		Sessions: fakeSessions{session: memberSession()},
 		Markets:  &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}},
-		Wagers:   wagers, AutoApproveMaxCents: 10_000,
+		Wagers:   wagers, Settlements: &fakeSettlements{}, AutoApproveMaxCents: 10_000,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -575,7 +625,7 @@ func TestPlaceWagerOverThresholdStaysPending(t *testing.T) {
 	h, err := New(Dependencies{
 		Sessions: fakeSessions{session: memberSession()},
 		Markets:  &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}},
-		Wagers:   wagers, AutoApproveMaxCents: 1_000, // $10 threshold
+		Wagers:   wagers, Settlements: &fakeSettlements{}, AutoApproveMaxCents: 1_000, // $10 threshold
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -604,7 +654,7 @@ func TestPlaceWagerPerPlayerOverrideRaisesThreshold(t *testing.T) {
 	h, err := New(Dependencies{
 		Sessions: fakeSessions{session: memberSession()},
 		Markets:  &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}},
-		Wagers:   wagers, AutoApproveMaxCents: 1_000,
+		Wagers:   wagers, Settlements: &fakeSettlements{}, AutoApproveMaxCents: 1_000,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -880,5 +930,186 @@ func TestCancelWagerReportsAlreadyReviewedWager(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "no longer pending") {
 		t.Fatalf("body = %q, want an explanation that the book already reviewed it", w.Body.String())
+	}
+}
+
+func settlementFixtures() *fakeSettlements {
+	return &fakeSettlements{
+		balances: []bettingpg.MemberBalanceRow{
+			{UserID: testUserID, Name: "Dan Guns", Balance: ledger.Money{Cents: -50_000, Currency: ledger.CAD}},
+			{UserID: testSelID, Name: "Bill C", Balance: ledger.Money{Cents: 20_000, Currency: ledger.CAD}},
+		},
+		history: []bettingpg.SettlementRow{{
+			AdjustmentID: testIdem, MemberName: "Dan Guns", Direction: betting.AdjustmentPaymentReceived,
+			Amount: ledger.Money{Cents: 25_000, Currency: ledger.CAD}, Reason: "e-transfer",
+			ActorName: "Book Admin", OccurredAt: time.Now().UTC(),
+		}},
+	}
+}
+
+func TestSettleUpPageShowsWhoOwesAndWhichWayToSettle(t *testing.T) {
+	settlements := settlementFixtures()
+	handler := newTestHandlerWithSettlements(t, adminSession(), &fakeMarkets{}, &fakeWagers{}, settlements)
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/settle-up", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	for _, expected := range []string{
+		"-CA$500.00", "Owes the book", // the member who is down
+		"CA$200.00", "The book owes them",
+		`value="500.00"`, // the form is pre-filled with what would square them
+		"e-transfer",     // history
+	} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("settle-up page does not contain %q", expected)
+		}
+	}
+	// The member who owes should default to paying the book, not being paid.
+	if !strings.Contains(body, `<option value="payment_received" selected>`) {
+		t.Error("a member who owes the book should default to a payment in")
+	}
+}
+
+func TestSettleUpIsAdminOnly(t *testing.T) {
+	settlements := settlementFixtures()
+	handler := newTestHandlerWithSettlements(t, memberSession(), &fakeMarkets{}, &fakeWagers{}, settlements)
+
+	for _, request := range []*http.Request{
+		httptest.NewRequest(http.MethodGet, "/admin/settle-up", nil),
+		httptest.NewRequest(http.MethodPost, "/admin/settle-up", strings.NewReader(
+			url.Values{"csrf_token": {testCSRF}, "user_id": {testUserID}, "direction": {"payment_received"},
+				"amount": {"500.00"}, "reason": {"cash"}}.Encode())),
+	} {
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, request)
+		if w.Code != http.StatusForbidden {
+			t.Fatalf("%s %s status = %d, want 403", request.Method, request.URL.Path, w.Code)
+		}
+	}
+	if len(settlements.recorded) != 0 {
+		t.Fatal("a member reached the settlement writer")
+	}
+}
+
+func TestRecordSettlementPostsWithTheSessionActorAndGeneratedID(t *testing.T) {
+	settlements := settlementFixtures()
+	handler := newTestHandlerWithSettlements(t, adminSession(), &fakeMarkets{}, &fakeWagers{}, settlements)
+
+	body := url.Values{
+		"csrf_token": {testCSRF}, "user_id": {testUserID}, "direction": {"payment_received"},
+		"amount": {"500.00"}, "reason": {"e-transfer received"},
+		// Hostile: the adjustment ID must never come from the form, or a
+		// replayed page could be aimed at an existing settlement.
+		"adjustment_id": {testIdem},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/settle-up", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	if len(settlements.recorded) != 1 {
+		t.Fatalf("RecordSettlement calls = %d, want 1", len(settlements.recorded))
+	}
+	recorded := settlements.recorded[0]
+	if recorded.ActorUserID != testUserID {
+		t.Fatalf("actor = %q, want the session user", recorded.ActorUserID)
+	}
+	if recorded.AdjustmentID == testIdem || !isUUID(recorded.AdjustmentID) {
+		t.Fatalf("adjustment ID = %q, want a freshly generated one", recorded.AdjustmentID)
+	}
+	if recorded.AmountCents != 50_000 || recorded.Currency != ledger.CAD {
+		t.Fatalf("amount = %d %s", recorded.AmountCents, recorded.Currency)
+	}
+	if recorded.Direction != betting.AdjustmentPaymentReceived {
+		t.Fatalf("direction = %q", recorded.Direction)
+	}
+}
+
+func TestRecordSettlementRejectsBadInput(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		form   url.Values
+		status int
+	}{
+		{"no reason", url.Values{"csrf_token": {testCSRF}, "user_id": {testUserID},
+			"direction": {"payment_received"}, "amount": {"10.00"}, "reason": {"  "}}, http.StatusBadRequest},
+		{"zero amount", url.Values{"csrf_token": {testCSRF}, "user_id": {testUserID},
+			"direction": {"payment_received"}, "amount": {"0"}, "reason": {"cash"}}, http.StatusBadRequest},
+		{"negative amount", url.Values{"csrf_token": {testCSRF}, "user_id": {testUserID},
+			"direction": {"payment_received"}, "amount": {"-25.00"}, "reason": {"cash"}}, http.StatusBadRequest},
+		{"unknown direction", url.Values{"csrf_token": {testCSRF}, "user_id": {testUserID},
+			"direction": {"write_off"}, "amount": {"10.00"}, "reason": {"cash"}}, http.StatusBadRequest},
+		{"malformed member", url.Values{"csrf_token": {testCSRF}, "user_id": {"nope"},
+			"direction": {"payment_received"}, "amount": {"10.00"}, "reason": {"cash"}}, http.StatusNotFound},
+		{"no csrf token", url.Values{"user_id": {testUserID},
+			"direction": {"payment_received"}, "amount": {"10.00"}, "reason": {"cash"}}, http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			settlements := settlementFixtures()
+			handler := newTestHandlerWithSettlements(t, adminSession(), &fakeMarkets{}, &fakeWagers{}, settlements)
+			r := httptest.NewRequest(http.MethodPost, "/admin/settle-up", strings.NewReader(test.form.Encode()))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code != test.status {
+				t.Fatalf("status = %d, want %d (body %q)", w.Code, test.status, w.Body.String())
+			}
+			if len(settlements.recorded) != 0 {
+				t.Fatal("a rejected settlement still reached the ledger")
+			}
+		})
+	}
+}
+
+func TestReverseSettlementNeedsAReasonAndReportsADoubleReversal(t *testing.T) {
+	settlements := settlementFixtures()
+	handler := newTestHandlerWithSettlements(t, adminSession(), &fakeMarkets{}, &fakeWagers{}, settlements)
+	path := "/admin/settle-up/" + testIdem + "/reverse"
+
+	// No reason: nothing is posted.
+	r := httptest.NewRequest(http.MethodPost, path, strings.NewReader(url.Values{"csrf_token": {testCSRF}}.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status without a reason = %d, want 400", w.Code)
+	}
+	if len(settlements.reversals) != 0 {
+		t.Fatal("a reversal without a reason reached the ledger")
+	}
+
+	// With a reason: the session user is the actor.
+	body := url.Values{"csrf_token": {testCSRF}, "reason": {"recorded against the wrong member"}}.Encode()
+	r = httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	if len(settlements.reversals) != 1 || settlements.reversals[0].actor != testUserID {
+		t.Fatalf("reversals = %+v", settlements.reversals)
+	}
+
+	// Reversing twice is refused rather than moving the balance again.
+	settlements.reverseErr = bettingpg.ErrAlreadyReversed
+	r = httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("HX-Request", "true")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusConflict {
+		t.Fatalf("double reversal status = %d, want 409", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "already been reversed") {
+		t.Fatalf("body = %q", w.Body.String())
 	}
 }

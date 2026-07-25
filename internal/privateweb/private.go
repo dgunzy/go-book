@@ -157,7 +157,25 @@ type BookPulse struct {
 	// PlayerScale is the largest absolute player result, used to size the
 	// standings bars. Zero when nobody has a result yet.
 	PlayerScale ledger.Money
+	// Outstanding is who owes the book and who the book owes: a cash position,
+	// deliberately separate from the profit and loss in Players. Settling up
+	// moves these figures and leaves the standings alone.
+	Outstanding []OutstandingRow
+	// OwedToBook and OwedByBook are the two sides of Outstanding, both
+	// reported as positive amounts.
+	OwedToBook ledger.Money
+	OwedByBook ledger.Money
 }
+
+// OutstandingRow is one member's cash position with the book.
+type OutstandingRow struct {
+	Name string
+	// Balance is negative when the member owes the book.
+	Balance ledger.Money
+}
+
+// Owes reports whether this member owes the book money.
+func (r OutstandingRow) Owes() bool { return r.Balance.Cents < 0 }
 
 // MarketExposure is one unsettled market and what each of its outcomes would
 // do to the house.

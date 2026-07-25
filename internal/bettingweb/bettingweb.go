@@ -83,6 +83,9 @@ type Dependencies struct {
 	Sessions SessionReader
 	Markets  MarketStore
 	Wagers   WagerStore
+	// Settlements records money that changed hands outside the app so a
+	// member's balance shows what is still outstanding.
+	Settlements SettlementStore
 	// AutoApproveMaxCents is the largest stake accepted automatically on
 	// placement; larger wagers stay pending for manual approval. Zero disables
 	// auto-approval.
@@ -107,7 +110,7 @@ type Handler struct {
 }
 
 func New(deps Dependencies) (*Handler, error) {
-	if deps.Sessions == nil || deps.Markets == nil || deps.Wagers == nil {
+	if deps.Sessions == nil || deps.Markets == nil || deps.Wagers == nil || deps.Settlements == nil {
 		return nil, errors.New("betting web dependencies must all be configured")
 	}
 	templates, err := parseTemplates()
@@ -153,6 +156,9 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /admin/wagers", h.adminWagers)
 	h.mux.HandleFunc("POST /admin/wagers/{id}/accept", h.adminAcceptWager)
 	h.mux.HandleFunc("POST /admin/wagers/{id}/reject", h.adminRejectWager)
+	h.mux.HandleFunc("GET /admin/settle-up", h.adminSettleUp)
+	h.mux.HandleFunc("POST /admin/settle-up", h.adminRecordSettlement)
+	h.mux.HandleFunc("POST /admin/settle-up/{id}/reverse", h.adminReverseSettlement)
 	h.mux.HandleFunc("GET /admin/help", h.adminHelp)
 }
 
@@ -346,6 +352,8 @@ type pageData struct {
 	Market            marketView
 	MemberWagers      []memberWagerView
 	AdminWagers       []adminWagerView
+	Outstanding       []settleUpView
+	Settlements       []bettingpg.SettlementRow
 	FormError         string
 	Notice            string
 	BackLink          string
@@ -1216,6 +1224,7 @@ func parseTemplates() (map[string]*template.Template, error) {
 		"admin_market_new":    "templates/admin_market_new.gohtml",
 		"admin_market_settle": "templates/admin_market_settle.gohtml",
 		"admin_wagers":        "templates/admin_wagers.gohtml",
+		"admin_settle_up":     "templates/admin_settle_up.gohtml",
 		"admin_help":          "templates/admin_help.gohtml",
 		"message":             "templates/betting_message.gohtml",
 		"forbidden":           "templates/private_forbidden.gohtml",

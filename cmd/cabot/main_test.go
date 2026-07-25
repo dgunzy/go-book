@@ -266,6 +266,9 @@ func TestBettingRoutesWinOverThePrivateBookSubtree(t *testing.T) {
 		{http.MethodGet, "/admin/wagers", http.StatusNoContent},
 		{http.MethodPost, "/admin/wagers/11111111-1111-1111-1111-111111111111/accept", http.StatusNoContent},
 		{http.MethodGet, "/admin/help", http.StatusNoContent},
+		{http.MethodGet, "/admin/settle-up", http.StatusNoContent},
+		{http.MethodPost, "/admin/settle-up", http.StatusNoContent},
+		{http.MethodPost, "/admin/settle-up/11111111-1111-1111-1111-111111111111/reverse", http.StatusNoContent},
 		// Everything else in the subtree still belongs to privateweb.
 		{http.MethodGet, "/book", http.StatusTeapot},
 		{http.MethodGet, "/book/ledger", http.StatusTeapot},

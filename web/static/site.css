@@ -857,3 +857,8 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .private-reference { color: #8a938c; display: block; font-size: .68rem; overflow-wrap: anywhere; }
 .private-table-note { color: #5b6760; font-size: .78rem; margin: .6rem 0 0; }
 .private-table-note a, .private-empty-cell a { color: #174d36; font-weight: 700; }
+.pulse-owed { grid-template-columns: repeat(2, 1fr); margin-bottom: .9rem; }
+.private-table tbody tr.is-reversed { color: #6c7770; }
+.private-table tbody tr.is-reversed .private-money { text-decoration: line-through; }
+.settle-up-form select { border: 1px solid #b8c1bb; border-radius: 4px; font: inherit; font-size: .78rem; padding: .3rem .4rem; }
+.settle-up-form input[name="amount"] { width: 6rem; }

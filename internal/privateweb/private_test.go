@@ -120,6 +120,12 @@ func testDependencies(session Session) (Dependencies, *fakeReader) {
 				Handle: ledger.Money{Cents: 60_000, Currency: ledger.CAD}, BarPercent: 25},
 		},
 		PlayerScale: ledger.Money{Cents: 40_000, Currency: ledger.CAD},
+		Outstanding: []OutstandingRow{
+			{Name: "Bill C", Balance: ledger.Money{Cents: -15_000, Currency: ledger.CAD}},
+			{Name: "Dan Guns", Balance: ledger.Money{Cents: 30_000, Currency: ledger.CAD}},
+		},
+		OwedToBook: ledger.Money{Cents: 15_000, Currency: ledger.CAD},
+		OwedByBook: ledger.Money{Cents: 30_000, Currency: ledger.CAD},
 	}
 	return Dependencies{Sessions: &fakeSessions{session: session}, Dashboard: reader, Ledger: reader,
 		Wagers: reader, Reconciliation: reader, BookPulse: reader}, reader
@@ -439,5 +445,29 @@ func TestAdminDashboardFailsClosedWhenThePulseIsUnavailable(t *testing.T) {
 
 	if response.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", response.Code)
+	}
+}
+
+// Owed-and-owing is a cash position and must read as separate from the player
+// standings, which are betting results.
+func TestAdminDashboardSeparatesOwedFromResults(t *testing.T) {
+	deps, _ := testDependencies(Session{UserID: "admin-1", DisplayName: "Book Admin", Role: RoleAdmin, Active: true})
+	response := httptest.NewRecorder()
+	newHandler(t, deps).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin", nil))
+
+	body := response.Body.String()
+	for _, expected := range []string{
+		"Owed and owing", "Owed to the book", "CA$150.00",
+		"Owed by the book", "CA$300.00",
+		"Owes the book", "The book owes them",
+		"/admin/settle-up",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("dashboard does not contain %q", expected)
+		}
+	}
+	// The standings still report betting results, unchanged by cash owed.
+	if !strings.Contains(body, "CA$400.00") {
+		t.Error("player standings no longer show the betting result")
 	}
 }

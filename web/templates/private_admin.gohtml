@@ -110,6 +110,33 @@
   {{end}}
 </section>
 
+<section aria-labelledby="outstanding-heading">
+  <div class="private-section-heading"><h2 id="outstanding-heading">Owed and owing</h2></div>
+  <p class="pulse-note">Cash positions, not results: what each member still owes the book or is still owed by it. Settling up on the <a href="/admin/settle-up">Settle up</a> page moves these and leaves the standings above untouched.</p>
+  <div class="pulse-swing pulse-owed">
+    <article class="is-best"><span>Owed to the book</span><strong>{{money .Pulse.OwedToBook}}</strong><small>Members who are down and have not paid yet.</small></article>
+    <article class="is-worst"><span>Owed by the book</span><strong>{{money .Pulse.OwedByBook}}</strong><small>Winnings not yet paid out.</small></article>
+  </div>
+  {{if .Pulse.Outstanding}}
+  <div class="private-table-wrap">
+    <table class="private-table">
+      <thead><tr><th scope="col">Member</th><th scope="col">Balance</th><th scope="col">Position</th></tr></thead>
+      <tbody>
+        {{range .Pulse.Outstanding}}
+        <tr>
+          <th scope="row">{{.Name}}</th>
+          <td class="private-money{{if .Owes}} is-behind-text{{else}} is-ahead-text{{end}}">{{money .Balance}}</td>
+          <td>{{if .Owes}}Owes the book{{else}}The book owes them{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="private-empty">Everyone is square with the book.</p>
+  {{end}}
+</section>
+
 <section aria-labelledby="open-action-heading">
   <div class="private-section-heading"><h2 id="open-action-heading">Action on the board</h2></div>
   <p class="pulse-note">Accepted bets still waiting on a result, newest first.</p>

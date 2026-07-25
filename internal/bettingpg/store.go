@@ -274,11 +274,12 @@ func insertLedgerTransaction(ctx context.Context, tx pgx.Tx, txn ledger.Transact
 	err := tx.QueryRow(ctx, `
 		INSERT INTO ledger_transactions
 		(transaction_type, currency, idempotency_key, source_type, source_id, actor_user_id, reason,
-		 expected_posting_count, occurred_at)
-		VALUES ($1, $2, $3, $4, nullif($5, '')::uuid, nullif($6, '')::uuid, nullif($7, ''), $8, now())
+		 reversal_of_transaction_id, expected_posting_count, occurred_at)
+		VALUES ($1, $2, $3, $4, nullif($5, '')::uuid, nullif($6, '')::uuid, nullif($7, ''),
+		        nullif($8, '')::uuid, $9, now())
 		RETURNING id::text`,
 		string(txn.Type), string(txn.Currency), txn.IdempotencyKey, txn.SourceType, txn.SourceID,
-		actorUUID, txn.Reason, txn.ExpectedPostingCount()).Scan(&id)
+		actorUUID, txn.Reason, txn.ReversalOf, txn.ExpectedPostingCount()).Scan(&id)
 	if err != nil {
 		return "", fmt.Errorf("insert ledger transaction %s: %w", txn.IdempotencyKey, err)
 	}

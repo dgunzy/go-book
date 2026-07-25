@@ -74,6 +74,19 @@ func (r *Readers) BookPulse(ctx context.Context) (privateweb.BookPulse, error) {
 		return privateweb.BookPulse{}, err
 	}
 	pulse.PlayerScale = ledger.Money{Cents: scalePlayerBars(pulse.Players), Currency: bookCurrency}
+
+	if pulse.Outstanding, err = r.outstandingRows(ctx); err != nil {
+		return privateweb.BookPulse{}, err
+	}
+	pulse.OwedToBook = ledger.Money{Currency: bookCurrency}
+	pulse.OwedByBook = ledger.Money{Currency: bookCurrency}
+	for _, row := range pulse.Outstanding {
+		if row.Balance.Cents < 0 {
+			pulse.OwedToBook.Cents -= row.Balance.Cents
+			continue
+		}
+		pulse.OwedByBook.Cents += row.Balance.Cents
+	}
 	return pulse, nil
 }
 
@@ -227,6 +240,31 @@ func (r *Readers) openWagerRows(ctx context.Context) ([]privateweb.OpenWagerRow,
 	return result, nil
 }
 
+// outstandingRows reads each member's cash position — what they owe the book
+// or are owed by it — which settling up moves and betting results do not.
+func (r *Readers) outstandingRows(ctx context.Context) ([]privateweb.OutstandingRow, error) {
+	rows, err := r.db.Query(ctx, outstandingSQL, string(bookCurrency))
+	if err != nil {
+		return nil, fmt.Errorf("query outstanding balances: %w", err)
+	}
+	defer rows.Close()
+
+	result := make([]privateweb.OutstandingRow, 0)
+	for rows.Next() {
+		var row privateweb.OutstandingRow
+		var cents int64
+		if err := rows.Scan(&row.Name, &cents); err != nil {
+			return nil, fmt.Errorf("scan outstanding balance: %w", err)
+		}
+		row.Balance = ledger.Money{Cents: cents, Currency: bookCurrency}
+		result = append(result, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate outstanding balances: %w", err)
+	}
+	return result, nil
+}
+
 func (r *Readers) playerResults(ctx context.Context) ([]privateweb.PlayerResult, error) {
 	rows, err := r.db.Query(ctx, playerResultsSQL)
 	if err != nil {
@@ -263,10 +301,19 @@ func (r *Readers) playerResults(ctx context.Context) ([]privateweb.PlayerResult,
 
 // bookTotalsSQL reads the headline numbers in one round trip. Money is scoped
 // to $1 (the book currency) so nothing is added across currencies.
+//
+// The house result counts only wager transactions. Settling up with a member
+// posts against the same house clearing account, so its raw balance is the
+// book's outstanding cash position, not what it won — those are reported
+// separately and must not be confused.
 const bookTotalsSQL = `
 SELECT statement_timestamp(),
-       coalesce((SELECT sum(balance_cents) FROM ledger_account_balances
-                 WHERE account_type = 'house_clearing' AND currency::text = $1), 0)::bigint,
+       coalesce((SELECT sum(p.amount_cents)
+                 FROM ledger_postings p
+                 JOIN ledger_accounts a ON a.id = p.account_id
+                 JOIN ledger_transactions t ON t.id = p.transaction_id
+                 WHERE a.account_type = 'house_clearing' AND a.currency::text = $1
+                   AND t.transaction_type IN ('wager_acceptance', 'wager_win', 'wager_loss', 'wager_refund')), 0)::bigint,
        coalesce((SELECT sum(balance_cents) FROM ledger_account_balances
                  WHERE account_type = 'wager_escrow' AND currency::text = $1), 0)::bigint,
        coalesce((SELECT sum(stake_cents) FROM wagers
@@ -337,5 +384,15 @@ LEFT JOIN betting b ON b.user_id = u.id
 LEFT JOIN record r ON r.user_id = u.id
 WHERE coalesce(r.handle_cents, 0) > 0 OR coalesce(b.net_cents, 0) <> 0
 ORDER BY coalesce(b.net_cents, 0) DESC, u.display_name`
+
+// outstandingSQL lists members who are not square with the book. A negative
+// balance is money the member owes.
+const outstandingSQL = `
+SELECT u.display_name, b.balance_cents::bigint
+FROM users u
+JOIN ledger_account_balances b ON b.owner_user_id = u.id
+    AND b.account_type = 'user_cash' AND b.currency::text = $1
+WHERE b.balance_cents <> 0
+ORDER BY b.balance_cents, u.display_name`
 
 var _ privateweb.BookPulseReader = (*Readers)(nil)

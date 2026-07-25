@@ -35,6 +35,12 @@ func pulseScript(t *testing.T, now time.Time) *scriptedDB {
 			[]any{"Dan Guns", int64(40_000), int64(6), int64(2), int64(1), int64(1), int64(120_000)},
 			[]any{"Bill C", int64(-10_000), int64(1), int64(3), int64(0), int64(2), int64(60_000)},
 		)},
+		// Cash positions: Bill is down $150 and has not paid; the book still
+		// owes Dan $300 of winnings.
+		{kind: "query", contains: "account_type = 'user_cash'", args: []any{"CAD"}, rows: rows(
+			[]any{"Bill C", int64(-15_000)},
+			[]any{"Dan Guns", int64(30_000)},
+		)},
 	}}
 }
 
@@ -95,6 +101,28 @@ func TestBookPulseComputesExposureAndSwing(t *testing.T) {
 	if len(pulse.OpenWagers) != 1 || pulse.OpenWagers[0].Member != "Dan Guns" || pulse.OpenWagers[0].Odds != -208 {
 		t.Fatalf("open wagers = %+v", pulse.OpenWagers)
 	}
+
+	// Owed and owing is a cash position, reported apart from the standings:
+	// both sides are positive figures and neither touches player P&L.
+	if pulse.OwedToBook.Cents != 15_000 || pulse.OwedByBook.Cents != 30_000 {
+		t.Fatalf("owed to the book = %d, owed by the book = %d; want 15000 and 30000",
+			pulse.OwedToBook.Cents, pulse.OwedByBook.Cents)
+	}
+	if len(pulse.Outstanding) != 2 || !pulse.Outstanding[0].Owes() || pulse.Outstanding[1].Owes() {
+		t.Fatalf("outstanding = %+v", pulse.Outstanding)
+	}
+}
+
+// The house result is the book's betting performance. Settling up posts against
+// the same clearing account, so the query must filter to wager transactions or
+// a member paying what they owe would look like the book losing money.
+func TestBookPulseHouseResultCountsOnlyWagerTransactions(t *testing.T) {
+	if !strings.Contains(bookTotalsSQL, "transaction_type IN ('wager_acceptance', 'wager_win', 'wager_loss', 'wager_refund')") {
+		t.Fatal("the house result no longer filters to wager transactions; settle-ups would distort it")
+	}
+	if strings.Contains(bookTotalsSQL, "WHERE account_type = 'house_clearing' AND currency::text = $1), 0)::bigint,") {
+		t.Fatal("the house result reads the raw clearing balance, which includes settled-up cash")
+	}
 }
 
 func TestBookPulseScalesStandingsBars(t *testing.T) {
@@ -136,6 +164,7 @@ func TestBookPulseHandlesAnEmptyBook(t *testing.T) {
 		{kind: "query", contains: "FROM markets m", args: []any{"CAD"}, rows: rows()},
 		{kind: "query", contains: "w.state = 'accepted'", args: []any{openWagerLimit}, rows: rows()},
 		{kind: "query", contains: "transaction_type IN", args: []any(nil), rows: rows()},
+		{kind: "query", contains: "account_type = 'user_cash'", args: []any{"CAD"}, rows: rows()},
 	}}
 	reader, _ := New(db)
 

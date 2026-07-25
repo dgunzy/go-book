@@ -72,6 +72,18 @@
   <p>The ledger state and outbox queues stay at the bottom of the page: if <strong>Unbalanced</strong> is anything other than zero, or failed outbox events pile up, tell your operator.</p>
 </section>
 
+<section class="help-section" aria-labelledby="help-settle-up">
+  <h2 id="help-settle-up">Settling up: recording a payment or a payout</h2>
+  <p>A member's <strong>balance</strong> is what they owe the book or the book owes them. Betting moves it; so does actually paying each other. The <a href="/admin/settle-up">Settle up</a> page is where you record the second kind — money that changed hands outside the app, by e-transfer, cash, or anything else.</p>
+  <ul>
+    <li><strong>Outstanding</strong> lists everyone who is not square. A member who owes shows a negative balance, and their form is pre-filled with the amount and direction that would clear it — you only have to say how the money moved.</li>
+    <li><strong>Paid the book</strong> records money coming in from a member; <strong>Paid out to them</strong> records money going out. Either way the note you type is the audit record, so write what actually happened ("e-transfer 25 July").</li>
+    <li>Recording a settlement <strong>changes nobody's profit and loss</strong>. The dashboard's house result and player standings count wagers only, so paying up squares the balance and leaves the season's results exactly as they were.</li>
+  </ul>
+  <p>Got one wrong? <strong>Reverse</strong> it with a reason. Ledger history is never deleted: the original entry stays visible and a linked correcting entry cancels it, so the balance returns to where it was and both rows remain on the record. A settlement can only be reversed once.</p>
+  <p>Admins and owners can both record and reverse settlements, and every entry keeps the name of whoever made it.</p>
+</section>
+
 <section class="help-section" aria-labelledby="help-members">
   <h2 id="help-members">Adding people and linking their golf history</h2>
   <p>On the <a href="/admin/members">Members</a> page, generate a one-time <strong>invite link</strong> and send it to someone. They open it, sign in with Google, and join automatically — no need to pre-enter their email. Admins can invite members; only an owner can invite admins or change roles.</p>

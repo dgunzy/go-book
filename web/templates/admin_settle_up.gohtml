@@ -1,0 +1,80 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Book administration</p><h1>Settle up</h1></div>
+  <p>Record money that changed hands outside the app — cash, e-transfer, whatever — so each member's balance shows what is still outstanding. This grades no wagers and changes nobody's profit and loss.</p>
+</header>
+
+<section aria-labelledby="outstanding-heading">
+  <div class="private-section-heading"><h2 id="outstanding-heading">Outstanding</h2></div>
+  <p class="pulse-note">A member who owes the book shows a negative balance. Recording a payment moves them toward zero; it does not change what they won or lost.</p>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide">
+      <thead><tr><th scope="col">Member</th><th scope="col">Balance</th><th scope="col">Position</th><th scope="col">Record a settlement</th></tr></thead>
+      <tbody>
+        {{range .Outstanding}}
+        <tr>
+          <th scope="row">{{.Name}}</th>
+          <td class="private-money{{if .Owes}} is-behind-text{{else}} is-ahead-text{{end}}">{{money .Balance}}</td>
+          <td>{{if .Owes}}Owes the book{{else}}The book owes them{{end}}</td>
+          <td class="betting-actions-cell">
+            <form method="post" action="/admin/settle-up" class="betting-inline-form settle-up-form" hx-post="/admin/settle-up" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <input type="hidden" name="user_id" value="{{.UserID}}">
+              <label class="visually-hidden" for="direction-{{.UserID}}">Which way the money moved</label>
+              <select id="direction-{{.UserID}}" name="direction">
+                <option value="payment_received" {{if .PaysTheBook}}selected{{end}}>Paid the book</option>
+                <option value="payout_sent" {{if not .PaysTheBook}}selected{{end}}>Paid out to them</option>
+              </select>
+              <label class="visually-hidden" for="amount-{{.UserID}}">Amount</label>
+              <input id="amount-{{.UserID}}" name="amount" value="{{.Amount}}" inputmode="decimal" size="8" required>
+              <label class="visually-hidden" for="reason-{{.UserID}}">How the money moved</label>
+              <input id="reason-{{.UserID}}" name="reason" maxlength="500" placeholder="e-transfer, cash, …" required>
+              <button type="submit">Record</button>
+            </form>
+          </td>
+        </tr>
+        {{else}}
+        <tr><td colspan="4" class="private-empty-cell">Everyone is square with the book.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="settlement-history-heading">
+  <div class="private-section-heading"><h2 id="settlement-history-heading">Recorded settlements</h2></div>
+  <p class="pulse-note">Nothing here is ever deleted. A settlement recorded in error is cancelled by a correcting entry, and both stay on the record.</p>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide">
+      <thead><tr><th scope="col">Recorded</th><th scope="col">Member</th><th scope="col">Direction</th><th scope="col">Amount</th><th scope="col">Note</th><th scope="col">By</th><th scope="col">Actions</th></tr></thead>
+      <tbody>
+        {{range .Settlements}}
+        <tr{{if .Reversed}} class="is-reversed"{{end}}>
+          <td>{{when .OccurredAt}}</td>
+          <th scope="row">{{.MemberName}}</th>
+          <td>{{if eq .Direction "payout_sent"}}Paid out{{else}}Paid in{{end}}</td>
+          <td class="private-money">{{money .Amount}}</td>
+          <td>{{.Reason}}</td>
+          <td>{{.ActorName}}</td>
+          <td class="betting-actions-cell">
+            {{if .Reversed}}
+              <span class="betting-line-flag">Reversed {{when .ReversedAt}}</span>
+              {{if .ReversedReason}}<small class="betting-reason">{{.ReversedReason}}</small>{{end}}
+            {{else}}
+            <form method="post" action="/admin/settle-up/{{.AdjustmentID}}/reverse" class="betting-inline-form" hx-post="/admin/settle-up/{{.AdjustmentID}}/reverse" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <label class="visually-hidden" for="reverse-reason-{{.AdjustmentID}}">Reason for reversing</label>
+              <input id="reverse-reason-{{.AdjustmentID}}" name="reason" maxlength="500" placeholder="Reason" required>
+              <button type="submit" class="betting-danger-button">Reverse</button>
+            </form>
+            {{end}}
+          </td>
+        </tr>
+        {{else}}
+        <tr><td colspan="7" class="private-empty-cell">No settlements have been recorded yet.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}
