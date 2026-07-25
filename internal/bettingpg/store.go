@@ -34,7 +34,28 @@ type PostgresDB interface {
 }
 
 // Store implements PostgreSQL persistence for the betting domain.
-type Store struct{ DB PostgresDB }
+//
+// MaxPayoutCents is the book-wide ceiling on what one wager may win. It is a
+// hard cap by design: when it is left unset the compiled default applies, so
+// no code path can place a wager that escapes it.
+type Store struct {
+	DB             PostgresDB
+	MaxPayoutCents int64
+}
+
+// DefaultMaxPayoutCents is the payout ceiling used when none is configured:
+// $5,000 of profit on a single wager. A longshot price turns a small stake
+// into a large liability, and this is what the book is prepared to owe on one
+// bet.
+const DefaultMaxPayoutCents = 500_000
+
+// maxPayout is the ceiling in force for this store.
+func (s Store) maxPayout() int64 {
+	if s.MaxPayoutCents > 0 {
+		return s.MaxPayoutCents
+	}
+	return DefaultMaxPayoutCents
+}
 
 func (s Store) begin(ctx context.Context) (pgx.Tx, error) {
 	if s.DB == nil {

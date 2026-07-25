@@ -53,6 +53,10 @@ func (s Store) PlaceWager(ctx context.Context, req PlaceWagerRequest) (betting.W
 	if err != nil {
 		return betting.Wager{}, err
 	}
+	maxStake, existingStake, err := loadStakeLimit(ctx, tx, req.MarketID, req.UserID)
+	if err != nil {
+		return betting.Wager{}, err
+	}
 	stake, err := ledger.NewMoney(req.StakeCents, req.Currency)
 	if err != nil {
 		return betting.Wager{}, fmt.Errorf("build stake: %w", err)
@@ -64,6 +68,9 @@ func (s Store) PlaceWager(ctx context.Context, req PlaceWagerRequest) (betting.W
 		Market:             market,
 		Selection:          selection,
 		Restrictions:       restricted,
+		MaxStakeCents:      maxStake,
+		ExistingStakeCents: existingStake,
+		MaxPayoutCents:     s.maxPayout(),
 		FundingAccountType: req.FundingAccountType,
 		Stake:              stake,
 		IdempotencyKey:     req.IdempotencyKey,
@@ -115,4 +122,24 @@ func loadWagerByUserIdempotencyKey(ctx context.Context, tx pgx.Tx, userID, idemp
 		return betting.Wager{}, fmt.Errorf("load placed wager: %w", err)
 	}
 	return wager, nil
+}
+
+// loadStakeLimit returns the market's per-member stake cap and what this
+// member already has riding on it. Pending wagers count: money waiting for
+// approval is money they are trying to have on.
+func loadStakeLimit(ctx context.Context, tx pgx.Tx, marketID, userID string) (maxStake, existing int64, err error) {
+	var limit *int64
+	if err := tx.QueryRow(ctx, `SELECT max_stake_cents FROM markets WHERE id = $1::uuid`, marketID).Scan(&limit); err != nil {
+		return 0, 0, fmt.Errorf("load market stake limit: %w", err)
+	}
+	if limit == nil {
+		return 0, 0, nil
+	}
+	if err := tx.QueryRow(ctx, `
+		SELECT coalesce(sum(stake_cents), 0) FROM wagers
+		WHERE market_id = $1::uuid AND user_id = $2::uuid AND state IN ('pending', 'accepted')`,
+		marketID, userID).Scan(&existing); err != nil {
+		return 0, 0, fmt.Errorf("load member stake on market: %w", err)
+	}
+	return *limit, existing, nil
 }

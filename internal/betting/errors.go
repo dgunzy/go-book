@@ -18,6 +18,8 @@ var (
 	ErrSelectionInactive   = errors.New("selection is not active")
 	ErrSelectionMismatch   = errors.New("selection does not belong to the market")
 	ErrUserRestricted      = errors.New("user is restricted from this market")
+	ErrStakeAboveLimit     = errors.New("stake would exceed this market's limit for one member")
+	ErrPayoutAboveLimit    = errors.New("wager would win more than the book's maximum payout")
 	ErrIncompleteOutcome   = errors.New("settlement outcome does not cover every selection exactly once")
 	ErrWagerMarketMismatch = errors.New("wager does not belong to the market being settled")
 )

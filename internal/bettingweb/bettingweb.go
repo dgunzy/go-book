@@ -1052,6 +1052,10 @@ func storeErrorStatus(err error) (int, string) {
 		return http.StatusConflict, "This selection is no longer available."
 	case errors.Is(err, betting.ErrUserRestricted):
 		return http.StatusForbidden, "This account is not able to bet on this market."
+	case errors.Is(err, betting.ErrStakeAboveLimit):
+		return http.StatusConflict, "That would go over this market's limit for one member. Check what is already on it."
+	case errors.Is(err, betting.ErrPayoutAboveLimit):
+		return http.StatusConflict, "That would win more than the book's maximum payout on a single wager. Lower the stake."
 	case errors.Is(err, betting.ErrInvalidTransition):
 		return http.StatusConflict, "This action is not allowed in the current state."
 	case errors.Is(err, betting.ErrReasonRequired):
@@ -1211,6 +1215,13 @@ func parseCreateMarketForm(form url.Values) (bettingpg.CreateMarketRequest, stri
 	if request.Type == betting.MarketMatch && len(request.Selections) != 2 {
 		return request, "Enter prices for both sides of the match."
 	}
+	if raw := strings.TrimSpace(form.Get("max_stake")); raw != "" {
+		cents, err := parseStakeCents(raw)
+		if err != nil {
+			return request, "Enter the per-member limit as a dollars-and-cents amount, or leave it blank for no limit."
+		}
+		request.MaxStakeCents = cents
+	}
 	if request.DynamicPricing && len(request.Selections) < 2 {
 		return request, "Dynamic pricing needs at least two outcomes. Add another outcome or turn dynamic pricing off."
 	}
@@ -1296,9 +1307,10 @@ func (h *Handler) internalError(w http.ResponseWriter) {
 
 func parseTemplates() (map[string]*template.Template, error) {
 	functions := template.FuncMap{
-		"money": formatMoney,
-		"odds":  formatOdds,
-		"when":  formatTime,
+		"money":   formatMoney,
+		"dollars": formatCentsDollars,
+		"odds":    formatOdds,
+		"when":    formatTime,
 	}
 	pages := map[string]string{
 		"book_markets":        "templates/book_markets.gohtml",

@@ -101,6 +101,11 @@
     <p class="betting-hint">Larger liquidity means smaller price moves. Every accepted wager keeps the exact price it received.</p>
   </fieldset>
 
+  <label>Most one member may have on it (optional)
+    <input name="max_stake" value="{{.Form.Get "max_stake"}}" inputmode="decimal" placeholder="e.g. 50.00 — blank for no limit">
+  </label>
+  <p class="betting-hint">A cap for fun lines: counts everything that member already has riding on this market, however many bets they spread it over. Every wager is also capped by the book's maximum payout.</p>
+
   <fieldset class="betting-selection-slots" data-custom-outcomes {{if eq $type "match"}}hidden{{end}}>
     <legend>Outcomes</legend>
     <p class="betting-hint">Name each bettable result and set its opening American odds. Leave unused rows completely blank.</p>

@@ -55,6 +55,9 @@ var selectionRestrictionsSQL string
 //go:embed 000013_wager_placed_by.up.sql
 var wagerPlacedBySQL string
 
+//go:embed 000014_market_stake_limit.up.sql
+var marketStakeLimitSQL string
+
 // All returns migrations in application order.
 func All() []Definition {
 	return []Definition{
@@ -71,6 +74,7 @@ func All() []Definition {
 		newDefinition(11, "manual_line_moves", manualLineMovesSQL),
 		newDefinition(12, "selection_restrictions", selectionRestrictionsSQL),
 		newDefinition(13, "wager_placed_by", wagerPlacedBySQL),
+		newDefinition(14, "market_stake_limit", marketStakeLimitSQL),
 	}
 }
 

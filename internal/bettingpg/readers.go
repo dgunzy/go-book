@@ -36,9 +36,12 @@ type MarketRow struct {
 	State          betting.MarketState
 	Currency       ledger.Currency
 	DynamicPricing bool
-	OpensAt        time.Time
-	ClosesAt       time.Time
-	Selections     []MarketSelectionRow
+	// MaxStakeCents caps what one member may have on this market; zero means
+	// no cap.
+	MaxStakeCents int64
+	OpensAt       time.Time
+	ClosesAt      time.Time
+	Selections    []MarketSelectionRow
 }
 
 // MatchMarketOption is an open competition match that does not yet have an
@@ -216,7 +219,7 @@ type UserWagerRow struct {
 // order, which on a sixteen-name prop looks like no order at all.
 const marketRowsSQL = `
 SELECT m.id::text, m.market_type, coalesce(m.match_id::text, ''), m.title, m.state, m.currency::text,
-       m.dynamic_pricing, m.opens_at, m.closes_at,
+       m.dynamic_pricing, coalesce(m.max_stake_cents, 0), m.opens_at, m.closes_at,
        coalesce(s.id::text, ''), coalesce(s.selection_key, ''), coalesce(s.display_terms, ''),
        coalesce(s.offered_american_odds, 100), coalesce(s.opening_american_odds, 100),
        coalesce(s.semantic_result_key, ''), coalesce(s.active, false)
@@ -326,13 +329,14 @@ func (s Store) listMarkets(ctx context.Context, query string, args ...any) ([]Ma
 	for rows.Next() {
 		var id, marketType, matchID, title, state, currency string
 		var dynamicPricing bool
+		var maxStakeCents int64
 		var opensAt sql.NullTime
 		var closesAt time.Time
 		var selectionID, selectionKey, displayTerms, semanticKey string
 		var odds, openingOdds int32
 		var active bool
 		if err := rows.Scan(&id, &marketType, &matchID, &title, &state, &currency,
-			&dynamicPricing, &opensAt, &closesAt, &selectionID, &selectionKey, &displayTerms, &odds, &openingOdds, &semanticKey, &active); err != nil {
+			&dynamicPricing, &maxStakeCents, &opensAt, &closesAt, &selectionID, &selectionKey, &displayTerms, &odds, &openingOdds, &semanticKey, &active); err != nil {
 			return nil, fmt.Errorf("scan market row: %w", err)
 		}
 		position, seen := index[id]

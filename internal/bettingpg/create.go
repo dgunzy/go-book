@@ -45,6 +45,9 @@ type CreateMarketRequest struct {
 	// and must be positive when DynamicPricing is set.
 	DynamicPricing        bool
 	PricingLiquidityCents int64
+	// MaxStakeCents caps what one member may have riding on this market at
+	// once. Zero means no cap.
+	MaxStakeCents int64
 }
 
 // MaxSelectionsPerMarket bounds the selection list on one market so a
@@ -136,13 +139,13 @@ func (s Store) CreateMarket(ctx context.Context, req CreateMarketRequest) (betti
 	}
 	var insertedID string
 	err = tx.QueryRow(ctx, `
-		INSERT INTO markets (id, market_type, match_id, title, state, currency, opens_at, closes_at, created_by, dynamic_pricing, pricing_liquidity_cents)
-		VALUES ($1::uuid, $2, nullif($3, '')::uuid, $4, 'draft', $5, $6, $7, $8::uuid, $9, $10)
+		INSERT INTO markets (id, market_type, match_id, title, state, currency, opens_at, closes_at, created_by, dynamic_pricing, pricing_liquidity_cents, max_stake_cents)
+		VALUES ($1::uuid, $2, nullif($3, '')::uuid, $4, 'draft', $5, $6, $7, $8::uuid, $9, $10, nullif($11, 0::bigint))
 		ON CONFLICT (id) DO NOTHING
 		RETURNING id::text`,
 		string(market.ID), string(market.Type), string(market.MatchID), market.Title,
 		string(market.Currency), nullableTime(market.OpensAt), market.ClosesAt.UTC(), req.ActorUserID,
-		req.DynamicPricing, pricingLiquidity).Scan(&insertedID)
+		req.DynamicPricing, pricingLiquidity, req.MaxStakeCents).Scan(&insertedID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		existing, err := loadMarket(ctx, tx, string(market.ID))
 		if err != nil {

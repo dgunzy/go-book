@@ -15,7 +15,7 @@
           <th scope="row">{{.Market.Title}}{{if .Market.DynamicPricing}} <span class="betting-pricing-badge" title="Line moves automatically as action comes in">auto-priced</span>{{end}}</th>
           <td><span class="private-status">{{.Market.Type}}</span></td>
           <td><span class="private-status">{{.Market.State}}</span></td>
-          <td>{{.Market.Currency}}</td>
+          <td>{{.Market.Currency}}{{if .Market.MaxStakeCents}}<small>max {{dollars .Market.MaxStakeCents}} each</small>{{end}}</td>
           <td>{{when .Market.ClosesAt}}
             {{if or (eq .Market.State "open") (eq .Market.State "draft")}}
             <form method="post" action="/admin/markets/{{.Market.ID}}/close-time" class="betting-inline-form betting-close-time-form" hx-post="/admin/markets/{{.Market.ID}}/close-time" hx-target="this" hx-swap="outerHTML">

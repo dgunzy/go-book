@@ -357,3 +357,65 @@ func TestRestrictionRestricts(t *testing.T) {
 		t.Fatal("a restriction must not apply to another member")
 	}
 }
+
+// A market's stake cap limits the member, not the bet: spreading money over
+// several wagers must not get around it.
+func TestPlaceWagerEnforcesTheMarketStakeCapAcrossBets(t *testing.T) {
+	t.Parallel()
+	command := placeCommand()
+	command.MaxStakeCents = 5_000
+	command.Stake = ledger.Money{Cents: 3_000, Currency: ledger.CAD}
+
+	// Nothing on it yet: fine.
+	if _, err := PlaceWager(command); err != nil {
+		t.Fatalf("first wager under the cap error = %v", err)
+	}
+	// $30 already on, $30 more would be $60 against a $50 cap.
+	command.ExistingStakeCents = 3_000
+	if _, err := PlaceWager(command); !errors.Is(err, ErrStakeAboveLimit) {
+		t.Fatalf("second wager over the cap error = %v, want ErrStakeAboveLimit", err)
+	}
+	// Exactly to the cap is allowed: the limit is a ceiling, not a barrier.
+	command.Stake = ledger.Money{Cents: 2_000, Currency: ledger.CAD}
+	if _, err := PlaceWager(command); err != nil {
+		t.Fatalf("wager landing exactly on the cap error = %v, want it allowed", err)
+	}
+	// No cap set means no limit.
+	command.MaxStakeCents = 0
+	command.Stake = ledger.Money{Cents: 100_000, Currency: ledger.CAD}
+	if _, err := PlaceWager(command); err != nil {
+		t.Fatalf("wager on an uncapped market error = %v", err)
+	}
+}
+
+// The payout ceiling is about what the book would owe: a small stake at a long
+// price is still a big liability.
+func TestPlaceWagerEnforcesTheBookPayoutCeiling(t *testing.T) {
+	t.Parallel()
+	command := placeCommand()
+	command.MaxPayoutCents = 500_000
+	// The fixture selection is +150, so $4,000 wins $6,000 — over the ceiling.
+	command.Stake = ledger.Money{Cents: 400_000, Currency: ledger.CAD}
+	if _, err := PlaceWager(command); !errors.Is(err, ErrPayoutAboveLimit) {
+		t.Fatalf("wager over the payout ceiling error = %v, want ErrPayoutAboveLimit", err)
+	}
+
+	// $3,000 wins $4,500, which is under it.
+	command.Stake = ledger.Money{Cents: 300_000, Currency: ledger.CAD}
+	if _, err := PlaceWager(command); err != nil {
+		t.Fatalf("wager under the payout ceiling error = %v", err)
+	}
+
+	// A longshot is where this bites: a small stake, a huge return.
+	longshot := placeCommand()
+	longshot.MaxPayoutCents = 500_000
+	longshot.Selection.OfferedAmericanOdds = 3000
+	longshot.Stake = ledger.Money{Cents: 20_000, Currency: ledger.CAD} // $200 to win $6,000
+	if _, err := PlaceWager(longshot); !errors.Is(err, ErrPayoutAboveLimit) {
+		t.Fatalf("longshot over the ceiling error = %v, want ErrPayoutAboveLimit", err)
+	}
+	longshot.Stake = ledger.Money{Cents: 15_000, Currency: ledger.CAD} // $150 to win $4,500
+	if _, err := PlaceWager(longshot); err != nil {
+		t.Fatalf("longshot under the ceiling error = %v", err)
+	}
+}

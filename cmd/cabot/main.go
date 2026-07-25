@@ -144,7 +144,7 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		if err != nil {
 			return fmt.Errorf("build private web handler: %w", err)
 		}
-		bettingStore := bettingpg.Store{DB: pool}
+		bettingStore := bettingpg.Store{DB: pool, MaxPayoutCents: applicationConfig.WagerMaxPayoutCents}
 		bettingHandler, err := bettingweb.New(bettingweb.Dependencies{
 			Sessions: authHandler.SessionReader(), Markets: bettingStore, Wagers: bettingStore,
 			Settlements:                  bettingStore,

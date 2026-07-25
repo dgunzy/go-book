@@ -38,6 +38,10 @@ type Config struct {
 	// in cents) applied to a new market when the admin enables dynamic pricing
 	// without typing a value. Larger = the line moves less per dollar of action.
 	PricingLiquidityDefaultCents int64
+	// WagerMaxPayoutCents is the book-wide ceiling on what a single wager may
+	// win in profit, so a longshot price cannot turn a small stake into a
+	// liability the book will not cover.
+	WagerMaxPayoutCents int64
 	// DatabaseConnectTimeout bounds how long startup retries an initial database
 	// connection before giving up. It must stay below the deployment's liveness
 	// kill deadline, or the process is killed mid-retry.
@@ -89,6 +93,11 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 
 	pricingLiquidityDefaultCents, err := parsePricingLiquidityDefault(valueOrDefault(lookup, "PRICING_LIQUIDITY_DEFAULT_CENTS", strconv.FormatInt(defaultPricingLiquidityCents, 10)))
+	if err != nil {
+		return Config{}, err
+	}
+	maxPayoutCents, err := parsePositiveCents("WAGER_MAX_PAYOUT_CENTS",
+		valueOrDefault(lookup, "WAGER_MAX_PAYOUT_CENTS", strconv.FormatInt(defaultMaxPayoutCents, 10)))
 	if err != nil {
 		return Config{}, err
 	}
@@ -161,6 +170,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		ShutdownTimeout:              shutdownTimeout,
 		WagerAutoApproveMaxCents:     autoApproveMaxCents,
 		PricingLiquidityDefaultCents: pricingLiquidityDefaultCents,
+		WagerMaxPayoutCents:          maxPayoutCents,
 		DefaultCreditLimitCents:      creditLimitDefaultCents,
 		DatabaseConnectTimeout:       databaseConnectTimeout,
 	}, nil
@@ -183,6 +193,20 @@ const defaultCreditLimitCents = 150_000
 // drift floor in internal/pricing, not this number: liquidity sets the pace,
 // the floor sets the destination.
 const defaultPricingLiquidityCents = 500_000
+
+// defaultMaxPayoutCents is the ceiling on what one wager may win: $5,000. A
+// longshot outright turns a modest stake into a large liability, and this is
+// what the book is prepared to owe on a single bet.
+const defaultMaxPayoutCents = 500_000
+
+// parsePositiveCents reads a cents amount that must be greater than zero.
+func parsePositiveCents(name, raw string) (int64, error) {
+	value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("%s must be a positive whole number of cents", name)
+	}
+	return value, nil
+}
 
 func parseAutoApproveThreshold(value string) (int64, error) {
 	cents, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)

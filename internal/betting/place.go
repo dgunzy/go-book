@@ -37,6 +37,16 @@ type PlaceWagerCommand struct {
 	Market       Market
 	Selection    Selection
 	Restrictions []Restriction
+	// MaxStakeCents caps what one member may have riding on this market at
+	// once, counting the wagers they already hold on it. Zero means no cap.
+	MaxStakeCents int64
+	// ExistingStakeCents is what this member already has on the market,
+	// pending and accepted together.
+	ExistingStakeCents int64
+	// MaxPayoutCents is the book-wide ceiling on what a single wager may
+	// return in profit. It exists so a longshot price cannot turn a small
+	// stake into a payout the book cannot cover. Zero means no ceiling.
+	MaxPayoutCents int64
 	// PlacedBy is the admin putting this wager on for the member. It is empty
 	// when the member placed it themselves, which is the ordinary case.
 	PlacedBy           ID
@@ -96,6 +106,12 @@ func PlaceWager(command PlaceWagerCommand) (Wager, error) {
 	if command.Stake.Currency != command.Market.Currency {
 		return Wager{}, ledger.ErrCurrencyMismatch
 	}
+	// A market's stake cap is a limit on the member, not on the bet: spreading
+	// the money over several wagers must not get around it.
+	if command.MaxStakeCents > 0 &&
+		command.ExistingStakeCents+command.Stake.Cents > command.MaxStakeCents {
+		return Wager{}, ErrStakeAboveLimit
+	}
 	if strings.TrimSpace(command.IdempotencyKey) == "" {
 		return Wager{}, invalidf("wager placement requires an idempotency key")
 	}
@@ -106,6 +122,11 @@ func PlaceWager(command PlaceWagerCommand) (Wager, error) {
 	}
 	if profit.Cents <= 0 {
 		return Wager{}, invalidf("stake is too small to win at least one cent at the offered odds")
+	}
+	// The payout ceiling is about what the book would owe, not what the member
+	// puts up: a small stake at a long price can still be a large liability.
+	if command.MaxPayoutCents > 0 && profit.Cents > command.MaxPayoutCents {
+		return Wager{}, ErrPayoutAboveLimit
 	}
 
 	wager := Wager{

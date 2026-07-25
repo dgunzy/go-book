@@ -71,6 +71,8 @@ jobs:
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000011_manual_line_moves.up.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000012_selection_restrictions.up.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000013_wager_placed_by.up.sql
+          psql -1 -v ON_ERROR_STOP=1 -f migrations/000014_market_stake_limit.up.sql
+          psql -1 -v ON_ERROR_STOP=1 -f migrations/000014_market_stake_limit.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000013_wager_placed_by.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000012_selection_restrictions.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000011_manual_line_moves.down.sql
@@ -88,6 +90,7 @@ jobs:
           go run ./cmd/cabot migrate
           # Rollback rehearsal on seeded (but not financially promoted) data,
           # then prove the migration path re-applies cleanly from scratch.
+          psql -1 -v ON_ERROR_STOP=1 -f migrations/000014_market_stake_limit.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000013_wager_placed_by.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000012_selection_restrictions.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000011_manual_line_moves.down.sql
@@ -123,8 +126,8 @@ jobs:
               (SELECT count(*) FROM media_player_links) || '|' ||
               (SELECT count(*) FROM legacy_import_records)
           ")"
-          if [ "$reconciliation" != "13|23|6|23|22|23|81" ]; then
-            echo "reconciliation counts: $reconciliation (want 13|23|6|23|22|23|81)" >&2
+          if [ "$reconciliation" != "14|23|6|23|22|23|81" ]; then
+            echo "reconciliation counts: $reconciliation (want 14|23|6|23|22|23|81)" >&2
             exit 1
           fi
           # After a financial promotion the down migration must REFUSE to roll
