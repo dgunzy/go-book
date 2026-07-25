@@ -91,10 +91,18 @@ var (
 	_ WagerStore  = bettingpg.Store{}
 )
 
+// MemberStore reads one member's standing for the admin acting on it.
+type MemberStore interface {
+	MemberBook(ctx context.Context, userID string, defaultAutoApproveCents int64) (bettingpg.MemberBookRow, error)
+}
+
 type Dependencies struct {
 	Sessions SessionReader
 	Markets  MarketStore
 	Wagers   WagerStore
+	// Members and Ledger back the admin's view of one member's account.
+	Members MemberStore
+	Ledger  LedgerReader
 	// Settlements records money that changed hands outside the app so a
 	// member's balance shows what is still outstanding.
 	Settlements SettlementStore
@@ -122,7 +130,8 @@ type Handler struct {
 }
 
 func New(deps Dependencies) (*Handler, error) {
-	if deps.Sessions == nil || deps.Markets == nil || deps.Wagers == nil || deps.Settlements == nil {
+	if deps.Sessions == nil || deps.Markets == nil || deps.Wagers == nil || deps.Settlements == nil ||
+		deps.Members == nil || deps.Ledger == nil {
 		return nil, errors.New("betting web dependencies must all be configured")
 	}
 	templates, err := parseTemplates()
@@ -176,6 +185,8 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /admin/settle-up", h.adminSettleUp)
 	h.mux.HandleFunc("POST /admin/settle-up", h.adminRecordSettlement)
 	h.mux.HandleFunc("POST /admin/settle-up/{id}/reverse", h.adminReverseSettlement)
+	h.mux.HandleFunc("GET /admin/members/{id}/book", h.adminMemberBook)
+	h.mux.HandleFunc("POST /admin/members/{id}/wagers", h.adminPlaceWagerForMember)
 	h.mux.HandleFunc("GET /admin/help", h.adminHelp)
 }
 
@@ -373,6 +384,8 @@ type pageData struct {
 	WagerRecord       []wagerRecordView
 	Settlements       []bettingpg.SettlementRow
 	Restrictions      []bettingpg.RestrictionRow
+	MemberBook        bettingpg.MemberBookRow
+	LedgerRows        []privateweb.LedgerRow
 	Members           []bettingpg.MemberOption
 	FormError         string
 	Notice            string
@@ -1294,6 +1307,7 @@ func parseTemplates() (map[string]*template.Template, error) {
 		"admin_wagers":        "templates/admin_wagers.gohtml",
 		"admin_settle_up":     "templates/admin_settle_up.gohtml",
 		"admin_wager_record":  "templates/admin_wager_record.gohtml",
+		"admin_member_book":   "templates/admin_member_book.gohtml",
 		"admin_help":          "templates/admin_help.gohtml",
 		"message":             "templates/betting_message.gohtml",
 		"forbidden":           "templates/private_forbidden.gohtml",

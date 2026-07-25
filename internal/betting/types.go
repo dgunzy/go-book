@@ -229,8 +229,16 @@ type Wager struct {
 	PotentialProfit    ledger.Money
 	State              WagerState
 	IdempotencyKey     string
-	PlacedAt           time.Time
+	// PlacedBy is the admin who placed this wager for the member, empty when
+	// the member placed it themselves. The wager is the member's either way:
+	// their stake, their balance, their result.
+	PlacedBy ID
+	PlacedAt time.Time
 }
+
+// PlacedForMember reports whether an admin placed this wager on the member's
+// behalf rather than the member placing it themselves.
+func (w Wager) PlacedForMember() bool { return w.PlacedBy != "" && w.PlacedBy != w.UserID }
 
 func (w Wager) Validate() error {
 	if !validID(w.ID) || !validID(w.UserID) || !validID(w.MarketID) || !validID(w.SelectionID) {

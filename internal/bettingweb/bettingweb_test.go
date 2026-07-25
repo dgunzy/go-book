@@ -251,6 +251,37 @@ func (f *fakeSettlements) ListMemberBalances(context.Context, ledger.Currency) (
 	return f.balances, nil
 }
 
+type fakeMembers struct {
+	book bettingpg.MemberBookRow
+	err  error
+	ids  []string
+}
+
+func (f *fakeMembers) MemberBook(_ context.Context, userID string, defaultAutoApproveCents int64) (bettingpg.MemberBookRow, error) {
+	f.ids = append(f.ids, userID)
+	if f.err != nil {
+		return bettingpg.MemberBookRow{}, f.err
+	}
+	book := f.book
+	if book.UserID == "" {
+		book.UserID = userID
+	}
+	if book.AutoApproveLimit.Cents == 0 {
+		book.AutoApproveLimit = ledger.Money{Cents: defaultAutoApproveCents, Currency: ledger.CAD}
+	}
+	return book, nil
+}
+
+type fakeLedger struct {
+	rows []privateweb.LedgerRow
+	ids  []string
+}
+
+func (f *fakeLedger) LedgerRows(_ context.Context, userID string) ([]privateweb.LedgerRow, error) {
+	f.ids = append(f.ids, userID)
+	return f.rows, nil
+}
+
 func newTestHandler(t *testing.T, session privateweb.Session, markets *fakeMarkets, wagers *fakeWagers) *Handler {
 	t.Helper()
 	return newTestHandlerWithSettlements(t, session, markets, wagers, &fakeSettlements{})
@@ -264,6 +295,8 @@ func newTestHandlerWithSettlements(t *testing.T, session privateweb.Session, mar
 		Markets:     markets,
 		Wagers:      wagers,
 		Settlements: settlements,
+		Members:     &fakeMembers{},
+		Ledger:      &fakeLedger{},
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -664,7 +697,7 @@ func TestPlaceWagerAutoApprovesUnderThreshold(t *testing.T) {
 	h, err := New(Dependencies{
 		Sessions: fakeSessions{session: memberSession()},
 		Markets:  &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}},
-		Wagers:   wagers, Settlements: &fakeSettlements{}, AutoApproveMaxCents: 10_000,
+		Wagers:   wagers, Settlements: &fakeSettlements{}, Members: &fakeMembers{}, Ledger: &fakeLedger{}, AutoApproveMaxCents: 10_000,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -691,7 +724,7 @@ func TestPlaceWagerOverThresholdStaysPending(t *testing.T) {
 	h, err := New(Dependencies{
 		Sessions: fakeSessions{session: memberSession()},
 		Markets:  &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}},
-		Wagers:   wagers, Settlements: &fakeSettlements{}, AutoApproveMaxCents: 1_000, // $10 threshold
+		Wagers:   wagers, Settlements: &fakeSettlements{}, Members: &fakeMembers{}, Ledger: &fakeLedger{}, AutoApproveMaxCents: 1_000, // $10 threshold
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -720,7 +753,7 @@ func TestPlaceWagerPerPlayerOverrideRaisesThreshold(t *testing.T) {
 	h, err := New(Dependencies{
 		Sessions: fakeSessions{session: memberSession()},
 		Markets:  &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}},
-		Wagers:   wagers, Settlements: &fakeSettlements{}, AutoApproveMaxCents: 1_000,
+		Wagers:   wagers, Settlements: &fakeSettlements{}, Members: &fakeMembers{}, Ledger: &fakeLedger{}, AutoApproveMaxCents: 1_000,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1825,5 +1858,232 @@ func TestWagerViewsAreEasyToMoveBetween(t *testing.T) {
 		if !strings.Contains(body, current) {
 			t.Errorf("%s does not mark its own tab as current", path)
 		}
+	}
+}
+
+func memberBookFixture() *fakeMembers {
+	return &fakeMembers{book: bettingpg.MemberBookRow{
+		UserID: testUserID, Name: "Ryan Theriault", Email: "ryan@example.test",
+		Balance:          ledger.Money{Cents: -25_000, Currency: ledger.CAD},
+		CreditLimit:      ledger.Money{Cents: 150_000, Currency: ledger.CAD},
+		CreditAvailable:  ledger.Money{Cents: 125_000, Currency: ledger.CAD},
+		AutoApproveLimit: ledger.Money{Cents: 10_000, Currency: ledger.CAD},
+	}}
+}
+
+func newMemberBookHandler(t *testing.T, session privateweb.Session, markets *fakeMarkets,
+	wagers *fakeWagers, members *fakeMembers, entries *fakeLedger) *Handler {
+	t.Helper()
+	handler, err := New(Dependencies{
+		Sessions: fakeSessions{session: session}, Markets: markets, Wagers: wagers,
+		Settlements: &fakeSettlements{}, Members: members, Ledger: entries,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	return handler
+}
+
+func TestMemberBookShowsStandingWagersAndLedger(t *testing.T) {
+	members := memberBookFixture()
+	entries := &fakeLedger{rows: []privateweb.LedgerRow{{
+		OccurredAt: time.Now().UTC(), Description: "Wager accepted", TransactionType: "wager_acceptance",
+		Reference: "wager:abc", Amount: ledger.Money{Cents: -5_000, Currency: ledger.CAD},
+	}}}
+	wagers := &fakeWagers{mine: []bettingpg.UserWagerRow{
+		myWagerFixture(betting.WagerAccepted, -208, -208, ""),
+	}}
+	markets := &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}}
+	handler := newMemberBookHandler(t, adminSession(), markets, wagers, members, entries)
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/members/"+testUserID+"/book", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %q)", w.Code, w.Body.String())
+	}
+	body := w.Body.String()
+	for _, expected := range []string{
+		"Ryan Theriault", "-CA$250.00", "CA$1500.00", "CA$1250.00", // balance, credit line, left to stake
+		"Wager accepted", "Match 4", // ledger and their wagers
+		"Place a wager for Ryan Theriault",
+	} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("member book does not contain %q", expected)
+		}
+	}
+	// Every read is scoped to the member in the path, not the admin's session.
+	if len(members.ids) != 1 || members.ids[0] != testUserID {
+		t.Fatalf("member book reads = %v, want the member from the path", members.ids)
+	}
+	if len(entries.ids) != 1 || entries.ids[0] != testUserID {
+		t.Fatalf("ledger reads = %v, want the member from the path", entries.ids)
+	}
+	// The board offered is the member's own, so restrictions apply to it.
+	if len(markets.scopedUsers) != 1 || markets.scopedUsers[0] != testUserID {
+		t.Fatalf("market reads = %v, want them scoped to the member", markets.scopedUsers)
+	}
+}
+
+func TestMemberBookIsAdminOnly(t *testing.T) {
+	members := memberBookFixture()
+	handler := newMemberBookHandler(t, memberSession(), &fakeMarkets{}, &fakeWagers{}, members, &fakeLedger{})
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/members/"+testUserID+"/book", nil))
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", w.Code)
+	}
+	if strings.Contains(w.Body.String(), "Ryan Theriault") {
+		t.Fatal("a member saw another member's account")
+	}
+	if len(members.ids) != 0 {
+		t.Fatal("a member request reached the member book reader")
+	}
+}
+
+func TestPlaceForMemberRecordsWhoPlacedItAndFillsImmediately(t *testing.T) {
+	wagers := &fakeWagers{}
+	markets := &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}}
+	handler := newMemberBookHandler(t, adminSession(), markets, wagers, memberBookFixture(), &fakeLedger{})
+
+	body := url.Values{
+		"csrf_token": {testCSRF}, "market_id": {testMarketID}, "selection_id": {testSelID},
+		"stake": {"25.00"}, "member_name": {"Ryan Theriault"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/members/"+testSelID+"/wagers", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	if len(wagers.placed) != 1 {
+		t.Fatalf("PlaceWager calls = %d, want 1", len(wagers.placed))
+	}
+	placed := wagers.placed[0]
+	// The wager belongs to the member in the path; the admin is recorded as
+	// having placed it.
+	if placed.UserID != testSelID {
+		t.Fatalf("wager user = %q, want the member from the path", placed.UserID)
+	}
+	if placed.PlacedByUserID != testUserID {
+		t.Fatalf("placed by = %q, want the admin's session user", placed.PlacedByUserID)
+	}
+	if placed.StakeCents != 2_500 || placed.Currency != ledger.CAD {
+		t.Fatalf("stake = %d %s", placed.StakeCents, placed.Currency)
+	}
+	// It fills straight away rather than queueing, and the admin is the actor.
+	if len(wagers.acceptCalls) != 1 {
+		t.Fatalf("AcceptWager calls = %d, want the wager filled immediately", len(wagers.acceptCalls))
+	}
+}
+
+// The ID and idempotency key must be generated server-side: a replayed form
+// must not be able to aim at an existing wager or place the same bet twice.
+func TestPlaceForMemberIgnoresFormSuppliedIdentifiers(t *testing.T) {
+	wagers := &fakeWagers{}
+	markets := &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}}
+	handler := newMemberBookHandler(t, adminSession(), markets, wagers, memberBookFixture(), &fakeLedger{})
+
+	body := url.Values{
+		"csrf_token": {testCSRF}, "market_id": {testMarketID}, "selection_id": {testSelID},
+		"stake": {"25.00"}, "wager_id": {testWagerID}, "idempotency_key": {testIdem},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/members/"+testSelID+"/wagers", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	placed := wagers.placed[0]
+	if placed.WagerID == testWagerID || placed.IdempotencyKey == testIdem {
+		t.Fatalf("form-supplied identifiers were used: %+v", placed)
+	}
+	if !isUUID(placed.WagerID) || !isUUID(placed.IdempotencyKey) {
+		t.Fatalf("generated identifiers are not UUIDs: %+v", placed)
+	}
+}
+
+// A market the member is restricted from is not on their board, so it cannot
+// be bet for them here either.
+func TestPlaceForMemberRefusesAMarketNotOpenToThem(t *testing.T) {
+	wagers := &fakeWagers{}
+	// No markets on this member's board: everything is restricted or closed.
+	markets := &fakeMarkets{open: nil}
+	handler := newMemberBookHandler(t, adminSession(), markets, wagers, memberBookFixture(), &fakeLedger{})
+
+	body := url.Values{
+		"csrf_token": {testCSRF}, "market_id": {testMarketID}, "selection_id": {testSelID}, "stake": {"25.00"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/members/"+testSelID+"/wagers", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", w.Code)
+	}
+	if len(wagers.placed) != 0 {
+		t.Fatal("a wager was placed into a market not open to that member")
+	}
+}
+
+func TestPlaceForMemberRejectsBadInputAndNonAdmins(t *testing.T) {
+	valid := url.Values{"csrf_token": {testCSRF}, "market_id": {testMarketID},
+		"selection_id": {testSelID}, "stake": {"25.00"}}
+	for _, test := range []struct {
+		name    string
+		session privateweb.Session
+		body    url.Values
+		path    string
+		status  int
+	}{
+		{"member cannot place for others", memberSession(), valid, "/admin/members/" + testSelID + "/wagers", http.StatusForbidden},
+		{"no csrf token", adminSession(), url.Values{"market_id": {testMarketID}, "selection_id": {testSelID}, "stake": {"25.00"}}, "/admin/members/" + testSelID + "/wagers", http.StatusForbidden},
+		{"malformed member", adminSession(), valid, "/admin/members/nope/wagers", http.StatusNotFound},
+		{"bad stake", adminSession(), url.Values{"csrf_token": {testCSRF}, "market_id": {testMarketID},
+			"selection_id": {testSelID}, "stake": {"lots"}}, "/admin/members/" + testSelID + "/wagers", http.StatusBadRequest},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			wagers := &fakeWagers{}
+			markets := &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}}
+			handler := newMemberBookHandler(t, test.session, markets, wagers, memberBookFixture(), &fakeLedger{})
+			r := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(test.body.Encode()))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code != test.status {
+				t.Fatalf("status = %d, want %d", w.Code, test.status)
+			}
+			if len(wagers.placed) != 0 {
+				t.Fatal("a rejected placement reached the store")
+			}
+		})
+	}
+}
+
+// If the member's credit will not cover it, the wager is left pending rather
+// than failing silently, and the admin is told why.
+func TestPlaceForMemberLeavesItPendingWhenCreditWillNotCoverIt(t *testing.T) {
+	wagers := &fakeWagers{acceptErr: bettingpg.ErrInsufficientFunds}
+	markets := &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}}
+	handler := newMemberBookHandler(t, adminSession(), markets, wagers, memberBookFixture(), &fakeLedger{})
+
+	body := url.Values{"csrf_token": {testCSRF}, "market_id": {testMarketID},
+		"selection_id": {testSelID}, "stake": {"25.00"}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/members/"+testSelID+"/wagers", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if len(wagers.placed) != 1 {
+		t.Fatal("the wager was not placed at all")
+	}
+	body2 := w.Body.String()
+	if !strings.Contains(body2, "approval queue") || !strings.Contains(body2, "does not cover this stake") {
+		t.Fatalf("body = %q, want it to explain the wager is pending and why", body2)
 	}
 }

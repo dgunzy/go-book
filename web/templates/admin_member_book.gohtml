@@ -1,0 +1,104 @@
+{{define "private_content"}}
+<header class="private-page-heading">
+  <div><p class="private-kicker">Book administration</p><h1>{{.MemberBook.Name}}</h1></div>
+  <p>This member's standing with the book, and the board you can bet into on their behalf. <a href="/admin/members">Back to members</a>.</p>
+</header>
+
+<section class="pulse-hero" aria-labelledby="member-balance-heading">
+  <div class="pulse-hero-figure {{if lt .MemberBook.Balance.Cents 0}}is-down{{else}}is-up{{end}}">
+    <span id="member-balance-heading">Balance</span>
+    <strong>{{money .MemberBook.Balance}}</strong>
+    <small>{{if lt .MemberBook.Balance.Cents 0}}Owed to the book.{{else if gt .MemberBook.Balance.Cents 0}}The book owes them this.{{else}}Square with the book.{{end}}</small>
+  </div>
+  <dl class="pulse-hero-stats">
+    <div><dt>Credit line</dt><dd>{{money .MemberBook.CreditLimit}}</dd><span>How far they may go negative</span></div>
+    <div><dt>Left to stake</dt><dd>{{money .MemberBook.CreditAvailable}}</dd><span>Balance plus remaining credit</span></div>
+    <div><dt>Auto-approve</dt><dd>{{money .MemberBook.AutoApproveLimit}}</dd><span>{{if .MemberBook.AutoApprovePersonal}}Their own limit{{else}}Book default{{end}}</span></div>
+  </dl>
+</section>
+
+<section aria-labelledby="place-for-member-heading">
+  <div class="private-section-heading"><h2 id="place-for-member-heading">Place a wager for {{.MemberBook.Name}}</h2></div>
+  <p class="pulse-note">The bet belongs to them — their stake, their balance, their result — and the record shows that you placed it. It fills straight away rather than waiting in the approval queue. Only markets open to this member are listed: anything they are restricted from is not here.</p>
+  {{range .Markets}}
+  <section class="betting-market-card" aria-label="{{.Market.Title}}">
+    <div class="betting-market-head">
+      <h3>{{.Market.Title}}</h3>
+      <p class="betting-market-meta"><span class="private-status">{{.Market.Type}}</span> Closes {{when .Market.ClosesAt}} &middot; {{.Market.Currency}}</p>
+    </div>
+    <div class="private-table-wrap">
+      <table class="private-table private-table-stack">
+        <thead><tr><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Place for this member</th></tr></thead>
+        <tbody>
+          {{range .Selections}}
+          <tr>
+            <th scope="row">{{.DisplayTerms}}</th>
+            <td class="private-odds" data-label="Odds">{{odds .OfferedAmericanOdds}}</td>
+            <td class="is-stack-block" data-label="Place for this member">
+              <form method="post" action="/admin/members/{{$.MemberBook.UserID}}/wagers" class="betting-place-form" hx-post="/admin/members/{{$.MemberBook.UserID}}/wagers" hx-target="this" hx-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <input type="hidden" name="market_id" value="{{.MarketID}}">
+                <input type="hidden" name="selection_id" value="{{.ID}}">
+                <input type="hidden" name="member_name" value="{{$.MemberBook.Name}}">
+                <label class="visually-hidden" for="stake-{{.ID}}">Stake for {{.DisplayTerms}}</label>
+                <input id="stake-{{.ID}}" name="stake" inputmode="decimal" autocomplete="off" placeholder="0.00" required>
+                <button type="submit">Place</button>
+              </form>
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {{else}}
+  <p class="private-empty">No markets are open to this member right now.</p>
+  {{end}}
+</section>
+
+<section aria-labelledby="member-wagers-heading">
+  <div class="private-section-heading"><h2 id="member-wagers-heading">Their wagers</h2></div>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide private-table-stack">
+      <thead><tr><th scope="col">Placed</th><th scope="col">Market</th><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Stake</th><th scope="col">To win</th><th scope="col">Status</th></tr></thead>
+      <tbody>
+        {{range .MemberWagers}}
+        <tr>
+          <td data-label="Placed">{{when .PlacedAt}}</td>
+          <th scope="row">{{.MarketTitle}}</th>
+          <td data-label="Selection">{{.SelectionTerms}}</td>
+          <td class="private-odds" data-label="Odds">{{odds .Odds}}</td>
+          <td class="private-money" data-label="Stake">{{money .Stake}}</td>
+          <td class="private-money" data-label="To win">{{money .PotentialProfit}}</td>
+          <td data-label="Status"><span class="private-status">{{if .Cancelled}}cancelled{{else}}{{.State}}{{end}}</span></td>
+        </tr>
+        {{else}}
+        <tr><td colspan="7" class="private-empty-cell">This member has not placed a wager yet.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="member-ledger-heading">
+  <div class="private-section-heading"><h2 id="member-ledger-heading">Their ledger</h2></div>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide private-table-stack">
+      <thead><tr><th scope="col">When</th><th scope="col">Entry</th><th scope="col">Reference</th><th scope="col">Amount</th><th scope="col">Balance</th></tr></thead>
+      <tbody>
+        {{range .LedgerRows}}
+        <tr>
+          <td data-label="When">{{when .OccurredAt}}</td>
+          <th scope="row">{{.Description}}<small>{{.TransactionType}}</small></th>
+          <td data-label="Reference">{{if .ReferenceLabel}}{{.ReferenceLabel}}{{else}}<span class="private-reference">{{.Reference}}</span>{{end}}</td>
+          <td class="private-money" data-label="Amount">{{money .Amount}}</td>
+          <td class="private-money" data-label="Balance">{{if .HasRunningBalance}}<strong>{{money .RunningBalance}}</strong>{{else}}&mdash;{{end}}</td>
+        </tr>
+        {{else}}
+        <tr><td colspan="5" class="private-empty-cell">No ledger activity yet.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+{{end}}

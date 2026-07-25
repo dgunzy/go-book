@@ -88,6 +88,18 @@
   <p>The ledger state and outbox queues stay at the bottom of the page: if <strong>Unbalanced</strong> is anything other than zero, or failed outbox events pile up, tell your operator.</p>
 </section>
 
+<section class="help-section" aria-labelledby="help-member-book">
+  <h2 id="help-member-book">Looking at a member's book, and betting for them</h2>
+  <p>From <a href="/admin/members">Members</a>, open a member's <strong>book</strong> to see where they stand: their balance, their credit line and how much of it is left, the auto-approve limit that applies to them, every wager they hold, and their ledger. This is another member's money and history, so it is admin-only.</p>
+  <p>The same page lets you <strong>place a wager for them</strong> — useful when someone texts you a bet rather than putting it on themselves. Points worth knowing:</p>
+  <ul>
+    <li>The bet is <strong>theirs</strong>: their stake, their balance, their result. The row records that <strong>you</strong> placed it, and their own wagers page tells them so.</li>
+    <li>It <strong>fills immediately</strong> rather than waiting in the approval queue — you are the book, so there is nobody left to approve it.</li>
+    <li>If their balance and credit will not cover the stake, the wager is <strong>left pending</strong> and you are told why, rather than half-placed.</li>
+    <li><strong>Restrictions still apply.</strong> A market or side they are barred from is not offered here either, and a wager on it is refused even when an admin places it.</li>
+  </ul>
+</section>
+
 <section class="help-section" aria-labelledby="help-restrictions">
   <h2 id="help-restrictions">Keeping a member off a bet</h2>
   <p>When a bet is about someone, they should not be able to back it — and on a two-way prop they often should not be able to back <em>one</em> side of it. On <a href="/admin/markets">Manage markets</a>, open <strong>Restrict a member</strong> on the market, choose the member, choose either <strong>the whole market</strong> or a single outcome, and give a reason.</p>

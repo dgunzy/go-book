@@ -66,7 +66,7 @@
       <tbody>
         {{range .Members}}
         <tr>
-          <th scope="row">{{.DisplayName}}{{if not .IdentityLinked}} <span class="members-pending-badge" title="Approved but has not signed in yet">not signed in</span>{{end}}</th>
+          <th scope="row"><a class="betting-primary-link" href="/admin/members/{{.UserID}}/book">{{.DisplayName}}</a>{{if not .IdentityLinked}} <span class="members-pending-badge" title="Approved but has not signed in yet">not signed in</span>{{end}}<small>Balance, wagers, and place a bet for them</small></th>
           <td>{{.Email}}</td>
           <td><span class="private-status">{{.Role}}</span></td>
           <td>{{.Status}}</td>

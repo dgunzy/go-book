@@ -148,6 +148,8 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		bettingHandler, err := bettingweb.New(bettingweb.Dependencies{
 			Sessions: authHandler.SessionReader(), Markets: bettingStore, Wagers: bettingStore,
 			Settlements:                  bettingStore,
+			Members:                      bettingStore,
+			Ledger:                       readers,
 			AutoApproveMaxCents:          applicationConfig.WagerAutoApproveMaxCents,
 			PricingLiquidityDefaultCents: applicationConfig.PricingLiquidityDefaultCents,
 			DefaultCreditLimitCents:      applicationConfig.DefaultCreditLimitCents,
@@ -243,6 +245,7 @@ func mountBettingRoutes(mux *http.ServeMux, handler http.Handler) {
 		"/book/wagers", "/book/wagers/",
 		"/admin/markets", "/admin/markets/",
 		"/admin/wagers", "/admin/wagers/",
+		"/admin/members/{id}/book", "/admin/members/{id}/wagers",
 		"/admin/settle-up", "/admin/settle-up/",
 		"/admin/help",
 	} {

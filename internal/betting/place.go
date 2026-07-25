@@ -32,11 +32,14 @@ func (r Restriction) Restricts(userID, selectionID ID) bool {
 // wager. The caller resolves the market, selection, and restriction list
 // from storage; this function performs no I/O.
 type PlaceWagerCommand struct {
-	WagerID            ID
-	UserID             ID
-	Market             Market
-	Selection          Selection
-	Restrictions       []Restriction
+	WagerID      ID
+	UserID       ID
+	Market       Market
+	Selection    Selection
+	Restrictions []Restriction
+	// PlacedBy is the admin putting this wager on for the member. It is empty
+	// when the member placed it themselves, which is the ordinary case.
+	PlacedBy           ID
 	FundingAccountType FundingAccountType
 	Stake              ledger.Money
 	IdempotencyKey     string
@@ -117,6 +120,7 @@ func PlaceWager(command PlaceWagerCommand) (Wager, error) {
 		PotentialProfit:    profit,
 		State:              WagerPending,
 		IdempotencyKey:     strings.TrimSpace(command.IdempotencyKey),
+		PlacedBy:           command.PlacedBy,
 		PlacedAt:           now,
 	}
 	if err := wager.Validate(); err != nil {

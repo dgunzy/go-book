@@ -24,6 +24,9 @@ type PlaceWagerRequest struct {
 	StakeCents         int64
 	Currency           ledger.Currency
 	IdempotencyKey     string
+	// PlacedByUserID is the admin placing this wager for the member. Empty
+	// when the member placed it themselves.
+	PlacedByUserID string
 }
 
 // PlaceWager loads the market, selection, and restricted-user list, runs the
@@ -64,6 +67,7 @@ func (s Store) PlaceWager(ctx context.Context, req PlaceWagerRequest) (betting.W
 		FundingAccountType: req.FundingAccountType,
 		Stake:              stake,
 		IdempotencyKey:     req.IdempotencyKey,
+		PlacedBy:           betting.ID(req.PlacedByUserID),
 		Now:                time.Now(),
 	})
 	if err != nil {
@@ -72,12 +76,15 @@ func (s Store) PlaceWager(ctx context.Context, req PlaceWagerRequest) (betting.W
 
 	_, err = tx.Exec(ctx, `
 		INSERT INTO wagers (id, user_id, market_id, selection_id, funding_account_type, stake_cents, currency,
-			accepted_american_odds, accepted_terms, potential_profit_cents, state, idempotency_key, placed_at)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			accepted_american_odds, accepted_terms, potential_profit_cents, state, idempotency_key, placed_at,
+			placed_by)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7, $8, $9, $10, $11, $12, $13,
+			nullif($14, '')::uuid)
 		ON CONFLICT (user_id, idempotency_key) DO NOTHING`,
 		wager.ID, wager.UserID, wager.MarketID, wager.SelectionID, string(wager.FundingAccountType),
 		wager.Stake.Cents, string(wager.Stake.Currency), int32(wager.AcceptedOdds), wager.AcceptedTerms,
-		wager.PotentialProfit.Cents, string(wager.State), wager.IdempotencyKey, wager.PlacedAt)
+		wager.PotentialProfit.Cents, string(wager.State), wager.IdempotencyKey, wager.PlacedAt,
+		string(wager.PlacedBy))
 	if err != nil {
 		return betting.Wager{}, fmt.Errorf("insert wager: %w", err)
 	}
