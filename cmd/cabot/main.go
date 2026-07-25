@@ -103,7 +103,10 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		if err != nil {
 			return fmt.Errorf("initialize OIDC provider: %w", err)
 		}
-		sessions, err := identity.NewService(identitypg.Store{Pool: pool}, applicationConfig.SessionTTL)
+		identityStore := identitypg.Store{
+			Pool: pool, DefaultCreditLimitCents: applicationConfig.DefaultCreditLimitCents,
+		}
+		sessions, err := identity.NewService(identityStore, applicationConfig.SessionTTL)
 		if err != nil {
 			return fmt.Errorf("initialize identity sessions: %w", err)
 		}
@@ -137,12 +140,13 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 			Sessions: authHandler.SessionReader(), Markets: bettingStore, Wagers: bettingStore,
 			AutoApproveMaxCents:          applicationConfig.WagerAutoApproveMaxCents,
 			PricingLiquidityDefaultCents: applicationConfig.PricingLiquidityDefaultCents,
+			DefaultCreditLimitCents:      applicationConfig.DefaultCreditLimitCents,
 		})
 		if err != nil {
 			return fmt.Errorf("build betting web handler: %w", err)
 		}
 		membersHandler, err := membersweb.New(membersweb.Dependencies{
-			Sessions: authHandler.SessionReader(), Members: identitypg.Store{Pool: pool},
+			Sessions: authHandler.SessionReader(), Members: identityStore,
 			Players: competitionpg.Store{Pool: pool}, PublicBaseURL: applicationConfig.PublicBaseURL.String(),
 		})
 		if err != nil {

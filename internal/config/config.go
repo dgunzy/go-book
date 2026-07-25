@@ -38,6 +38,10 @@ type Config struct {
 	// in cents) applied to a new market when the admin enables dynamic pricing
 	// without typing a value. Larger = the line moves less per dollar of action.
 	PricingLiquidityDefaultCents int64
+	// DefaultCreditLimitCents is the credit limit a new member is created with:
+	// how far their cash balance may go negative before wagers are refused.
+	// Admins raise or lower it per player afterwards on the Members page.
+	DefaultCreditLimitCents int64
 }
 
 // Load reads and validates configuration using lookup. Passing os.LookupEnv keeps
@@ -81,6 +85,11 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 
 	pricingLiquidityDefaultCents, err := parsePricingLiquidityDefault(valueOrDefault(lookup, "PRICING_LIQUIDITY_DEFAULT_CENTS", strconv.FormatInt(defaultPricingLiquidityCents, 10)))
+	if err != nil {
+		return Config{}, err
+	}
+
+	creditLimitDefaultCents, err := parseCreditLimitDefault(valueOrDefault(lookup, "DEFAULT_CREDIT_LIMIT_CENTS", strconv.FormatInt(defaultCreditLimitCents, 10)))
 	if err != nil {
 		return Config{}, err
 	}
@@ -139,11 +148,19 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		ShutdownTimeout:              shutdownTimeout,
 		WagerAutoApproveMaxCents:     autoApproveMaxCents,
 		PricingLiquidityDefaultCents: pricingLiquidityDefaultCents,
+		DefaultCreditLimitCents:      creditLimitDefaultCents,
 	}, nil
 }
 
-// defaultAutoApproveMaxCents is the default largest auto-approved stake: $100.
-const defaultAutoApproveMaxCents = 10_000
+// defaultAutoApproveMaxCents is the default largest auto-approved stake: $200.
+const defaultAutoApproveMaxCents = 20_000
+
+// defaultCreditLimitCents is the credit limit a new member starts with: $1,500.
+// This is the single source of truth. The users.credit_limit_cents column keeps
+// a matching DEFAULT purely as a fallback for direct SQL inserts (bootstrap,
+// mock-seed, tests); application code always passes this value explicitly, so
+// the two must be changed together.
+const defaultCreditLimitCents = 150_000
 
 // defaultPricingLiquidityCents is the default dynamic-pricing liquidity: $3,000.
 // This keeps line moves gentle for a friends' book — a few hundred dollars of
@@ -154,6 +171,14 @@ func parseAutoApproveThreshold(value string) (int64, error) {
 	cents, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
 	if err != nil || cents < 0 {
 		return 0, fmt.Errorf("WAGER_AUTO_APPROVE_MAX_CENTS must be a non-negative integer number of cents")
+	}
+	return cents, nil
+}
+
+func parseCreditLimitDefault(value string) (int64, error) {
+	cents, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)
+	if err != nil || cents < 0 {
+		return 0, fmt.Errorf("DEFAULT_CREDIT_LIMIT_CENTS must be a non-negative integer number of cents")
 	}
 	return cents, nil
 }

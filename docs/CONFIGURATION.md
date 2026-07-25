@@ -20,9 +20,10 @@ There are two kinds of settings:
 
 | Setting | Env var | Default | Meaning | Where to change |
 |---|---|---|---|---|
-| Auto-approve max stake | `WAGER_AUTO_APPROVE_MAX_CENTS` | `10000` ($100) | Stakes at or below this are accepted immediately; larger ones wait for manual admin approval. `0` sends every wager to manual review. Each member sees the limit that applies to them on their book overview. | GitOps ConfigMap; per-player override on Members page |
+| Auto-approve max stake | `WAGER_AUTO_APPROVE_MAX_CENTS` | `20000` ($200) | Stakes at or below this are accepted immediately; larger ones wait for manual admin approval. `0` sends every wager to manual review. Each member sees the limit that applies to them on their book overview. | GitOps ConfigMap; per-player override on Members page |
 | Dynamic-pricing liquidity | `PRICING_LIQUIDITY_DEFAULT_CENTS` | `300000` ($3,000) | Default line-movement sensitivity ("b") for a new market when the admin enables dynamic pricing without typing a value. **Larger = the line moves less per dollar of action.** Set per market on the create form. | GitOps ConfigMap; per market on the create form |
-| Credit limit (per player) | — (DB column `users.credit_limit_cents`) | $1,000 | How far a member's balance may go negative before wagers are refused. | Members page only |
+| Default credit limit (new members) | `DEFAULT_CREDIT_LIMIT_CENTS` | `150000` ($1,500) | Credit limit a newly invited member is created with: how far their balance may go negative before wagers are refused. Changing it does not move existing members. | GitOps ConfigMap; per-player on Members page |
+| Credit limit (per player) | — (DB column `users.credit_limit_cents`) | the configured default above | A member's own limit once set, overriding the default for them. | Members page only |
 | Auto-approve override (per player) | — (DB column `users.wager_auto_approve_max_cents`) | unset → book default | Per-player auto-approve threshold; blank uses the book default, `0` forces manual review. | Members page only |
 
 ### Reference: dynamic-pricing liquidity

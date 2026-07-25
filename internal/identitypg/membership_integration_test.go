@@ -43,8 +43,13 @@ func membershipTestStore(t *testing.T) (Store, *pgxpool.Pool, context.Context) {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	return Store{Pool: pool}, pool, ctx
+	return Store{Pool: pool, DefaultCreditLimitCents: testCreditLimitCents}, pool, ctx
 }
+
+// testCreditLimitCents is deliberately not the shipped default, so a member
+// created with it proves the configured value was used rather than the
+// users.credit_limit_cents column default.
+const testCreditLimitCents = 123_400
 
 // makeMember inserts an active user with the given role and returns its ID.
 func makeMember(t *testing.T, ctx context.Context, pool *pgxpool.Pool, label, role string) string {
@@ -114,6 +119,15 @@ func TestInviteIssueAndConsumeCreatesMember(t *testing.T) {
 	verified2.Email = fmt.Sprintf("other-%d@example.test", suffix)
 	if _, _, err := store.CreateSessionForInvitedIdentity(ctx, verified2, testDraft(t), token); err == nil {
 		t.Fatal("a consumed invitation was accepted a second time")
+	}
+
+	// The configured default, not the column default, set their credit line.
+	var creditLimit int64
+	if err := pool.QueryRow(ctx, `SELECT credit_limit_cents FROM users WHERE email = $1`, inviteeEmail).Scan(&creditLimit); err != nil {
+		t.Fatalf("read invited credit limit: %v", err)
+	}
+	if creditLimit != testCreditLimitCents {
+		t.Errorf("invited credit limit = %d, want %d (the configured default)", creditLimit, testCreditLimitCents)
 	}
 
 	// The new member now appears in the member list.

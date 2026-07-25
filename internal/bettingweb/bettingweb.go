@@ -90,6 +90,10 @@ type Dependencies struct {
 	// PricingLiquidityDefaultCents is the dynamic-pricing liquidity used when an
 	// admin enables dynamic pricing on a new market without typing a value.
 	PricingLiquidityDefaultCents int64
+	// DefaultCreditLimitCents is the credit limit a newly invited member is
+	// created with. Shown on the help page so admins can read the book's
+	// current settings without digging through deployment configuration.
+	DefaultCreditLimitCents int64
 }
 
 type Handler struct {
@@ -99,6 +103,7 @@ type Handler struct {
 	newID                        func() (string, error)
 	autoApproveMaxCents          int64
 	pricingLiquidityDefaultCents int64
+	defaultCreditLimitCents      int64
 }
 
 func New(deps Dependencies) (*Handler, error) {
@@ -117,6 +122,7 @@ func New(deps Dependencies) (*Handler, error) {
 		mux: http.NewServeMux(), deps: deps, templates: templates,
 		autoApproveMaxCents:          deps.AutoApproveMaxCents,
 		pricingLiquidityDefaultCents: pricingLiquidityDefaultCents,
+		defaultCreditLimitCents:      deps.DefaultCreditLimitCents,
 		newID: func() (string, error) {
 			id, err := betting.NewEventID()
 			return string(id), err
@@ -162,6 +168,7 @@ func (h *Handler) adminHelp(w http.ResponseWriter, r *http.Request) {
 		Title: "How to run the book", Current: "admin-help", Session: session,
 		AutoApproveDollars:       formatCentsDollars(h.autoApproveMaxCents),
 		DefaultLineWeightDollars: formatCentsDollars(h.pricingLiquidityDefaultCents),
+		DefaultCreditDollars:     formatCentsDollars(h.defaultCreditLimitCents),
 	})
 }
 
@@ -350,6 +357,7 @@ type pageData struct {
 	// current settings shown on the help page.
 	AutoApproveDollars       string
 	DefaultLineWeightDollars string
+	DefaultCreditDollars     string
 }
 
 // formatCentsDollars renders an integer-cents amount as a plain dollar string

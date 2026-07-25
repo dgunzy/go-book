@@ -62,7 +62,7 @@ func (store Store) CreateSessionForInvitedIdentity(ctx context.Context, verified
 	return store.withPrincipalTransaction(ctx, func(tx pgx.Tx) (identity.Session, identity.Principal, error) {
 		principal, err := resolveApprovedIdentity(ctx, tx, verified)
 		if errors.Is(err, identity.ErrSignInNotAllowed) {
-			principal, err = consumeInvitation(ctx, tx, verified, inviteToken)
+			principal, err = consumeInvitation(ctx, tx, verified, inviteToken, store.DefaultCreditLimitCents)
 		}
 		if err != nil {
 			return identity.Session{}, identity.Principal{}, err
@@ -72,7 +72,7 @@ func (store Store) CreateSessionForInvitedIdentity(ctx context.Context, verified
 	})
 }
 
-func consumeInvitation(ctx context.Context, tx pgx.Tx, verified identity.VerifiedIdentity, rawToken string) (identity.Principal, error) {
+func consumeInvitation(ctx context.Context, tx pgx.Tx, verified identity.VerifiedIdentity, rawToken string, creditLimitCents int64) (identity.Principal, error) {
 	if strings.TrimSpace(rawToken) == "" {
 		return identity.Principal{}, identity.ErrSignInNotAllowed
 	}
@@ -100,9 +100,20 @@ func consumeInvitation(ctx context.Context, tx pgx.Tx, verified identity.Verifie
 	err = tx.QueryRow(ctx, `SELECT id::text, status FROM users WHERE lower(email) = lower($1) FOR UPDATE`, verified.Email).Scan(&userID, &status)
 	switch {
 	case errors.Is(err, pgx.ErrNoRows):
-		if err := tx.QueryRow(ctx, `
-			INSERT INTO users (display_name, email, status) VALUES ($1, $2, 'active') RETURNING id::text`,
-			verified.DisplayName, strings.ToLower(verified.Email)).Scan(&userID); err != nil {
+		// The configured default decides a new member's credit limit. A zero
+		// value means the Store was built without config (tests, tooling), so
+		// the column default applies instead of creating someone who cannot bet.
+		insertUser := `
+			INSERT INTO users (display_name, email, status, credit_limit_cents)
+			VALUES ($1, $2, 'active', $3) RETURNING id::text`
+		arguments := []any{verified.DisplayName, strings.ToLower(verified.Email), creditLimitCents}
+		if creditLimitCents <= 0 {
+			insertUser = `
+			INSERT INTO users (display_name, email, status)
+			VALUES ($1, $2, 'active') RETURNING id::text`
+			arguments = arguments[:2]
+		}
+		if err := tx.QueryRow(ctx, insertUser, arguments...).Scan(&userID); err != nil {
 			return identity.Principal{}, fmt.Errorf("create invited user: %w", err)
 		}
 	case err != nil:

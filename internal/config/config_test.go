@@ -26,11 +26,32 @@ func TestLoadDefaults(t *testing.T) {
 	if config.ShutdownTimeout != 10*time.Second {
 		t.Errorf("ShutdownTimeout = %s", config.ShutdownTimeout)
 	}
-	if config.WagerAutoApproveMaxCents != 10_000 {
-		t.Errorf("WagerAutoApproveMaxCents = %d, want 10000", config.WagerAutoApproveMaxCents)
+	if config.WagerAutoApproveMaxCents != 20_000 {
+		t.Errorf("WagerAutoApproveMaxCents = %d, want 20000", config.WagerAutoApproveMaxCents)
 	}
 	if config.PricingLiquidityDefaultCents != 300_000 {
 		t.Errorf("PricingLiquidityDefaultCents = %d, want 300000", config.PricingLiquidityDefaultCents)
+	}
+	if config.DefaultCreditLimitCents != 150_000 {
+		t.Errorf("DefaultCreditLimitCents = %d, want 150000", config.DefaultCreditLimitCents)
+	}
+}
+
+func TestLoadDefaultCreditLimitOverride(t *testing.T) {
+	t.Parallel()
+
+	config, err := Load(mapLookup(map[string]string{"DEFAULT_CREDIT_LIMIT_CENTS": "250000"}))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if config.DefaultCreditLimitCents != 250_000 {
+		t.Errorf("DefaultCreditLimitCents = %d, want 250000", config.DefaultCreditLimitCents)
+	}
+	if _, err := Load(mapLookup(map[string]string{"DEFAULT_CREDIT_LIMIT_CENTS": "-1"})); err == nil {
+		t.Error("Load() accepted a negative credit limit")
+	}
+	if _, err := Load(mapLookup(map[string]string{"DEFAULT_CREDIT_LIMIT_CENTS": "lots"})); err == nil {
+		t.Error("Load() accepted a non-numeric credit limit")
 	}
 }
 

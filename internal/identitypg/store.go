@@ -13,7 +13,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Store struct{ Pool *pgxpool.Pool }
+type Store struct {
+	Pool *pgxpool.Pool
+	// DefaultCreditLimitCents is the credit limit given to a member created by
+	// accepting an invitation. It comes from config.DefaultCreditLimitCents;
+	// zero falls back to the users.credit_limit_cents column default so a
+	// zero-valued Store (tests, tooling) still creates usable members.
+	DefaultCreditLimitCents int64
+}
 
 func (store Store) CreateSessionForIdentity(ctx context.Context, verified identity.VerifiedIdentity, draft identity.SessionDraft) (identity.Session, identity.Principal, error) {
 	return store.withPrincipalTransaction(ctx, func(tx pgx.Tx) (identity.Session, identity.Principal, error) {
