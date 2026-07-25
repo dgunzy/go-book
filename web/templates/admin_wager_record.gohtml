@@ -4,7 +4,7 @@
   <p>Every wager the book has taken, with the line it opened at, the price the member got, and where it closed. <a href="/admin/wagers">Back to pending wagers</a>.</p>
 </header>
 
-<p class="pulse-note">A member who repeatedly takes a better number than the close is beating the book on price, whether or not the bets land. While a market is still open there is no closing line yet, so the comparison is withheld rather than guessed at.</p>
+<p class="pulse-note">Voiding one wager returns that member's stake and leaves every other bet on the market standing — unlike voiding the market, which refunds everybody. A member who repeatedly takes a better number than the close is beating the book on price, whether or not the bets land. While a market is still open there is no closing line yet, so the comparison is withheld rather than guessed at.</p>
 
 <section aria-labelledby="wager-record-heading">
   <h2 id="wager-record-heading" class="visually-hidden">Wager record</h2>
@@ -36,7 +36,17 @@
             {{end}}
           </td>
           <td class="private-money" data-label="Stake">{{money .Stake}}<small>to win {{money .PotentialProfit}}</small></td>
-          <td data-label="Outcome"><span class="private-status">{{if .Settled}}{{.Result}}{{else}}{{.State}}{{end}}</span></td>
+          <td class="betting-actions-cell is-stack-block" data-label="Outcome">
+            <span class="private-status">{{if .Settled}}{{.Result}}{{else}}{{.State}}{{end}}</span>
+            {{if .CanVoid}}
+            <form method="post" action="/admin/wagers/{{.ID}}/void" class="betting-inline-form" hx-post="/admin/wagers/{{.ID}}/void" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <label class="visually-hidden" for="void-reason-{{.ID}}">Why this wager is being voided</label>
+              <input id="void-reason-{{.ID}}" name="reason" maxlength="500" placeholder="Reason" required>
+              <button type="submit" class="betting-danger-button">Void</button>
+            </form>
+            {{end}}
+          </td>
         </tr>
         {{else}}
         <tr><td colspan="9" class="private-empty-cell">No wagers have been placed yet.</td></tr>

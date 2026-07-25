@@ -54,6 +54,18 @@
   <p>The auto-approve threshold is a book-wide setting; ask your operator to change it if needed.</p>
 </section>
 
+<section class="help-section" aria-labelledby="help-void-wager">
+  <h2 id="help-void-wager">Voiding one member's bet</h2>
+  <p>Sometimes a single bet should not stand — it was struck in error, or on a number you will not honour for that member — but the rest of the market is fine. On the <a href="/admin/wagers/record">wager record</a>, an accepted bet has a <strong>Void</strong> control: give a reason and the member's stake goes straight back to them. Every other wager on that market is untouched, which is the difference from <strong>Settle / void</strong> on the market itself, which refunds everybody.</p>
+  <ul>
+    <li>Only an <strong>accepted</strong> bet can be voided this way. One still <em>pending</em> is <strong>Rejected</strong> instead — no money has moved, so there is nothing to return.</li>
+    <li>A <strong>settled</strong> bet has already paid; correcting that means re-settling the market.</li>
+    <li>The stake goes back exactly as it came. Nobody wins or loses: the bet simply never happened.</li>
+    <li>The reason appears on the member's ledger beside the refund, and the entry records which admin did it.</li>
+  </ul>
+  <p>The line moves back too — a voided stake is no longer action, so the board reprices as though the bet had never been taken.</p>
+</section>
+
 <section class="help-section" aria-labelledby="help-settle">
   <h2 id="help-settle">Settling a market</h2>
   <ul>

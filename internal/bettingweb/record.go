@@ -1,11 +1,19 @@
 package bettingweb
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
+	"strings"
+
+	"github.com/dgunzy/go-book/internal/betting"
 
 	"github.com/dgunzy/go-book/internal/bettingpg"
 	"github.com/dgunzy/go-book/internal/ledger"
 )
+
+// redirectAdminWagerRecord is where the record page's actions return to.
+const redirectAdminWagerRecord = "/admin/wagers/record"
 
 // closeVerdict says how the price a member took compares with where the line
 // finished. It is the book's read on whether a bettor is beating it.
@@ -41,6 +49,13 @@ func (v wagerRecordView) BeatTheClose() bool { return v.Verdict == verdictBeat }
 func (v wagerRecordView) BehindClose() bool  { return v.Verdict == verdictBehind }
 func (v wagerRecordView) CloseIsFinal() bool { return v.Verdict != verdictPending }
 func (v wagerRecordView) Settled() bool      { return v.Result != "" }
+
+// CanVoid reports whether this wager can still be pulled back on its own. Only
+// an accepted, ungraded wager can: a pending one is rejected instead, and a
+// settled one has already paid.
+func (v wagerRecordView) CanVoid() bool {
+	return v.State == betting.WagerAccepted && v.Result == ""
+}
 func (v wagerRecordView) LineMovedOnOpen() bool {
 	return v.OpeningOdds != v.ClosingOdds
 }
@@ -108,4 +123,39 @@ func (h *Handler) adminWagerRecord(w http.ResponseWriter, r *http.Request) {
 		Title: "Wager record", Current: "admin-wagers", Session: session,
 		WagerRecord: wagerRecordViews(rows),
 	})
+}
+
+// adminVoidWager cancels one accepted wager and returns its stake. It is the
+// single-bet counterpart to voiding a market: everyone else's action stands.
+func (h *Handler) adminVoidWager(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	wagerID := r.PathValue("id")
+	if !isUUID(wagerID) {
+		h.failPost(w, r, session, http.StatusNotFound, "The requested wager was not found.", redirectAdminWagerRecord)
+		return
+	}
+	reason := strings.TrimSpace(r.PostForm.Get("reason"))
+	if reason == "" || len(reason) > maxReasonLen {
+		h.failPost(w, r, session, http.StatusBadRequest,
+			"Say why this wager is being voided (up to 500 characters) — the member sees it on their ledger.", redirectAdminWagerRecord)
+		return
+	}
+
+	voided, err := h.deps.Wagers.VoidWager(r.Context(), wagerID, session.UserID, reason)
+	if err != nil {
+		status, text := storeErrorStatus(err)
+		if errors.Is(err, betting.ErrInvalidTransition) {
+			text = "Only an accepted wager can be voided. A pending one is rejected instead, and a settled one needs the market re-settled."
+		}
+		h.failPost(w, r, session, status, text, redirectAdminWagerRecord)
+		return
+	}
+	h.completePost(w, r, redirectAdminWagerRecord, "Wager voided.",
+		fmt.Sprintf("%s went back to the member. Every other wager on the market stands.", formatMoney(voided.Stake)))
 }

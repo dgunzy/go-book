@@ -145,6 +145,8 @@ type fakeWagers struct {
 	mine          []bettingpg.UserWagerRow
 	record        []bettingpg.WagerRecordRow
 	recordLimit   int
+	voidErr       error
+	voidCalls     []struct{ id, actor, reason string }
 }
 
 func (f *fakeWagers) PlaceWager(_ context.Context, req bettingpg.PlaceWagerRequest) (betting.Wager, error) {
@@ -186,6 +188,15 @@ func (f *fakeWagers) CancelWager(_ context.Context, wagerID, userID string) (bet
 func (f *fakeWagers) ListWagersByState(context.Context, betting.WagerState) ([]bettingpg.AdminWagerRow, error) {
 	return f.pending, nil
 }
+func (f *fakeWagers) VoidWager(_ context.Context, wagerID, actorUserID, reason string) (betting.Wager, error) {
+	f.voidCalls = append(f.voidCalls, struct{ id, actor, reason string }{wagerID, actorUserID, reason})
+	if f.voidErr != nil {
+		return betting.Wager{}, f.voidErr
+	}
+	return betting.Wager{ID: betting.ID(wagerID), State: betting.WagerVoided,
+		Stake: ledger.Money{Cents: 30_000, Currency: ledger.CAD}}, nil
+}
+
 func (f *fakeWagers) ListWagerRecord(_ context.Context, limit int) ([]bettingpg.WagerRecordRow, error) {
 	f.recordLimit = limit
 	return f.record, nil
@@ -1688,5 +1699,101 @@ func TestAdminMarketsShowsRestrictionsAndThePicker(t *testing.T) {
 		if !strings.Contains(body, expected) {
 			t.Errorf("markets page does not contain %q", expected)
 		}
+	}
+}
+
+func voidPath() string { return "/admin/wagers/" + testWagerID + "/void" }
+
+func TestVoidWagerSendsTheReasonAndSessionActor(t *testing.T) {
+	wagers := &fakeWagers{}
+	handler := newTestHandler(t, adminSession(), &fakeMarkets{}, wagers)
+
+	body := url.Values{"csrf_token": {testCSRF}, "reason": {"struck in error"}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, voidPath(), strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	if len(wagers.voidCalls) != 1 {
+		t.Fatalf("VoidWager calls = %d, want 1", len(wagers.voidCalls))
+	}
+	call := wagers.voidCalls[0]
+	if call.id != testWagerID || call.actor != testUserID || call.reason != "struck in error" {
+		t.Fatalf("call = %+v", call)
+	}
+}
+
+func TestVoidWagerRejectsBadInputAndNonAdmins(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		session privateweb.Session
+		body    string
+		path    string
+		status  int
+	}{
+		{"member cannot void", memberSession(), url.Values{"csrf_token": {testCSRF}, "reason": {"nope"}}.Encode(), voidPath(), http.StatusForbidden},
+		{"no reason", adminSession(), url.Values{"csrf_token": {testCSRF}, "reason": {"  "}}.Encode(), voidPath(), http.StatusBadRequest},
+		{"no csrf token", adminSession(), url.Values{"reason": {"nope"}}.Encode(), voidPath(), http.StatusForbidden},
+		{"malformed wager", adminSession(), url.Values{"csrf_token": {testCSRF}, "reason": {"nope"}}.Encode(), "/admin/wagers/not-a-uuid/void", http.StatusNotFound},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			wagers := &fakeWagers{}
+			handler := newTestHandler(t, test.session, &fakeMarkets{}, wagers)
+			r := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(test.body))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code != test.status {
+				t.Fatalf("status = %d, want %d", w.Code, test.status)
+			}
+			if len(wagers.voidCalls) != 0 {
+				t.Fatal("a rejected void reached the store")
+			}
+		})
+	}
+}
+
+func TestVoidWagerExplainsAWagerThatCannotBeVoided(t *testing.T) {
+	wagers := &fakeWagers{voidErr: betting.ErrInvalidTransition}
+	handler := newTestHandler(t, adminSession(), &fakeMarkets{}, wagers)
+
+	body := url.Values{"csrf_token": {testCSRF}, "reason": {"too late"}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, voidPath(), strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Only an accepted wager can be voided") {
+		t.Fatalf("body = %q", w.Body.String())
+	}
+}
+
+// The record page offers Void on live action only.
+func TestWagerRecordOffersVoidOnAcceptedWagersOnly(t *testing.T) {
+	wagers := &fakeWagers{record: []bettingpg.WagerRecordRow{
+		recordRowFixture(-180, -208, -271, betting.MarketOpen, ""),
+	}}
+	handler := newTestHandlerWithSettlements(t, adminSession(), &fakeMarkets{}, wagers, &fakeSettlements{})
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/wagers/record", nil))
+	if !strings.Contains(w.Body.String(), "/void") {
+		t.Fatal("an accepted wager should offer Void")
+	}
+
+	// A settled wager has already paid: voiding it is not on offer.
+	wagers.record = []bettingpg.WagerRecordRow{
+		recordRowFixture(-180, -208, -271, betting.MarketSettled, betting.ResultLoss),
+	}
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/wagers/record", nil))
+	if strings.Contains(w.Body.String(), "/void") {
+		t.Fatal("a settled wager must not offer Void")
 	}
 }
