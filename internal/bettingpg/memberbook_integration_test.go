@@ -53,8 +53,17 @@ func TestPlaceWagerForMemberRecordsTheAdminWhoPlacedIt(t *testing.T) {
 	if balance := accountBalanceFor(t, ctx, pool, member, "user_cash", ledger.CAD); balance != balanceBefore-5_000 {
 		t.Fatalf("member balance = %d, want %d", balance, balanceBefore-5_000)
 	}
-	if balance := accountBalanceFor(t, ctx, pool, admin, "user_cash", ledger.CAD); balance != 0 {
-		t.Fatalf("the admin's own balance moved: %d", balance)
+	// The admin who placed it has no stake in it: they never had a ledger
+	// account before this and must not have one now.
+	var adminPostings int
+	if err := pool.QueryRow(ctx, `
+		SELECT count(*) FROM ledger_postings p
+		JOIN ledger_accounts a ON a.id = p.account_id
+		WHERE a.owner_user_id = $1::uuid`, admin).Scan(&adminPostings); err != nil {
+		t.Fatal(err)
+	}
+	if adminPostings != 0 {
+		t.Fatalf("the admin who placed the wager has %d ledger postings, want none", adminPostings)
 	}
 }
 
