@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/dgunzy/go-book/internal/betting"
 	"github.com/dgunzy/go-book/internal/ledger"
@@ -34,6 +35,9 @@ func (s Store) SetOpeningLine(ctx context.Context, marketID, selectionID string,
 	if err := odds.Validate(); err != nil {
 		return false, err
 	}
+	// Trim before validating, or a reason of spaces passes here and is only
+	// caught by the database's own check on the audit row.
+	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		return false, betting.ErrReasonRequired
 	}
