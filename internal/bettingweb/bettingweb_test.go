@@ -90,6 +90,10 @@ type fakeWagers struct {
 	placed        []bettingpg.PlaceWagerRequest
 	acceptCalls   []string
 	rejectCalls   []struct{ id, reason string }
+	cancelErr     error
+	cancelCalls   []struct{ id, user string }
+	pending       []bettingpg.AdminWagerRow
+	mine          []bettingpg.UserWagerRow
 }
 
 func (f *fakeWagers) PlaceWager(_ context.Context, req bettingpg.PlaceWagerRequest) (betting.Wager, error) {
@@ -120,11 +124,19 @@ func (f *fakeWagers) RejectWager(_ context.Context, wagerID, _, reason string) (
 	}
 	return betting.Wager{ID: betting.ID(wagerID), State: betting.WagerRejected}, nil
 }
+func (f *fakeWagers) CancelWager(_ context.Context, wagerID, userID string) (betting.Wager, error) {
+	f.cancelCalls = append(f.cancelCalls, struct{ id, user string }{wagerID, userID})
+	if f.cancelErr != nil {
+		return betting.Wager{}, f.cancelErr
+	}
+	return betting.Wager{ID: betting.ID(wagerID), State: betting.WagerRejected,
+		Stake: ledger.Money{Cents: 2500, Currency: ledger.CAD}}, nil
+}
 func (f *fakeWagers) ListWagersByState(context.Context, betting.WagerState) ([]bettingpg.AdminWagerRow, error) {
-	return nil, nil
+	return f.pending, nil
 }
 func (f *fakeWagers) ListWagersForUser(context.Context, string) ([]bettingpg.UserWagerRow, error) {
-	return nil, nil
+	return f.mine, nil
 }
 func (f *fakeWagers) AutoApproveLimitForUser(context.Context, string) (int64, bool, error) {
 	return f.overrideCents, f.hasOverride, nil
@@ -607,5 +619,266 @@ func TestPlaceWagerPerPlayerOverrideRaisesThreshold(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if len(wagers.acceptCalls) != 1 {
 		t.Fatalf("AcceptWager calls = %d, want 1 (per-player override raised the limit)", len(wagers.acceptCalls))
+	}
+}
+
+func pendingWagerFixture(accepted, current int32, active bool, state betting.MarketState) bettingpg.AdminWagerRow {
+	acceptedOdds, _ := ledger.NewAmericanOdds(accepted)
+	currentOdds, _ := ledger.NewAmericanOdds(current)
+	stake := ledger.Money{Cents: 30_000, Currency: ledger.CAD}
+	profit, _ := acceptedOdds.Profit(stake)
+	return bettingpg.AdminWagerRow{
+		ID: testWagerID, UserID: testUserID, UserDisplayName: "Dan Guns",
+		MarketID: testMarketID, MarketTitle: "Match 4", SelectionID: testSelID,
+		SelectionTerms: "Bill, DC to win", Odds: acceptedOdds, Stake: stake,
+		PotentialProfit: profit, State: betting.WagerPending, PlacedAt: time.Now().UTC(),
+		CurrentOdds: currentOdds, SelectionActive: active, MarketState: state,
+	}
+}
+
+func TestCompareLinesRanksByPayout(t *testing.T) {
+	cases := []struct {
+		name             string
+		accepted, curren int32
+		want             lineMove
+	}{
+		{"locked price pays more than the board", -208, -271, lineToMember},
+		{"board pays more than the locked price", -271, -208, lineToBook},
+		{"same price", -208, -208, lineUnchanged},
+		{"crossing zero toward the member", 120, -110, lineToMember},
+		{"crossing zero toward the book", -110, 120, lineToBook},
+		{"+100 and -100 pay the same", 100, -100, lineUnchanged},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			accepted, err := ledger.NewAmericanOdds(testCase.accepted)
+			if err != nil {
+				t.Fatal(err)
+			}
+			current, err := ledger.NewAmericanOdds(testCase.curren)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := compareLines(accepted, current); got != testCase.want {
+				t.Fatalf("compareLines(%d, %d) = %q, want %q", testCase.accepted, testCase.curren, got, testCase.want)
+			}
+		})
+	}
+}
+
+func TestAdminWagersShowsLiveLineWarningWhenLineMovedToMember(t *testing.T) {
+	wagers := &fakeWagers{pending: []bettingpg.AdminWagerRow{
+		pendingWagerFixture(-208, -271, true, betting.MarketOpen),
+	}}
+	handler := newTestHandler(t, adminSession(), &fakeMarkets{}, wagers)
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/wagers", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "-271") {
+		t.Fatal("pending wagers page did not render the live line")
+	}
+	if !strings.Contains(body, "Moved in member's favour") {
+		t.Fatal("pending wagers page did not warn that the line moved in the member's favour")
+	}
+	if !strings.Contains(body, "is-line-moved") {
+		t.Fatal("the stale-price row was not flagged")
+	}
+}
+
+func TestAdminWagersDoesNotWarnWhenLineMovedToBook(t *testing.T) {
+	wagers := &fakeWagers{pending: []bettingpg.AdminWagerRow{
+		pendingWagerFixture(-271, -208, true, betting.MarketOpen),
+	}}
+	handler := newTestHandler(t, adminSession(), &fakeMarkets{}, wagers)
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/wagers", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	body := w.Body.String()
+	if strings.Contains(body, "Moved in member's favour") {
+		t.Fatal("warned about a line that moved in the book's favour")
+	}
+	if !strings.Contains(body, "Moved to the book") {
+		t.Fatal("pending wagers page did not report the favourable move")
+	}
+}
+
+func TestAdminWagersReportsOffBoardSelection(t *testing.T) {
+	wagers := &fakeWagers{pending: []bettingpg.AdminWagerRow{
+		pendingWagerFixture(-208, -271, false, betting.MarketOpen),
+	}}
+	handler := newTestHandler(t, adminSession(), &fakeMarkets{}, wagers)
+
+	r := httptest.NewRequest(http.MethodGet, "/admin/wagers", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Off the board") {
+		t.Fatal("an inactive selection should not be compared against a live line")
+	}
+	if strings.Contains(body, "Moved in member's favour") {
+		t.Fatal("warned using a line that is no longer offered")
+	}
+}
+
+func myWagerFixture(state betting.WagerState, accepted, current int32, reason string) bettingpg.UserWagerRow {
+	acceptedOdds, _ := ledger.NewAmericanOdds(accepted)
+	currentOdds, _ := ledger.NewAmericanOdds(current)
+	stake := ledger.Money{Cents: 2_500, Currency: ledger.CAD}
+	profit, _ := acceptedOdds.Profit(stake)
+	return bettingpg.UserWagerRow{
+		ID: testWagerID, MarketTitle: "Match 4", SelectionTerms: "Bill, DC to win",
+		Odds: acceptedOdds, Stake: stake, PotentialProfit: profit, State: state,
+		RejectionReason: reason, PlacedAt: time.Now().UTC(),
+		CurrentOdds: currentOdds, SelectionActive: true, MarketState: betting.MarketOpen,
+	}
+}
+
+func TestMemberWagersOffersCancelOnlyWhilePending(t *testing.T) {
+	wagers := &fakeWagers{mine: []bettingpg.UserWagerRow{
+		myWagerFixture(betting.WagerPending, -208, -208, ""),
+	}}
+	handler := newTestHandler(t, memberSession(), &fakeMarkets{}, wagers)
+
+	r := httptest.NewRequest(http.MethodGet, "/book/wagers", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "/book/wagers/"+testWagerID+"/cancel") {
+		t.Fatal("a pending wager should offer the member a cancel button")
+	}
+
+	// An accepted wager is in escrow: only the book can unwind it.
+	wagers.mine = []bettingpg.UserWagerRow{myWagerFixture(betting.WagerAccepted, -208, -208, "")}
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/book/wagers", nil))
+	if strings.Contains(w.Body.String(), "/cancel") {
+		t.Fatal("an accepted wager must not offer a cancel button")
+	}
+}
+
+func TestMemberWagersFlagsLineMovedAgainstMember(t *testing.T) {
+	// Locked in at -271; the same side is now offered at -208, so the board
+	// pays more than the member's pending price does.
+	wagers := &fakeWagers{mine: []bettingpg.UserWagerRow{
+		myWagerFixture(betting.WagerPending, -271, -208, ""),
+	}}
+	handler := newTestHandler(t, memberSession(), &fakeMarkets{}, wagers)
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/book/wagers", nil))
+
+	body := w.Body.String()
+	if !strings.Contains(body, "Moved against you") {
+		t.Fatal("member page did not flag that the line moved against the pending wager")
+	}
+	if !strings.Contains(body, "-208") {
+		t.Fatal("member page did not show the live line")
+	}
+}
+
+func TestMemberWagersShowsCancelledDistinctFromRejected(t *testing.T) {
+	wagers := &fakeWagers{mine: []bettingpg.UserWagerRow{
+		myWagerFixture(betting.WagerRejected, -208, -208, betting.CancelWagerReason),
+	}}
+	handler := newTestHandler(t, memberSession(), &fakeMarkets{}, wagers)
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/book/wagers", nil))
+
+	body := w.Body.String()
+	if !strings.Contains(body, "cancelled") {
+		t.Fatal("a wager the member pulled should read as cancelled, not rejected")
+	}
+	if strings.Contains(body, betting.CancelWagerReason) {
+		t.Fatal("the internal cancellation reason should not be shown back to the member")
+	}
+}
+
+func TestCancelWagerUsesSessionUserAndWagerPath(t *testing.T) {
+	wagers := &fakeWagers{}
+	handler := newTestHandler(t, memberSession(), &fakeMarkets{}, wagers)
+
+	body := url.Values{"csrf_token": {testCSRF}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/book/wagers/"+testWagerID+"/cancel", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	if len(wagers.cancelCalls) != 1 {
+		t.Fatalf("CancelWager calls = %d, want 1", len(wagers.cancelCalls))
+	}
+	call := wagers.cancelCalls[0]
+	if call.id != testWagerID || call.user != testUserID {
+		t.Fatalf("CancelWager(%q, %q), want (%q, %q) — the owner comes from the session",
+			call.id, call.user, testWagerID, testUserID)
+	}
+}
+
+func TestCancelWagerRequiresCSRFToken(t *testing.T) {
+	wagers := &fakeWagers{}
+	handler := newTestHandler(t, memberSession(), &fakeMarkets{}, wagers)
+
+	r := httptest.NewRequest(http.MethodPost, "/book/wagers/"+testWagerID+"/cancel", strings.NewReader(""))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", w.Code)
+	}
+	if len(wagers.cancelCalls) != 0 {
+		t.Fatal("CancelWager was called without a CSRF token")
+	}
+}
+
+func TestCancelWagerRejectsMalformedID(t *testing.T) {
+	wagers := &fakeWagers{}
+	handler := newTestHandler(t, memberSession(), &fakeMarkets{}, wagers)
+
+	body := url.Values{"csrf_token": {testCSRF}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/book/wagers/not-a-uuid/cancel", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", w.Code)
+	}
+	if len(wagers.cancelCalls) != 0 {
+		t.Fatal("CancelWager was called with a malformed wager ID")
+	}
+}
+
+func TestCancelWagerReportsAlreadyReviewedWager(t *testing.T) {
+	wagers := &fakeWagers{cancelErr: betting.ErrInvalidTransition}
+	handler := newTestHandler(t, memberSession(), &fakeMarkets{}, wagers)
+
+	body := url.Values{"csrf_token": {testCSRF}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/book/wagers/"+testWagerID+"/cancel", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "no longer pending") {
+		t.Fatalf("body = %q, want an explanation that the book already reviewed it", w.Body.String())
 	}
 }

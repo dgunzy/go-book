@@ -235,7 +235,7 @@ func TestAutoApproveAcceptsWithSystemActor(t *testing.T) {
 	}
 }
 
-func TestAcceptInvalidatesWagerWhenLineMovedWhilePending(t *testing.T) {
+func TestAcceptFillsAtQuotedOddsWhenLineMovedWhilePending(t *testing.T) {
 	pool := testPool(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -270,16 +270,21 @@ func TestAcceptInvalidatesWagerWhenLineMovedWhilePending(t *testing.T) {
 		t.Fatal("line did not move; cannot exercise the stale-wager path")
 	}
 
-	// Accepting A's now-stale wager must be refused and the wager invalidated.
-	if _, err := store.AcceptWager(ctx, string(wagerA.ID), admin); !errors.Is(err, betting.ErrOddsMoved) {
-		t.Fatalf("AcceptWager(stale A) error = %v, want ErrOddsMoved", err)
+	// The admin can still fill A's wager, and it fills at the odds A was
+	// quoted rather than the moved line.
+	accepted, err := store.AcceptWager(ctx, string(wagerA.ID), admin)
+	if err != nil {
+		t.Fatalf("AcceptWager(stale A) error = %v, want nil", err)
 	}
-	assertWagerState(t, ctx, pool, string(wagerA.ID), "rejected")
+	if accepted.AcceptedOdds != wagerA.AcceptedOdds {
+		t.Fatalf("accepted odds = %d, want the quoted %d", accepted.AcceptedOdds, wagerA.AcceptedOdds)
+	}
+	assertWagerState(t, ctx, pool, string(wagerA.ID), "accepted")
 
-	// No escrow moved for the rejected wager: A keeps their full balance.
+	// The stake moved to escrow, so A's balance drops by exactly the stake.
 	balanceA := accountBalanceFor(t, ctx, pool, users[0], "user_cash", ledger.CAD)
-	if balanceA != 200_000 {
-		t.Fatalf("A balance after invalidation = %d, want 200000 (untouched)", balanceA)
+	if balanceA != 199_000 {
+		t.Fatalf("A balance after acceptance = %d, want 199000 (200000 less the 1000 stake)", balanceA)
 	}
 }
 

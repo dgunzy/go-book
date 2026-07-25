@@ -9,7 +9,6 @@ import (
 
 	"github.com/dgunzy/go-book/internal/betting"
 	"github.com/dgunzy/go-book/internal/eventspg"
-	"github.com/dgunzy/go-book/internal/ledger"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -111,15 +110,10 @@ func (s Store) AcceptWager(ctx context.Context, wagerID, actorUserID string) (be
 		return betting.Wager{}, ErrInsufficientFunds
 	}
 
-	// The line the wager's selection is offered at right now. If it no longer
-	// matches the odds snapshotted when the wager was placed, the line moved
-	// while the wager was pending; the domain refuses acceptance and the stale
-	// wager is invalidated (rejected) rather than filled at a stale price.
-	currentOdds, err := currentSelectionOdds(ctx, tx, string(wager.SelectionID))
-	if err != nil {
-		return betting.Wager{}, err
-	}
-
+	// A wager fills at the odds it was placed at even when dynamic pricing has
+	// since moved the line. The admin review queue shows the live line next to
+	// the locked price, so taking or refusing a stale price is a decision made
+	// there, not silently here.
 	eventID, err := betting.NewEventID()
 	if err != nil {
 		return betting.Wager{}, err
@@ -127,10 +121,7 @@ func (s Store) AcceptWager(ctx context.Context, wagerID, actorUserID string) (be
 	result, err := betting.AcceptWager(wager, betting.ID(actorUserID), time.Now(), betting.AcceptanceAccountRefs{
 		UserFundingAccountID: userAccountID,
 		EscrowAccountID:      escrowAccountID,
-	}, currentOdds, eventID)
-	if errors.Is(err, betting.ErrOddsMoved) {
-		return s.invalidateStaleWager(ctx, tx, wager, actorUserID)
-	}
+	}, eventID)
 	if err != nil {
 		return betting.Wager{}, err
 	}
@@ -172,36 +163,6 @@ func creditLimitForUser(ctx context.Context, tx pgx.Tx, userID string) (int64, e
 		return 0, fmt.Errorf("load credit limit: %w", err)
 	}
 	return limit, nil
-}
-
-func currentSelectionOdds(ctx context.Context, tx pgx.Tx, selectionID string) (ledger.AmericanOdds, error) {
-	var odds int32
-	if err := tx.QueryRow(ctx, `SELECT offered_american_odds FROM selections WHERE id = $1::uuid`, selectionID).Scan(&odds); err != nil {
-		return 0, fmt.Errorf("load current selection odds: %w", err)
-	}
-	return ledger.NewAmericanOdds(odds)
-}
-
-// invalidateStaleWager rejects a pending wager whose quoted line has moved,
-// committing the rejection and returning ErrOddsMoved so the caller can tell
-// the bettor to re-place at the current line. A system (auto-approve) actor
-// cannot be recorded as the rejecter, but auto-approval accepts immediately at
-// placement so the line cannot have moved in that path.
-func (s Store) invalidateStaleWager(ctx context.Context, tx pgx.Tx, wager betting.Wager, actorUserID string) (betting.Wager, error) {
-	if !isUUID(actorUserID) {
-		return betting.Wager{}, betting.ErrOddsMoved
-	}
-	const reason = "line moved since placement"
-	if _, err := tx.Exec(ctx, `
-		UPDATE wagers SET state = 'rejected', rejected_at = now(), rejected_by = $2::uuid, rejection_reason = $3
-		WHERE id = $1::uuid AND state = 'pending'`, string(wager.ID), actorUserID, reason); err != nil {
-		return betting.Wager{}, fmt.Errorf("invalidate stale wager: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return betting.Wager{}, fmt.Errorf("commit stale wager rejection: %w", err)
-	}
-	wager.State = betting.WagerRejected
-	return wager, betting.ErrOddsMoved
 }
 
 // verifyAcceptance checks that an already-accepted wager's acceptance ledger
@@ -279,4 +240,66 @@ func (s Store) RejectWager(ctx context.Context, wagerID, actorUserID, reason str
 		return betting.Wager{}, fmt.Errorf("commit reject wager: %w", err)
 	}
 	return rejected, nil
+}
+
+// CancelWager lets a member withdraw their own still-pending wager. The wager
+// row is locked first so a cancellation racing the book's acceptance cannot
+// both win: whichever transaction commits first leaves the other looking at a
+// wager that is no longer pending. A wager belonging to another member reads
+// as not found, so this route cannot be used to probe for other people's bets.
+func (s Store) CancelWager(ctx context.Context, wagerID, userID string) (betting.Wager, error) {
+	if !isUUID(userID) {
+		return betting.Wager{}, fmt.Errorf("%w: cancelling a wager requires a user ID", betting.ErrInvalid)
+	}
+	tx, err := s.begin(ctx)
+	if err != nil {
+		return betting.Wager{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	wager, err := loadWagerForUpdate(ctx, tx, wagerID)
+	if err != nil {
+		return betting.Wager{}, err
+	}
+	if string(wager.UserID) != userID {
+		return betting.Wager{}, fmt.Errorf("%w: wager %s", betting.ErrNotFound, wagerID)
+	}
+
+	// Cancelling an already-cancelled wager is a no-op, so a double-submit or
+	// a retried request does not turn into an error the member has to read.
+	if wager.State == betting.WagerRejected {
+		var storedReason string
+		if err := tx.QueryRow(ctx, `SELECT coalesce(rejection_reason, '') FROM wagers WHERE id = $1::uuid`, wagerID).Scan(&storedReason); err != nil {
+			return betting.Wager{}, fmt.Errorf("load existing rejection: %w", err)
+		}
+		if strings.TrimSpace(storedReason) != betting.CancelWagerReason {
+			return betting.Wager{}, fmt.Errorf("%w: wager %s was rejected by the book, not cancelled", ErrIdempotencyConflict, wagerID)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return betting.Wager{}, fmt.Errorf("commit cancel wager (idempotent): %w", err)
+		}
+		return wager, nil
+	}
+
+	cancelled, err := betting.CancelWager(wager, betting.ID(userID))
+	if err != nil {
+		return betting.Wager{}, err
+	}
+
+	tag, err := tx.Exec(ctx, `
+		UPDATE wagers
+		SET state = 'rejected', rejected_at = now(), rejected_by = $2::uuid, rejection_reason = $3
+		WHERE id = $1::uuid AND user_id = $2::uuid AND state = 'pending'`,
+		wagerID, userID, betting.CancelWagerReason)
+	if err != nil {
+		return betting.Wager{}, fmt.Errorf("update wager to cancelled: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return betting.Wager{}, fmt.Errorf("%w: wager %s is no longer pending", betting.ErrInvalidTransition, wagerID)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return betting.Wager{}, fmt.Errorf("commit cancel wager: %w", err)
+	}
+	return cancelled, nil
 }

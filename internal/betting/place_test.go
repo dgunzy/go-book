@@ -152,7 +152,7 @@ func TestAcceptWagerProducesBalancedPostingsAndEvent(t *testing.T) {
 	refs := AcceptanceAccountRefs{UserFundingAccountID: "user-1-cash", EscrowAccountID: "escrow"}
 	occurredAt := time.Date(2027, time.May, 11, 12, 0, 0, 0, time.UTC)
 
-	result, err := AcceptWager(wager, testAdminID, occurredAt, refs, wager.AcceptedOdds, testEventID)
+	result, err := AcceptWager(wager, testAdminID, occurredAt, refs, testEventID)
 	if err != nil {
 		t.Fatalf("AcceptWager() error = %v", err)
 	}
@@ -181,18 +181,17 @@ func TestAcceptWagerProducesBalancedPostingsAndEvent(t *testing.T) {
 
 	// Replaying accept on an already-accepted wager must fail with a
 	// transition error, never move funds twice.
-	if _, err := AcceptWager(result.Wager, testAdminID, occurredAt, refs, result.Wager.AcceptedOdds, testEventID); !errors.Is(err, ErrInvalidTransition) {
+	if _, err := AcceptWager(result.Wager, testAdminID, occurredAt, refs, testEventID); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("re-accept error = %v, want ErrInvalidTransition", err)
 	}
 }
 
-// TestAcceptWagerRejectsWhenLineMovedWhilePending covers the two-bettor race:
+// TestAcceptWagerFillsAtTheQuotedLineAfterItMoves covers the two-bettor race:
 // bettor A places a wager at the posted line; bettor B's accepted bet then
-// moves the line via dynamic pricing while A's wager is still pending. When A's
-// wager is finally accepted, the current line no longer matches the odds A was
-// quoted, so acceptance is refused with ErrOddsMoved and the stale bet must be
-// invalidated rather than filled at a price no longer offered.
-func TestAcceptWagerRejectsWhenLineMovedWhilePending(t *testing.T) {
+// moves the line via dynamic pricing while A's wager is still pending. A's
+// wager still fills at the odds A was quoted — the admin sees the live line in
+// the review queue and decides whether to take it or reject it.
+func TestAcceptWagerFillsAtTheQuotedLineAfterItMoves(t *testing.T) {
 	t.Parallel()
 	wager, err := PlaceWager(placeCommand())
 	if err != nil {
@@ -200,20 +199,17 @@ func TestAcceptWagerRejectsWhenLineMovedWhilePending(t *testing.T) {
 	}
 	refs := AcceptanceAccountRefs{UserFundingAccountID: "user-1-cash", EscrowAccountID: "escrow"}
 	occurredAt := time.Date(2027, time.May, 11, 12, 0, 0, 0, time.UTC)
-
-	// The line the wager was quoted at.
 	quoted := wager.AcceptedOdds
-	// The line has since moved to a different value.
-	moved, err := ledger.NewAmericanOdds(int32(quoted) - 20)
+
+	result, err := AcceptWager(wager, testAdminID, occurredAt, refs, testEventID)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("accept after line move error = %v, want nil", err)
 	}
-	if _, err := AcceptWager(wager, testAdminID, occurredAt, refs, moved, testEventID); !errors.Is(err, ErrOddsMoved) {
-		t.Fatalf("accept after line move error = %v, want ErrOddsMoved", err)
+	if result.Wager.AcceptedOdds != quoted {
+		t.Fatalf("accepted odds = %d, want the quoted %d", result.Wager.AcceptedOdds, quoted)
 	}
-	// Accepting at the unchanged, still-current line succeeds.
-	if _, err := AcceptWager(wager, testAdminID, occurredAt, refs, quoted, testEventID); err != nil {
-		t.Fatalf("accept at unchanged line error = %v, want nil", err)
+	if result.Wager.State != WagerAccepted {
+		t.Fatalf("wager state = %s, want accepted", result.Wager.State)
 	}
 }
 
@@ -226,15 +222,15 @@ func TestAcceptWagerRequiresActorAndAccountRefs(t *testing.T) {
 	occurredAt := time.Date(2027, time.May, 11, 12, 0, 0, 0, time.UTC)
 	refs := AcceptanceAccountRefs{UserFundingAccountID: "user-1-cash", EscrowAccountID: "escrow"}
 
-	if _, err := AcceptWager(wager, "", occurredAt, refs, wager.AcceptedOdds, testEventID); !errors.Is(err, ErrUnauthorized) {
+	if _, err := AcceptWager(wager, "", occurredAt, refs, testEventID); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("missing actor error = %v, want ErrUnauthorized", err)
 	}
 	badRefs := AcceptanceAccountRefs{}
-	if _, err := AcceptWager(wager, testAdminID, occurredAt, badRefs, wager.AcceptedOdds, testEventID); !errors.Is(err, ErrInvalid) {
+	if _, err := AcceptWager(wager, testAdminID, occurredAt, badRefs, testEventID); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("missing refs error = %v, want ErrInvalid", err)
 	}
 	sameAccountRefs := AcceptanceAccountRefs{UserFundingAccountID: "acct", EscrowAccountID: "acct"}
-	if _, err := AcceptWager(wager, testAdminID, occurredAt, sameAccountRefs, wager.AcceptedOdds, testEventID); !errors.Is(err, ErrInvalid) {
+	if _, err := AcceptWager(wager, testAdminID, occurredAt, sameAccountRefs, testEventID); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("same account refs error = %v, want ErrInvalid", err)
 	}
 }
@@ -270,5 +266,43 @@ func TestPlaceWagerRejectsStakeThatCannotWinACent(t *testing.T) {
 	command.Stake = ledger.Money{Cents: 4, Currency: ledger.CAD}
 	if _, err := PlaceWager(command); err == nil {
 		t.Fatal("PlaceWager() accepted a stake whose potential profit rounds to zero")
+	}
+}
+
+func TestCancelWagerOnlyByOwnerAndOnlyWhilePending(t *testing.T) {
+	t.Parallel()
+	wager, err := PlaceWager(placeCommand())
+	if err != nil {
+		t.Fatalf("PlaceWager() error = %v", err)
+	}
+
+	// Another member — even an admin — cannot pull someone else's bet.
+	if _, err := CancelWager(wager, testAdminID); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("cancel by another user error = %v, want ErrUnauthorized", err)
+	}
+	if _, err := CancelWager(wager, ""); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("cancel without an actor error = %v, want ErrUnauthorized", err)
+	}
+
+	cancelled, err := CancelWager(wager, wager.UserID)
+	if err != nil {
+		t.Fatalf("CancelWager() error = %v", err)
+	}
+	if cancelled.State != WagerRejected {
+		t.Fatalf("state = %s, want rejected", cancelled.State)
+	}
+	// The snapshot the bet was placed at is untouched by cancelling.
+	if cancelled.Stake != wager.Stake || cancelled.AcceptedOdds != wager.AcceptedOdds {
+		t.Fatal("cancelling must not rewrite the wager's stake or odds")
+	}
+
+	// Once cancelled — or accepted — there is nothing left to cancel.
+	if _, err := CancelWager(cancelled, cancelled.UserID); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("re-cancel error = %v, want ErrInvalidTransition", err)
+	}
+	accepted := wager
+	accepted.State = WagerAccepted
+	if _, err := CancelWager(accepted, accepted.UserID); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("cancel accepted wager error = %v, want ErrInvalidTransition", err)
 	}
 }

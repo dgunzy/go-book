@@ -17,7 +17,7 @@
 <section class="help-section" aria-labelledby="help-matches">
   <h2 id="help-matches">Setting up teams and matches</h2>
   <p>On <a href="/admin/matches">Matches</a>, create an event and add its teams. In the <strong>Players</strong> section, enter each new golfer's name and click <strong>Add player</strong>; then add each golfer to that event's team roster and designate at least one captain per staffed team. The first golfer added is automatically a captain. A golfer can belong to only one team in an event. Roster changes are audited, and a golfer with match history for that team cannot be removed.</p>
-  <p>Then create each match from its staffed team rosters. Both teams must have a captain. Player assignment is required: <strong>Singles need exactly one rostered player per side</strong>; <strong>Fourball, Foursomes, and Scramble need exactly two per side</strong>; Other needs at least one. Selecting a team filters the golfer list to that roster, and the form chooses the first available golfer by default. The server rejects a missing captain or a missing, inactive, duplicated, unrostered, or incorrectly counted player.</p>
+  <p>Then create each match from its staffed team rosters. Both teams must have a captain. Tick each golfer in the checkbox list: <strong>Singles need exactly one rostered player per side</strong>; <strong>Fourball, Foursomes, and Scramble need exactly two per side</strong>; Other needs at least one. Selecting a team filters the golfer list to that roster, and the form checks the first available golfer by default. The server rejects a missing captain or a missing, inactive, duplicated, unrostered, or incorrectly counted player.</p>
   <p>If you create the wrong setup record, open its red <strong>Delete</strong> control, enter an audit reason, and confirm. Only unused matches, unused teams, and empty non-historical events can be deleted. Anything with a market, result, media, statistics, roster, or imported history is protected; use the appropriate void or correction workflow instead. Historical players are deliberately not deletable from this page.</p>
 </section>
 
@@ -35,7 +35,7 @@
 <section class="help-section" aria-labelledby="help-pricing">
   <h2 id="help-pricing">Dynamic pricing (the line moves on its own)</h2>
   <p>New markets have <strong>dynamic pricing on by default</strong>, with a ${{.DefaultLineWeightDollars}} liquidity — you don't need to enter anything. As accepted action comes in, the line automatically shortens on the heavily-backed side and lengthens on the other to balance the book. A larger liquidity moves the line less per bet; uncheck the box to keep a fixed line.</p>
-  <p>A bettor is <strong>locked in at the odds they were shown</strong> when they placed. The move only affects the next bettor. If the line moves while a bet is still pending, that pending bet is <strong>invalidated</strong> when reviewed (it can't be filled at a price no longer offered) and the member must re-place.</p>
+  <p>A bettor is <strong>locked in at the odds they were shown</strong> when they placed. The move only affects the next bettor. If the line moves while a bet is still pending, the bet still fills at the price the member was quoted — <a href="/admin/wagers">Review wagers</a> shows you the live line beside it so you can accept or reject it on purpose.</p>
 </section>
 
 <section class="help-section" aria-labelledby="help-wagers">
@@ -45,6 +45,8 @@
     <li>Stakes up to <strong>${{.AutoApproveDollars}}</strong> are <strong>auto-approved</strong> — accepted immediately and the stake is moved to escrow.</li>
     <li>Larger stakes stay <strong>pending</strong> and appear under <a href="/admin/wagers">Review wagers</a>, where you <strong>Accept</strong> or <strong>Reject</strong> (with a reason) each one.</li>
   </ul>
+  <p>Each pending wager shows the <strong>live line</strong> — the price its selection is offered at right now — beside the price the member locked in. When the locked price pays the member more than today's line, the row is flagged <strong>Moved in member's favour</strong> and a warning appears above the queue, with what the same stake would win at the current line. Nothing is decided for you: <strong>Accept</strong> always fills at the price the member was quoted, so reject the ones you don't want. <strong>Off the board</strong> means the selection or market is no longer open, so there is no live line to compare.</p>
+  <p>The member sees the same live line on their own <a href="/book/wagers">Wagers</a> page, and can <strong>Cancel</strong> a wager of theirs that is still pending — useful when the line moved against them while they waited. A cancelled wager shows as <em>cancelled</em> and never staked anything. Once you accept a wager the stake is in escrow and the member can no longer pull it; unwinding it then means voiding or settling the market.</p>
   <p>The auto-approve threshold is a book-wide setting; ask your operator to change it if needed.</p>
 </section>
 

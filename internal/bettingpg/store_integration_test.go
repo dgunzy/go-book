@@ -627,3 +627,129 @@ func assertOutboxContains(t *testing.T, ctx context.Context, pool *pgxpool.Pool,
 func assertOutboxContainsAggregate(t *testing.T, ctx context.Context, pool *pgxpool.Pool, aggregateID string, eventType events.Type) {
 	assertOutboxContains(t, ctx, pool, aggregateID, eventType)
 }
+
+func TestCancelWagerByOwnerWhilePending(t *testing.T) {
+	pool := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	store := Store{DB: pool}
+
+	f := buildFixture(t, ctx, pool, 10_000)
+	escrowBefore := systemAccountBalance(t, ctx, pool, "wager_escrow", f.Currency)
+
+	wagerID := mustNewUUID(t, ctx, store)
+	wager, err := store.PlaceWager(ctx, PlaceWagerRequest{
+		WagerID: wagerID, UserID: f.UserA, MarketID: f.MarketID, SelectionID: f.SelectionAID,
+		FundingAccountType: betting.FundingUserCash, StakeCents: 1_000, Currency: f.Currency,
+		IdempotencyKey: "cancel-own:" + f.Suffix,
+	})
+	if err != nil {
+		t.Fatalf("PlaceWager() error = %v", err)
+	}
+
+	// Another member cannot cancel this wager, and gets no signal that it exists.
+	if _, err := store.CancelWager(ctx, string(wager.ID), f.UserB); !errors.Is(err, betting.ErrNotFound) {
+		t.Fatalf("CancelWager(other member) error = %v, want ErrNotFound", err)
+	}
+	assertWagerState(t, ctx, pool, string(wager.ID), "pending")
+
+	cancelled, err := store.CancelWager(ctx, string(wager.ID), f.UserA)
+	if err != nil {
+		t.Fatalf("CancelWager() error = %v", err)
+	}
+	if cancelled.State != betting.WagerRejected {
+		t.Fatalf("cancelled wager state = %v, want rejected", cancelled.State)
+	}
+	assertWagerState(t, ctx, pool, string(wager.ID), "rejected")
+
+	var reason, rejectedBy string
+	if err := pool.QueryRow(ctx,
+		`SELECT coalesce(rejection_reason, ''), coalesce(rejected_by::text, '') FROM wagers WHERE id = $1::uuid`,
+		string(wager.ID)).Scan(&reason, &rejectedBy); err != nil {
+		t.Fatal(err)
+	}
+	if reason != betting.CancelWagerReason {
+		t.Fatalf("rejection reason = %q, want %q", reason, betting.CancelWagerReason)
+	}
+	if rejectedBy != f.UserA {
+		t.Fatalf("rejected_by = %q, want the member who cancelled (%q)", rejectedBy, f.UserA)
+	}
+
+	// A cancelled wager never staked anything: no balance moved either way.
+	if balance := accountBalanceFor(t, ctx, pool, f.UserA, "user_cash", f.Currency); balance != 10_000 {
+		t.Fatalf("balance after cancel = %d, want the untouched 10000", balance)
+	}
+	if escrowAfter := systemAccountBalance(t, ctx, pool, "wager_escrow", f.Currency); escrowAfter != escrowBefore {
+		t.Fatalf("escrow moved on cancel: delta = %d, want 0", escrowAfter-escrowBefore)
+	}
+
+	// Cancelling again is a no-op rather than an error the member has to read.
+	if _, err := store.CancelWager(ctx, string(wager.ID), f.UserA); err != nil {
+		t.Fatalf("repeat CancelWager() error = %v, want nil", err)
+	}
+}
+
+func TestCancelWagerRefusedOnceAccepted(t *testing.T) {
+	pool := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	store := Store{DB: pool}
+
+	f := buildFixture(t, ctx, pool, 10_000)
+	wagerID := mustNewUUID(t, ctx, store)
+	wager, err := store.PlaceWager(ctx, PlaceWagerRequest{
+		WagerID: wagerID, UserID: f.UserA, MarketID: f.MarketID, SelectionID: f.SelectionAID,
+		FundingAccountType: betting.FundingUserCash, StakeCents: 1_000, Currency: f.Currency,
+		IdempotencyKey: "cancel-accepted:" + f.Suffix,
+	})
+	if err != nil {
+		t.Fatalf("PlaceWager() error = %v", err)
+	}
+	if _, err := store.AcceptWager(ctx, string(wager.ID), f.UserB); err != nil {
+		t.Fatalf("AcceptWager() error = %v", err)
+	}
+
+	// The stake is in escrow now; only the book can unwind it.
+	if _, err := store.CancelWager(ctx, string(wager.ID), f.UserA); !errors.Is(err, betting.ErrInvalidTransition) {
+		t.Fatalf("CancelWager(accepted) error = %v, want ErrInvalidTransition", err)
+	}
+	assertWagerState(t, ctx, pool, string(wager.ID), "accepted")
+	if balance := accountBalanceFor(t, ctx, pool, f.UserA, "user_cash", f.Currency); balance != 9_000 {
+		t.Fatalf("balance after refused cancel = %d, want 9000 (stake still escrowed)", balance)
+	}
+}
+
+func TestCancelWagerConflictsWithBookRejection(t *testing.T) {
+	pool := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	store := Store{DB: pool}
+
+	f := buildFixture(t, ctx, pool, 10_000)
+	wagerID := mustNewUUID(t, ctx, store)
+	wager, err := store.PlaceWager(ctx, PlaceWagerRequest{
+		WagerID: wagerID, UserID: f.UserA, MarketID: f.MarketID, SelectionID: f.SelectionAID,
+		FundingAccountType: betting.FundingUserCash, StakeCents: 1_000, Currency: f.Currency,
+		IdempotencyKey: "cancel-rejected:" + f.Suffix,
+	})
+	if err != nil {
+		t.Fatalf("PlaceWager() error = %v", err)
+	}
+	if _, err := store.RejectWager(ctx, string(wager.ID), f.UserB, "no action at that number"); err != nil {
+		t.Fatalf("RejectWager() error = %v", err)
+	}
+
+	// The book's rejection reason must survive: a late cancel cannot rewrite
+	// the record into a member cancellation.
+	if _, err := store.CancelWager(ctx, string(wager.ID), f.UserA); !errors.Is(err, ErrIdempotencyConflict) {
+		t.Fatalf("CancelWager(book-rejected) error = %v, want ErrIdempotencyConflict", err)
+	}
+	var reason string
+	if err := pool.QueryRow(ctx, `SELECT coalesce(rejection_reason, '') FROM wagers WHERE id = $1::uuid`,
+		string(wager.ID)).Scan(&reason); err != nil {
+		t.Fatal(err)
+	}
+	if reason != "no action at that number" {
+		t.Fatalf("rejection reason = %q, want the book's original reason", reason)
+	}
+}

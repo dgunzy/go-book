@@ -1,14 +1,14 @@
 {{define "private_content"}}
 <header class="private-page-heading">
   <div><p class="private-kicker">Your positions</p><h1>Wagers</h1></div>
-  <p>Accepted wagers keep the odds and terms they were placed at. <a href="/book/markets">Browse open markets</a>.</p>
+  <p>Accepted wagers keep the odds and terms they were placed at. A wager the book has not accepted yet can still be cancelled. <a href="/book/markets">Browse open markets</a>.</p>
 </header>
 
 <section aria-labelledby="my-wagers-heading">
   <h2 id="my-wagers-heading" class="visually-hidden">Wager history</h2>
   <div class="private-table-wrap">
     <table class="private-table private-table-wide">
-      <thead><tr><th scope="col">Placed</th><th scope="col">Market</th><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Stake</th><th scope="col">To win</th><th scope="col">Status</th></tr></thead>
+      <thead><tr><th scope="col">Placed</th><th scope="col">Market</th><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Live line</th><th scope="col">Stake</th><th scope="col">To win</th><th scope="col">Status</th></tr></thead>
       <tbody>
         {{range .MemberWagers}}
         <tr>
@@ -16,12 +16,36 @@
           <th scope="row">{{.MarketTitle}}</th>
           <td>{{.SelectionTerms}}</td>
           <td class="private-odds">{{odds .Odds}}</td>
+          <td class="private-odds betting-line-cell">
+            {{if .ShowLiveLine}}
+              <span class="betting-line-price">{{odds .CurrentOdds}}</span>
+              {{if .MovedAgainstMember}}
+                <span class="betting-line-flag is-warning">Moved against you</span>
+                <small>Your price is still the one you placed at. Cancel if you would rather not have this bet.</small>
+              {{else if .MovedForMember}}
+                <span class="betting-line-flag is-ok">Moved your way</span>
+              {{else}}
+                <span class="betting-line-flag">Unchanged</span>
+              {{end}}
+            {{else}}
+              <span class="betting-line-flag">&mdash;</span>
+            {{end}}
+          </td>
           <td class="private-money">{{money .Stake}}</td>
           <td class="private-money">{{money .PotentialProfit}}</td>
-          <td><span class="private-status">{{.State}}</span>{{if .RejectionReason}}<small class="betting-reason">{{.RejectionReason}}</small>{{end}}</td>
+          <td class="betting-actions-cell">
+            <span class="private-status">{{if .Cancelled}}cancelled{{else}}{{.State}}{{end}}</span>
+            {{if and .RejectionReason (not .Cancelled)}}<small class="betting-reason">{{.RejectionReason}}</small>{{end}}
+            {{if .CanCancel}}
+            <form method="post" action="/book/wagers/{{.ID}}/cancel" class="betting-inline-form" hx-post="/book/wagers/{{.ID}}/cancel" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <button type="submit" class="betting-danger-button">Cancel</button>
+            </form>
+            {{end}}
+          </td>
         </tr>
         {{else}}
-        <tr><td colspan="7" class="private-empty-cell">You have not placed any wagers yet.</td></tr>
+        <tr><td colspan="8" class="private-empty-cell">You have not placed any wagers yet.</td></tr>
         {{end}}
       </tbody>
     </table>

@@ -591,6 +591,18 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .betting-outcome-options { display: flex; flex-wrap: wrap; gap: .9rem; font-size: .78rem; }
 .betting-outcome-options label { align-items: center; display: inline-flex; font-weight: 600; gap: .3rem; }
 .betting-form-actions { align-items: center; display: flex; flex-wrap: wrap; gap: .7rem; }
+.betting-line-alert { background: #f9edec; border: 1px solid #d8a7a3; border-left: 5px solid #8c2f2f; color: #7c2d26; margin-bottom: 1rem; padding: .7rem .9rem; }
+.betting-line-alert strong { display: block; font-size: .78rem; text-transform: uppercase; }
+.betting-line-alert p { font-size: .78rem; margin: .2rem 0 0; }
+.betting-line-cell { text-align: right; white-space: normal; }
+.betting-line-price { display: block; font-weight: 800; }
+.betting-line-flag { color: #5b6760; display: inline-block; font-size: .64rem; font-weight: 800; letter-spacing: .02em; margin-top: .15rem; text-transform: uppercase; }
+.betting-line-flag.is-warning { background: #f9edec; border: 1px solid #d8a7a3; border-radius: 4px; color: #7c2d26; padding: .1rem .35rem; }
+.betting-line-flag.is-ok { color: #2c6b45; }
+.betting-line-cell small { color: #7c2d26; display: block; font-size: .66rem; font-weight: 500; margin-top: .2rem; }
+.betting-line-cell small.betting-line-note { color: #5b6760; }
+.private-table tbody tr.is-line-moved { background: #fdf6f4; }
+.private-table tbody tr.is-line-moved:hover { background: #f9edec; }
 @media (max-width: 700px) {
   .betting-place-form { justify-content: flex-start; }
   .betting-place-form input[name="stake"] { width: 5.5rem; }

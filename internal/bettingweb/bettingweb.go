@@ -68,6 +68,7 @@ type WagerStore interface {
 	PlaceWager(context.Context, bettingpg.PlaceWagerRequest) (betting.Wager, error)
 	AcceptWager(ctx context.Context, wagerID, actorUserID string) (betting.Wager, error)
 	RejectWager(ctx context.Context, wagerID, actorUserID, reason string) (betting.Wager, error)
+	CancelWager(ctx context.Context, wagerID, userID string) (betting.Wager, error)
 	ListWagersByState(context.Context, betting.WagerState) ([]bettingpg.AdminWagerRow, error)
 	ListWagersForUser(context.Context, string) ([]bettingpg.UserWagerRow, error)
 	AutoApproveLimitForUser(ctx context.Context, userID string) (int64, bool, error)
@@ -135,6 +136,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /book/markets", h.bookMarkets)
 	h.mux.HandleFunc("GET /book/wagers", h.bookWagers)
 	h.mux.HandleFunc("POST /book/wagers", h.placeWager)
+	h.mux.HandleFunc("POST /book/wagers/{id}/cancel", h.cancelWager)
 	h.mux.HandleFunc("GET /admin/markets", h.adminMarkets)
 	h.mux.HandleFunc("GET /admin/markets/new", h.adminMarketNew)
 	h.mux.HandleFunc("POST /admin/markets", h.adminCreateMarket)
@@ -176,14 +178,167 @@ type marketView struct {
 	Selections []selectionView
 }
 
+// lineMove describes how the live line compares to the price a pending wager
+// was placed at, from the member's point of view.
+type lineMove string
+
+const (
+	lineUnchanged lineMove = "unchanged"
+	// lineToMember means the wager's locked price now pays more than the board
+	// does: accepting it books worse value than the current line, so the admin
+	// may want to reject.
+	lineToMember lineMove = "member"
+	// lineToBook means the board now pays more than the locked price, so the
+	// wager is cheap for the book.
+	lineToBook lineMove = "book"
+	// lineOffBoard means the selection or market is no longer taking action,
+	// so there is no live line to compare against.
+	lineOffBoard lineMove = "off-board"
+)
+
+// adminWagerView is one pending wager plus the live line comparison shown in
+// the approval queue.
+type adminWagerView struct {
+	bettingpg.AdminWagerRow
+	Move lineMove
+	// LiveProfit is what the same stake would win at the current line. It is
+	// zero when the line is off the board.
+	LiveProfit ledger.Money
+	// ProfitDelta is LiveProfit minus the wager's locked potential profit:
+	// negative means the book is paying out more than it would today.
+	ProfitDelta ledger.Money
+}
+
+// MovedToMember reports whether the line moved in the member's favour, which
+// is the case the template warns on.
+func (v adminWagerView) MovedToMember() bool { return v.Move == lineToMember }
+
+// MovedToBook reports whether the board now prices the selection worse for the
+// member than the pending wager locked in.
+func (v adminWagerView) MovedToBook() bool { return v.Move == lineToBook }
+
+// LiveLineAvailable reports whether there is a current price to display.
+func (v adminWagerView) LiveLineAvailable() bool { return v.Move != lineOffBoard }
+
+// memberWagerView is one of the member's own wagers plus the live line, so a
+// member waiting on approval can see whether the price moved and pull the bet
+// while it is still pending.
+type memberWagerView struct {
+	bettingpg.UserWagerRow
+	Move lineMove
+}
+
+// CanCancel reports whether the member may still withdraw this wager. Only a
+// pending wager can be cancelled; once the book accepts it the stake is in
+// escrow.
+func (v memberWagerView) CanCancel() bool { return v.State == betting.WagerPending }
+
+// Cancelled distinguishes a wager the member pulled from one the book turned
+// down, so the status column can say which happened.
+func (v memberWagerView) Cancelled() bool {
+	return v.State == betting.WagerRejected && v.RejectionReason == betting.CancelWagerReason
+}
+
+// MovedAgainstMember reports whether the live line now pays less than the
+// pending wager locked in — the case where a member most likely wants out.
+func (v memberWagerView) MovedAgainstMember() bool {
+	return v.CanCancel() && v.Move == lineToBook
+}
+
+// MovedForMember reports whether the live line now pays more than the pending
+// wager locked in.
+func (v memberWagerView) MovedForMember() bool {
+	return v.CanCancel() && v.Move == lineToMember
+}
+
+// ShowLiveLine keeps the live line out of settled history, where the price on
+// the board today says nothing about a bet already graded.
+func (v memberWagerView) ShowLiveLine() bool {
+	return v.CanCancel() && v.Move != lineOffBoard
+}
+
+func memberWagerViews(rows []bettingpg.UserWagerRow) []memberWagerView {
+	views := make([]memberWagerView, 0, len(rows))
+	for _, row := range rows {
+		view := memberWagerView{UserWagerRow: row}
+		if !row.SelectionActive || row.MarketState != betting.MarketOpen {
+			view.Move = lineOffBoard
+		} else {
+			view.Move = compareLines(row.Odds, row.CurrentOdds)
+		}
+		views = append(views, view)
+	}
+	return views
+}
+
+func adminWagerViews(rows []bettingpg.AdminWagerRow) []adminWagerView {
+	views := make([]adminWagerView, 0, len(rows))
+	for _, row := range rows {
+		views = append(views, newAdminWagerView(row))
+	}
+	return views
+}
+
+func newAdminWagerView(row bettingpg.AdminWagerRow) adminWagerView {
+	view := adminWagerView{AdminWagerRow: row}
+	if !row.SelectionActive || row.MarketState != betting.MarketOpen {
+		view.Move = lineOffBoard
+		return view
+	}
+	view.Move = compareLines(row.Odds, row.CurrentOdds)
+	liveProfit, err := row.CurrentOdds.Profit(row.Stake)
+	if err != nil {
+		// A price that cannot be priced against this stake is not worth
+		// blocking the queue over; the comparison alone still renders.
+		return view
+	}
+	view.LiveProfit = liveProfit
+	if negated, negateErr := row.PotentialProfit.Negate(); negateErr == nil {
+		if delta, deltaErr := liveProfit.Add(negated); deltaErr == nil {
+			view.ProfitDelta = delta
+		}
+	}
+	return view
+}
+
+// compareLines ranks two American prices by the profit each pays per unit of
+// stake, using integer cross-multiplication so no float rounding can flip a
+// near-tie. A locked price that pays more than the live one is a move in the
+// member's favour.
+func compareLines(accepted, current ledger.AmericanOdds) lineMove {
+	if accepted == current {
+		return lineUnchanged
+	}
+	acceptedNum, acceptedDen := payoutRatio(accepted)
+	currentNum, currentDen := payoutRatio(current)
+	left := acceptedNum * currentDen
+	right := currentNum * acceptedDen
+	switch {
+	case left > right:
+		return lineToMember
+	case left < right:
+		return lineToBook
+	default:
+		return lineUnchanged
+	}
+}
+
+// payoutRatio returns profit per unit stake as an exact fraction.
+func payoutRatio(odds ledger.AmericanOdds) (numerator, denominator int64) {
+	if odds > 0 {
+		return int64(odds), 100
+	}
+	return 100, -int64(odds)
+}
+
 type pageData struct {
 	Title             string
 	Current           string
 	Session           privateweb.Session
 	Markets           []marketView
 	Market            marketView
-	MemberWagers      []bettingpg.UserWagerRow
-	AdminWagers       []bettingpg.AdminWagerRow
+	MemberWagers      []memberWagerView
+	AdminWagers       []adminWagerView
 	FormError         string
 	Notice            string
 	BackLink          string
@@ -236,7 +391,37 @@ func (h *Handler) bookWagers(w http.ResponseWriter, r *http.Request) {
 		h.internalError(w)
 		return
 	}
-	h.render(w, "book_wagers", pageData{Title: "Wagers", Current: "wagers", Session: session, MemberWagers: wagers})
+	h.render(w, "book_wagers", pageData{Title: "Wagers", Current: "wagers", Session: session,
+		MemberWagers: memberWagerViews(wagers)})
+}
+
+// cancelWager withdraws the member's own pending wager. The wager ID comes
+// from the path and the owner from the session, so a member can only ever
+// cancel their own bet.
+func (h *Handler) cancelWager(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireMember(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	wagerID := r.PathValue("id")
+	if !isUUID(wagerID) {
+		h.failPost(w, r, session, http.StatusNotFound, "The requested wager was not found.", redirectBookWagers)
+		return
+	}
+	wager, err := h.deps.Wagers.CancelWager(r.Context(), wagerID, session.UserID)
+	if err != nil {
+		status, text := storeErrorStatus(err)
+		if errors.Is(err, betting.ErrInvalidTransition) {
+			text = "This wager is no longer pending — the book has already reviewed it."
+		}
+		h.failPost(w, r, session, status, text, redirectBookWagers)
+		return
+	}
+	h.completePost(w, r, redirectBookWagers, "Wager cancelled.",
+		fmt.Sprintf("%s was never staked; nothing left your balance.", formatMoney(wager.Stake)))
 }
 
 func (h *Handler) placeWager(w http.ResponseWriter, r *http.Request) {
@@ -568,7 +753,8 @@ func (h *Handler) adminWagers(w http.ResponseWriter, r *http.Request) {
 		h.internalError(w)
 		return
 	}
-	h.render(w, "admin_wagers", pageData{Title: "Pending wagers", Current: "admin-wagers", Session: session, AdminWagers: wagers})
+	h.render(w, "admin_wagers", pageData{Title: "Pending wagers", Current: "admin-wagers", Session: session,
+		AdminWagers: adminWagerViews(wagers)})
 }
 
 func (h *Handler) adminAcceptWager(w http.ResponseWriter, r *http.Request) {

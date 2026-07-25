@@ -4,19 +4,43 @@
   <p>Accepting a wager moves the member's stake into escrow at the recorded odds. <a href="/admin/markets">Manage markets</a>.</p>
 </header>
 
+{{$stale := 0}}{{range .AdminWagers}}{{if .MovedToMember}}{{$stale = 1}}{{end}}{{end}}
+{{if $stale}}
+<div class="betting-line-alert" role="status">
+  <strong>Line moved in a member's favour</strong>
+  <p>One or more pending wagers are locked at a price that pays the member more than the board does now. They still fill at the locked price if you accept them — reject if you do not want to take the stale number.</p>
+</div>
+{{end}}
+
 <section aria-labelledby="pending-wagers-heading">
   <h2 id="pending-wagers-heading" class="visually-hidden">Pending wagers</h2>
   <div class="private-table-wrap">
     <table class="private-table private-table-wide">
-      <thead><tr><th scope="col">Placed</th><th scope="col">Member</th><th scope="col">Market</th><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Stake</th><th scope="col">To win</th><th scope="col">Actions</th></tr></thead>
+      <thead><tr><th scope="col">Placed</th><th scope="col">Member</th><th scope="col">Market</th><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Live line</th><th scope="col">Stake</th><th scope="col">To win</th><th scope="col">Actions</th></tr></thead>
       <tbody>
         {{range .AdminWagers}}
-        <tr>
+        <tr{{if .MovedToMember}} class="is-line-moved"{{end}}>
           <td>{{when .PlacedAt}}</td>
           <th scope="row">{{.UserDisplayName}}</th>
           <td>{{.MarketTitle}}</td>
           <td>{{.SelectionTerms}}</td>
           <td class="private-odds">{{odds .Odds}}</td>
+          <td class="private-odds betting-line-cell">
+            {{if .LiveLineAvailable}}
+              <span class="betting-line-price">{{odds .CurrentOdds}}</span>
+              {{if .MovedToMember}}
+                <span class="betting-line-flag is-warning">Moved in member's favour</span>
+                <small>Would win {{money .LiveProfit}} at today's line — {{money .ProfitDelta}} against the locked price.</small>
+              {{else if .MovedToBook}}
+                <span class="betting-line-flag is-ok">Moved to the book</span>
+                <small class="betting-line-note">Would win {{money .LiveProfit}} at today's line.</small>
+              {{else}}
+                <span class="betting-line-flag">Unchanged</span>
+              {{end}}
+            {{else}}
+              <span class="betting-line-flag">Off the board</span>
+            {{end}}
+          </td>
           <td class="private-money">{{money .Stake}}</td>
           <td class="private-money">{{money .PotentialProfit}}</td>
           <td class="betting-actions-cell">
@@ -33,7 +57,7 @@
           </td>
         </tr>
         {{else}}
-        <tr><td colspan="8" class="private-empty-cell">No wagers are waiting for review.</td></tr>
+        <tr><td colspan="9" class="private-empty-cell">No wagers are waiting for review.</td></tr>
         {{end}}
       </tbody>
     </table>

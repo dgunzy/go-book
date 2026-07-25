@@ -163,6 +163,7 @@ type AdminWagerRow struct {
 	UserDisplayName string
 	MarketID        string
 	MarketTitle     string
+	SelectionID     string
 	SelectionTerms  string
 	Odds            ledger.AmericanOdds
 	Stake           ledger.Money
@@ -170,6 +171,13 @@ type AdminWagerRow struct {
 	State           betting.WagerState
 	RejectionReason string
 	PlacedAt        time.Time
+	// CurrentOdds is the price the selection is offered at right now, which
+	// can differ from the snapshot the wager was placed at when dynamic
+	// pricing moved the line. SelectionActive and MarketState describe
+	// whether that live line is still on the board.
+	CurrentOdds     ledger.AmericanOdds
+	SelectionActive bool
+	MarketState     betting.MarketState
 }
 
 // UserWagerRow is one of a member's own wagers. It intentionally carries no
@@ -184,6 +192,12 @@ type UserWagerRow struct {
 	State           betting.WagerState
 	RejectionReason string
 	PlacedAt        time.Time
+	// CurrentOdds, SelectionActive, and MarketState describe the line the
+	// member's selection is offered at right now, so a member looking at a
+	// pending wager can see whether the price moved while they waited.
+	CurrentOdds     ledger.AmericanOdds
+	SelectionActive bool
+	MarketState     betting.MarketState
 }
 
 const marketRowsSQL = `
@@ -279,12 +293,15 @@ func (s Store) listMarkets(ctx context.Context, query string) ([]MarketRow, erro
 }
 
 const adminWagersSQL = `
-SELECT w.id::text, w.user_id::text, u.display_name, w.market_id::text, m.title, w.accepted_terms,
+SELECT w.id::text, w.user_id::text, u.display_name, w.market_id::text, m.title,
+       w.selection_id::text, w.accepted_terms,
        w.accepted_american_odds, w.stake_cents, w.currency::text, w.potential_profit_cents, w.state,
-       coalesce(w.rejection_reason, ''), w.placed_at
+       coalesce(w.rejection_reason, ''), w.placed_at,
+       s.offered_american_odds, s.active, m.state
 FROM wagers w
 JOIN markets m ON m.id = w.market_id
 JOIN users u ON u.id = w.user_id
+JOIN selections s ON s.market_id = w.market_id AND s.id = w.selection_id
 WHERE w.state = $1
 ORDER BY w.placed_at, w.id`
 
@@ -306,17 +323,23 @@ func (s Store) ListWagersByState(ctx context.Context, state betting.WagerState) 
 	result := make([]AdminWagerRow, 0)
 	for rows.Next() {
 		var row AdminWagerRow
-		var odds int32
+		var odds, currentOdds int32
 		var stakeCents, profitCents int64
-		var currency, wagerState string
+		var currency, wagerState, marketState string
 		if err := rows.Scan(&row.ID, &row.UserID, &row.UserDisplayName, &row.MarketID, &row.MarketTitle,
-			&row.SelectionTerms, &odds, &stakeCents, &currency, &profitCents, &wagerState,
-			&row.RejectionReason, &row.PlacedAt); err != nil {
+			&row.SelectionID, &row.SelectionTerms, &odds, &stakeCents, &currency, &profitCents, &wagerState,
+			&row.RejectionReason, &row.PlacedAt, &currentOdds, &row.SelectionActive, &marketState); err != nil {
 			return nil, fmt.Errorf("scan admin wager: %w", err)
 		}
 		if err := fillWagerMoney(&row.Odds, &row.Stake, &row.PotentialProfit, odds, stakeCents, profitCents, currency); err != nil {
 			return nil, fmt.Errorf("wager %s: %w", row.ID, err)
 		}
+		parsedCurrentOdds, err := ledger.NewAmericanOdds(currentOdds)
+		if err != nil {
+			return nil, fmt.Errorf("wager %s live line: %w", row.ID, err)
+		}
+		row.CurrentOdds = parsedCurrentOdds
+		row.MarketState = betting.MarketState(marketState)
 		row.State = betting.WagerState(wagerState)
 		row.PlacedAt = row.PlacedAt.UTC()
 		result = append(result, row)
@@ -329,9 +352,11 @@ func (s Store) ListWagersByState(ctx context.Context, state betting.WagerState) 
 
 const userWagersSQL = `
 SELECT w.id::text, m.title, w.accepted_terms, w.accepted_american_odds, w.stake_cents, w.currency::text,
-       w.potential_profit_cents, w.state, coalesce(w.rejection_reason, ''), w.placed_at
+       w.potential_profit_cents, w.state, coalesce(w.rejection_reason, ''), w.placed_at,
+       s.offered_american_odds, s.active, m.state
 FROM wagers w
 JOIN markets m ON m.id = w.market_id
+JOIN selections s ON s.market_id = w.market_id AND s.id = w.selection_id
 WHERE w.user_id = $1::uuid
 ORDER BY w.placed_at DESC, w.id DESC`
 
@@ -353,16 +378,23 @@ func (s Store) ListWagersForUser(ctx context.Context, userID string) ([]UserWage
 	result := make([]UserWagerRow, 0)
 	for rows.Next() {
 		var row UserWagerRow
-		var odds int32
+		var odds, currentOdds int32
 		var stakeCents, profitCents int64
-		var currency, wagerState string
+		var currency, wagerState, marketState string
 		if err := rows.Scan(&row.ID, &row.MarketTitle, &row.SelectionTerms, &odds, &stakeCents,
-			&currency, &profitCents, &wagerState, &row.RejectionReason, &row.PlacedAt); err != nil {
+			&currency, &profitCents, &wagerState, &row.RejectionReason, &row.PlacedAt,
+			&currentOdds, &row.SelectionActive, &marketState); err != nil {
 			return nil, fmt.Errorf("scan user wager: %w", err)
 		}
 		if err := fillWagerMoney(&row.Odds, &row.Stake, &row.PotentialProfit, odds, stakeCents, profitCents, currency); err != nil {
 			return nil, fmt.Errorf("wager %s: %w", row.ID, err)
 		}
+		parsedCurrentOdds, err := ledger.NewAmericanOdds(currentOdds)
+		if err != nil {
+			return nil, fmt.Errorf("wager %s live line: %w", row.ID, err)
+		}
+		row.CurrentOdds = parsedCurrentOdds
+		row.MarketState = betting.MarketState(marketState)
 		row.State = betting.WagerState(wagerState)
 		row.PlacedAt = row.PlacedAt.UTC()
 		result = append(result, row)

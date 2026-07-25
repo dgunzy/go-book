@@ -136,12 +136,11 @@ type AcceptWagerResult struct {
 // AcceptWager moves a pending wager to accepted. The stake moves from the
 // user's funding account to a shared escrow account in one balanced
 // transaction. Actor is the approving admin's user ID (or a system actor for
-// auto-approval). currentOdds is the line currently offered for the wager's
-// selection; if it differs from the odds snapshotted when the wager was
-// placed, the line moved while the wager was pending and ErrOddsMoved is
-// returned so the caller can invalidate the stale bet rather than accept it at
-// a price no longer on offer.
-func AcceptWager(wager Wager, actor ID, occurredAt time.Time, refs AcceptanceAccountRefs, currentOdds ledger.AmericanOdds, eventID ID) (AcceptWagerResult, error) {
+// auto-approval). The wager always fills at the odds snapshotted when it was
+// placed, even if the line has since moved: whether a stale price is still
+// worth taking is the approving admin's call, made from the live line shown in
+// the review queue.
+func AcceptWager(wager Wager, actor ID, occurredAt time.Time, refs AcceptanceAccountRefs, eventID ID) (AcceptWagerResult, error) {
 	if err := wager.Validate(); err != nil {
 		return AcceptWagerResult{}, err
 	}
@@ -150,9 +149,6 @@ func AcceptWager(wager Wager, actor ID, occurredAt time.Time, refs AcceptanceAcc
 	}
 	if !validID(actor) {
 		return AcceptWagerResult{}, ErrUnauthorized
-	}
-	if wager.AcceptedOdds != currentOdds {
-		return AcceptWagerResult{}, ErrOddsMoved
 	}
 	if err := refs.validate(); err != nil {
 		return AcceptWagerResult{}, err
@@ -220,6 +216,30 @@ func RejectWager(wager Wager, actor ID, reason string) (Wager, error) {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
 		return Wager{}, ErrReasonRequired
+	}
+	wager.State = WagerRejected
+	return wager, nil
+}
+
+// CancelWagerReason is recorded as the rejection reason when a member pulls
+// their own pending wager. A cancellation is a rejection the bettor asked for:
+// the wager never reached escrow, so no funds move either way.
+const CancelWagerReason = "Cancelled by the member before acceptance"
+
+// CancelWager lets the member who placed a wager withdraw it while it is still
+// pending — for instance when the line moved against them while they waited
+// for the book. Only the wager's own owner may cancel it, and only before the
+// book accepts it: once accepted the stake is in escrow and only the book can
+// unwind it.
+func CancelWager(wager Wager, actor ID) (Wager, error) {
+	if err := wager.Validate(); err != nil {
+		return Wager{}, err
+	}
+	if !validID(actor) || actor != wager.UserID {
+		return Wager{}, ErrUnauthorized
+	}
+	if !wager.State.CanTransitionTo(WagerRejected) {
+		return Wager{}, transitionErr("cancel wager", string(wager.State))
 	}
 	wager.State = WagerRejected
 	return wager, nil
