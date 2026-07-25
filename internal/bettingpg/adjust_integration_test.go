@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/dgunzy/go-book/internal/betting"
+	"github.com/dgunzy/go-book/internal/ledger"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // TestRecordSettlementClearsWhatAMemberOwes walks the real flow: a member loses
@@ -20,6 +22,10 @@ func TestRecordSettlementClearsWhatAMemberOwes(t *testing.T) {
 
 	f := buildFixture(t, ctx, pool, 10_000)
 	houseBefore := systemAccountBalance(t, ctx, pool, "house_clearing", f.Currency)
+	// The betting-only baseline is read with the same filter it is later
+	// asserted against; mixing a filtered sum with an unfiltered snapshot
+	// would drift the moment any other test records a settlement.
+	wagerHouseBefore := wagerOnlyHouseBalance(t, ctx, pool, f.Currency)
 
 	// The member bets $100 and loses it, leaving them $100 down.
 	placeAndAccept(t, ctx, store, f, f.UserA, f.SelectionAID, 10_000, 1)
@@ -69,6 +75,11 @@ func TestRecordSettlementClearsWhatAMemberOwes(t *testing.T) {
 		t.Fatalf("balance after betting on credit and losing = %d, want -5000", balance)
 	}
 
+	// Snapshot immediately before the payment: the second market's settlement
+	// has moved house clearing since the earlier reading, so the delta must be
+	// measured from here, not from a stale figure.
+	houseBeforePayment := systemAccountBalance(t, ctx, pool, "house_clearing", f.Currency)
+
 	adjustmentID := mustNewUUID(t, ctx, store)
 	recorded, err := store.RecordSettlement(ctx, RecordSettlementRequest{
 		AdjustmentID: adjustmentID, UserID: f.UserA, ActorUserID: f.UserB,
@@ -88,26 +99,17 @@ func TestRecordSettlementClearsWhatAMemberOwes(t *testing.T) {
 		t.Fatalf("balance after settling up = %d, want 0", balance)
 	}
 	houseAfterPayment := systemAccountBalance(t, ctx, pool, "house_clearing", f.Currency)
-	if houseAfterLoss-houseAfterPayment != 5_000 {
-		t.Fatalf("house clearing fell by %d, want 5000", houseAfterLoss-houseAfterPayment)
+	if houseBeforePayment-houseAfterPayment != 5_000 {
+		t.Fatalf("house clearing fell by %d, want 5000", houseBeforePayment-houseAfterPayment)
 	}
 
 	// The payment is an admin adjustment, so anything that sums wager
 	// transactions — the dashboard's house result and player standings —
 	// is untouched by settling up.
-	var wagerOnlyHouse int64
-	if err := pool.QueryRow(ctx, `
-		SELECT coalesce(sum(p.amount_cents), 0)
-		FROM ledger_postings p
-		JOIN ledger_accounts a ON a.id = p.account_id
-		JOIN ledger_transactions t ON t.id = p.transaction_id
-		WHERE a.account_type = 'house_clearing' AND a.currency = $1
-		  AND t.transaction_type IN ('wager_acceptance','wager_win','wager_loss','wager_refund')`,
-		string(f.Currency)).Scan(&wagerOnlyHouse); err != nil {
-		t.Fatal(err)
-	}
-	if wagerOnlyHouse-houseBefore != 15_000 {
-		t.Fatalf("betting-only house result = %d, want the full 15000 of losses", wagerOnlyHouse-houseBefore)
+	wagerHouseAfter := wagerOnlyHouseBalance(t, ctx, pool, f.Currency)
+	if wagerHouseAfter-wagerHouseBefore != 15_000 {
+		t.Fatalf("betting-only house result moved %d, want the full 15000 of losses and nothing from the payment",
+			wagerHouseAfter-wagerHouseBefore)
 	}
 
 	// A resubmitted form must not post a second time.
@@ -125,6 +127,26 @@ func TestRecordSettlementClearsWhatAMemberOwes(t *testing.T) {
 	if balance := accountBalanceFor(t, ctx, pool, f.UserA, "user_cash", f.Currency); balance != 0 {
 		t.Fatalf("balance after a repeated settlement = %d, want 0", balance)
 	}
+}
+
+// wagerOnlyHouseBalance is the house clearing balance counting wager
+// transactions alone — the figure the dashboard reports as the house result.
+// Settling up posts to the same account under a different transaction type and
+// must never move this number.
+func wagerOnlyHouseBalance(t *testing.T, ctx context.Context, pool *pgxpool.Pool, currency ledger.Currency) int64 {
+	t.Helper()
+	var total int64
+	if err := pool.QueryRow(ctx, `
+		SELECT coalesce(sum(p.amount_cents), 0)
+		FROM ledger_postings p
+		JOIN ledger_accounts a ON a.id = p.account_id
+		JOIN ledger_transactions t ON t.id = p.transaction_id
+		WHERE a.account_type = 'house_clearing' AND a.currency::text = $1
+		  AND t.transaction_type IN ('wager_acceptance', 'wager_win', 'wager_loss', 'wager_refund')`,
+		string(currency)).Scan(&total); err != nil {
+		t.Fatalf("read betting-only house balance: %v", err)
+	}
+	return total
 }
 
 func TestRecordSettlementPaysAMemberOut(t *testing.T) {
