@@ -2,6 +2,7 @@ package bettingweb
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -37,20 +38,26 @@ func (f fakeSessions) CurrentSession(*http.Request) (privateweb.Session, error) 
 }
 
 type fakeMarkets struct {
-	open        []bettingpg.MarketRow
-	all         []bettingpg.MarketRow
-	matches     []bettingpg.MatchMarketOption
-	createErr   error
-	openErr     error
-	closeErr    error
-	settleErr   error
-	voidErr     error
-	createCalls []bettingpg.CreateMarketRequest
-	openCalls   []string
-	settleCalls []bettingpg.SettleMarketRequest
-	voidCalls   []bettingpg.VoidMarketRequest
-	setLineErr  error
-	lineCalls   []setLineCall
+	open         []bettingpg.MarketRow
+	all          []bettingpg.MarketRow
+	matches      []bettingpg.MatchMarketOption
+	createErr    error
+	openErr      error
+	closeErr     error
+	settleErr    error
+	voidErr      error
+	createCalls  []bettingpg.CreateMarketRequest
+	openCalls    []string
+	settleCalls  []bettingpg.SettleMarketRequest
+	voidCalls    []bettingpg.VoidMarketRequest
+	setLineErr   error
+	lineCalls    []setLineCall
+	restrictErr  error
+	restricted   []bettingpg.RestrictRequest
+	lifted       []struct{ market, user, selection string }
+	restrictions []bettingpg.RestrictionRow
+	members      []bettingpg.MemberOption
+	scopedUsers  []string
 }
 
 type setLineCall struct {
@@ -66,6 +73,29 @@ func (f *fakeMarkets) ListMarkets(context.Context) ([]bettingpg.MarketRow, error
 }
 func (f *fakeMarkets) ListOpenMarkets(context.Context) ([]bettingpg.MarketRow, error) {
 	return f.open, nil
+}
+
+func (f *fakeMarkets) ListOpenMarketsForUser(_ context.Context, userID string) ([]bettingpg.MarketRow, error) {
+	f.scopedUsers = append(f.scopedUsers, userID)
+	return f.open, nil
+}
+
+func (f *fakeMarkets) RestrictMember(_ context.Context, req bettingpg.RestrictRequest) error {
+	f.restricted = append(f.restricted, req)
+	return f.restrictErr
+}
+
+func (f *fakeMarkets) LiftRestriction(_ context.Context, marketID, userID, selectionID string) error {
+	f.lifted = append(f.lifted, struct{ market, user, selection string }{marketID, userID, selectionID})
+	return f.restrictErr
+}
+
+func (f *fakeMarkets) ListRestrictions(context.Context) ([]bettingpg.RestrictionRow, error) {
+	return f.restrictions, nil
+}
+
+func (f *fakeMarkets) ListMembers(context.Context) ([]bettingpg.MemberOption, error) {
+	return f.members, nil
 }
 func (f *fakeMarkets) ListMarketableMatches(context.Context) ([]bettingpg.MatchMarketOption, error) {
 	return f.matches, nil
@@ -1361,5 +1391,302 @@ func TestSetLineReportsAClosedMarket(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "draft or open") {
 		t.Fatalf("body = %q", w.Body.String())
+	}
+}
+
+// An outright can name the whole field, so the form parser must read every
+// outcome row submitted rather than a fixed number.
+func TestCreateMarketAcceptsAFullFieldOfOutcomes(t *testing.T) {
+	markets := &fakeMarkets{}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	form := url.Values{
+		"csrf_token": {testCSRF}, "market_id": {testMarketID}, "market_type": {"future"},
+		"title": {"Leading points getter"}, "currency": {"CAD"},
+		"closes_at": {time.Now().Add(48 * time.Hour).Format("2006-01-02T15:04")},
+	}
+	// Sixteen runners, the shape that prompted this.
+	prices := []string{"500", "600", "600", "900", "900", "900", "900", "1400",
+		"1400", "1800", "1800", "2500", "2500", "2500", "2500", "3000"}
+	for i, price := range prices {
+		slot := i + 1
+		form.Set(fmt.Sprintf("selection_terms_%d", slot), fmt.Sprintf("Runner %d", slot))
+		form.Set(fmt.Sprintf("selection_sign_%d", slot), "+")
+		form.Set(fmt.Sprintf("selection_odds_%d", slot), price)
+	}
+
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	if len(markets.createCalls) != 1 {
+		t.Fatalf("CreateMarket calls = %d, want 1", len(markets.createCalls))
+	}
+	created := markets.createCalls[0]
+	if len(created.Selections) != 16 {
+		t.Fatalf("selections = %d, want all 16 outcomes", len(created.Selections))
+	}
+	if created.Selections[0].OfferedAmericanOdds != 500 || created.Selections[15].OfferedAmericanOdds != 3000 {
+		t.Fatalf("first/last odds = %d/%d, want +500/+3000",
+			created.Selections[0].OfferedAmericanOdds, created.Selections[15].OfferedAmericanOdds)
+	}
+	// Keys must stay unique, or the store rejects the market.
+	seen := map[string]bool{}
+	for _, selection := range created.Selections {
+		if seen[selection.Key] {
+			t.Fatalf("duplicate selection key %q", selection.Key)
+		}
+		seen[selection.Key] = true
+	}
+}
+
+// Rows left blank in the middle are skipped, not treated as errors: an admin
+// adding rows and changing their mind must not be blocked.
+func TestCreateMarketSkipsBlankOutcomeRows(t *testing.T) {
+	markets := &fakeMarkets{}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	form := url.Values{
+		"csrf_token": {testCSRF}, "market_id": {testMarketID}, "market_type": {"prop"},
+		"title": {"Over/under 0.5 eagles"}, "currency": {"CAD"},
+		"closes_at":         {time.Now().Add(24 * time.Hour).Format("2006-01-02T15:04")},
+		"selection_terms_1": {"Over"}, "selection_sign_1": {"+"}, "selection_odds_1": {"120"},
+		// slots 2 and 3 left entirely blank
+		"selection_terms_4": {"Under"}, "selection_sign_4": {"-"}, "selection_odds_4": {"150"},
+	}
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	created := markets.createCalls[0]
+	if len(created.Selections) != 2 {
+		t.Fatalf("selections = %d, want the 2 filled rows", len(created.Selections))
+	}
+	if created.Selections[0].DisplayTerms != "Over" || created.Selections[1].DisplayTerms != "Under" {
+		t.Fatalf("selections = %+v", created.Selections)
+	}
+	if created.Selections[0].OfferedAmericanOdds != 120 || created.Selections[1].OfferedAmericanOdds != -150 {
+		t.Fatalf("odds = %d/%d, want +120/-150",
+			created.Selections[0].OfferedAmericanOdds, created.Selections[1].OfferedAmericanOdds)
+	}
+}
+
+// A form that comes back from a validation error must keep every row the admin
+// filled in, however many they added.
+func TestCreateMarketFormKeepsAddedRowsAfterAnError(t *testing.T) {
+	markets := &fakeMarkets{}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	form := url.Values{
+		"csrf_token": {testCSRF}, "market_id": {testMarketID}, "type": {"future"},
+		"title":     {""}, // invalid: forces the form back
+		"currency":  {"CAD"},
+		"closes_at": {time.Now().Add(24 * time.Hour).Format("2006-01-02T15:04")},
+	}
+	for slot := 1; slot <= 12; slot++ {
+		form.Set(fmt.Sprintf("selection_terms_%d", slot), fmt.Sprintf("Runner %d", slot))
+		form.Set(fmt.Sprintf("selection_sign_%d", slot), "+")
+		form.Set(fmt.Sprintf("selection_odds_%d", slot), "900")
+	}
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	body := w.Body.String()
+	if !strings.Contains(body, "selection_terms_12") {
+		t.Fatal("the re-rendered form dropped outcome rows the admin had added")
+	}
+	if !strings.Contains(body, "Runner 12") {
+		t.Fatal("the re-rendered form lost the values in the added rows")
+	}
+	if len(markets.createCalls) != 0 {
+		t.Fatal("an invalid market reached the store")
+	}
+}
+
+func TestSelectionSlotsGrowWithTheForm(t *testing.T) {
+	if got := len(selectionSlots(nil)); got != startingSelectionSlots {
+		t.Fatalf("blank form slots = %d, want %d", got, startingSelectionSlots)
+	}
+	form := url.Values{"selection_terms_9": {"Runner 9"}}
+	if got := len(selectionSlots(form)); got != 10 {
+		t.Fatalf("slots for a form using row 9 = %d, want 10", got)
+	}
+	// The last row still renders one spare below it, but never past the cap.
+	atCap := url.Values{fmt.Sprintf("selection_terms_%d", bettingpg.MaxSelectionsPerMarket): {"last runner"}}
+	if got := len(selectionSlots(atCap)); got != bettingpg.MaxSelectionsPerMarket {
+		t.Fatalf("slots for a full form = %d, want the cap %d", got, bettingpg.MaxSelectionsPerMarket)
+	}
+	// A row number past the cap is ignored rather than growing the form: the
+	// store would reject it anyway.
+	beyond := url.Values{fmt.Sprintf("selection_terms_%d", bettingpg.MaxSelectionsPerMarket+5): {"too far"}}
+	if got := len(selectionSlots(beyond)); got != startingSelectionSlots {
+		t.Fatalf("slots for an out-of-range row = %d, want the starting %d", got, startingSelectionSlots)
+	}
+}
+
+func TestMemberBoardIsScopedToTheMember(t *testing.T) {
+	markets := &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}}
+	handler := newTestHandler(t, memberSession(), markets, &fakeWagers{})
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/book/markets", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	// The board must be read through the user-scoped reader, or restrictions
+	// would never be applied to what a member sees.
+	if len(markets.scopedUsers) != 1 || markets.scopedUsers[0] != testUserID {
+		t.Fatalf("scoped reads = %v, want one for the session user", markets.scopedUsers)
+	}
+}
+
+// Hiding a bet is a courtesy; the refusal is the control. A member who
+// reconstructs the form for a market they cannot see must still be refused.
+func TestPlaceWagerStillRefusedWhenTheMarketIsHiddenFromTheMember(t *testing.T) {
+	wagers := &fakeWagers{placeErr: betting.ErrUserRestricted}
+	markets := &fakeMarkets{open: []bettingpg.MarketRow{openMarketFixture()}}
+	handler := newTestHandler(t, memberSession(), markets, wagers)
+
+	body := url.Values{
+		"csrf_token": {testCSRF}, "market_id": {testMarketID}, "selection_id": {testSelID},
+		"idempotency_key": {testIdem}, "stake": {"25.00"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/book/wagers", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "not able to bet on this market") {
+		t.Fatalf("body = %q", w.Body.String())
+	}
+}
+
+func TestRestrictMemberSendsTheWholeMarketOrOneSide(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		selection string
+	}{
+		{"whole market", ""},
+		{"one side", testSelID},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			markets := &fakeMarkets{}
+			handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+			body := url.Values{
+				"csrf_token": {testCSRF}, "user_id": {testUserID},
+				"selection_id": {test.selection}, "reason": {"the bet is about them"},
+			}.Encode()
+			r := httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/restrict", strings.NewReader(body))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+
+			if w.Code != http.StatusSeeOther {
+				t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+			}
+			if len(markets.restricted) != 1 {
+				t.Fatalf("RestrictMember calls = %d, want 1", len(markets.restricted))
+			}
+			got := markets.restricted[0]
+			if got.MarketID != testMarketID || got.UserID != testUserID || got.SelectionID != test.selection {
+				t.Fatalf("restriction = %+v", got)
+			}
+			if got.ActorUserID != testUserID || got.Reason != "the bet is about them" {
+				t.Fatalf("restriction actor/reason = %q/%q", got.ActorUserID, got.Reason)
+			}
+		})
+	}
+}
+
+func TestRestrictMemberRejectsBadInputAndNonAdmins(t *testing.T) {
+	valid := url.Values{"csrf_token": {testCSRF}, "user_id": {testUserID}, "reason": {"because"}}
+	for _, test := range []struct {
+		name    string
+		session privateweb.Session
+		body    url.Values
+		status  int
+	}{
+		{"member cannot restrict", memberSession(), valid, http.StatusForbidden},
+		{"no reason", adminSession(), url.Values{"csrf_token": {testCSRF}, "user_id": {testUserID}, "reason": {"  "}}, http.StatusBadRequest},
+		{"no member", adminSession(), url.Values{"csrf_token": {testCSRF}, "reason": {"because"}}, http.StatusBadRequest},
+		{"malformed selection", adminSession(), url.Values{"csrf_token": {testCSRF}, "user_id": {testUserID}, "selection_id": {"nope"}, "reason": {"because"}}, http.StatusBadRequest},
+		{"no csrf token", adminSession(), url.Values{"user_id": {testUserID}, "reason": {"because"}}, http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			markets := &fakeMarkets{}
+			handler := newTestHandler(t, test.session, markets, &fakeWagers{})
+			r := httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/restrict", strings.NewReader(test.body.Encode()))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code != test.status {
+				t.Fatalf("status = %d, want %d", w.Code, test.status)
+			}
+			if len(markets.restricted) != 0 {
+				t.Fatal("a rejected restriction reached the store")
+			}
+		})
+	}
+}
+
+func TestLiftRestrictionTargetsTheRightRow(t *testing.T) {
+	markets := &fakeMarkets{}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	body := url.Values{"csrf_token": {testCSRF}, "user_id": {testUserID}, "selection_id": {testSelID}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/restrict/lift", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	if len(markets.lifted) != 1 {
+		t.Fatalf("LiftRestriction calls = %d, want 1", len(markets.lifted))
+	}
+	got := markets.lifted[0]
+	if got.market != testMarketID || got.user != testUserID || got.selection != testSelID {
+		t.Fatalf("lifted = %+v", got)
+	}
+}
+
+func TestAdminMarketsShowsRestrictionsAndThePicker(t *testing.T) {
+	markets := &fakeMarkets{
+		all:     []bettingpg.MarketRow{openMarketFixture()},
+		members: []bettingpg.MemberOption{{ID: testUserID, Name: "Ryan Theriault"}},
+		restrictions: []bettingpg.RestrictionRow{{
+			MarketID: testMarketID, MarketTitle: "Over/under 0.5 eagles", UserID: testUserID,
+			MemberName: "Ryan Theriault", SelectionID: testSelID, SelectionTerms: "Under",
+			Reason: "the bet is about them", RestrictedBy: "Book Admin",
+		}},
+	}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/markets", nil))
+
+	body := w.Body.String()
+	for _, expected := range []string{
+		"Ryan Theriault", "Under", "the bet is about them", "Restrict a member",
+		"The whole market", // the picker's default scope
+	} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("markets page does not contain %q", expected)
+		}
 	}
 }

@@ -134,20 +134,26 @@ func Reprice(selections []SelectionInput, liquidityCents int64) ([]SelectionResu
 // This is what stops a member arbitraging the book against its own line
 // movement. Prices taken at different times can be combined, so the book is
 // only safe if the sum of the most generous price it will ever post on every
-// side still exceeds even money. Each side starts at its opening probability
-// and the sum of those exceeds 1 by the margin, so sharing the margin out
-// across the selections and letting no side fall further than its share keeps
-// that sum above 1 no matter how the action lands.
+// side still exceeds even money. Every selection may give up the same
+// proportion of its own probability, so the floors sum to overround × (1 − k)
+// and stay above 1 by construction.
+//
+// The budget is shared proportionally rather than equally because an equal
+// share of probability is a very different move on a favourite than on a
+// longshot: on a sixteen-runner board it is a few points on the favourite and
+// a doubling of the outsider's price. Proportional sharing moves every
+// selection by the same relative amount, which is what a price move means to
+// the person reading it.
 func driftFloors(priors []float64, overround float64) []float64 {
-	allowance := (overround - 1.0) / float64(len(priors)) * arbitrageSafetyFraction
-	if allowance < 0 {
+	fraction := (overround - 1.0) / overround * arbitrageSafetyFraction
+	if fraction < 0 {
 		// A market posted at or below even money has no margin to spend, so
 		// any movement at all would open an arbitrage: the line stays put.
-		allowance = 0
+		fraction = 0
 	}
 	floors := make([]float64, len(priors))
 	for i, prior := range priors {
-		floors[i] = prior - allowance
+		floors[i] = prior * (1.0 - fraction)
 	}
 	return floors
 }

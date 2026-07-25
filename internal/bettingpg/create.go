@@ -47,9 +47,11 @@ type CreateMarketRequest struct {
 	PricingLiquidityCents int64
 }
 
-// maxSelectionsPerMarket bounds the selection list on one market so a
-// malformed request cannot insert an unbounded number of rows.
-const maxSelectionsPerMarket = 20
+// MaxSelectionsPerMarket bounds the selection list on one market so a
+// malformed request cannot insert an unbounded number of rows. It is large
+// enough for an outright on a full field — a leading-points-getter market
+// names every golfer — and is the same limit the create form enforces.
+const MaxSelectionsPerMarket = 32
 
 // DefaultPricingLiquidityCents is the compiled-in fallback line-movement
 // sensitivity ("b") used when dynamic pricing is enabled without an explicit
@@ -57,7 +59,7 @@ const maxSelectionsPerMarket = 20
 // tests): $3,000. The operator knob is PRICING_LIQUIDITY_DEFAULT_CENTS (see
 // internal/config); the web layer passes the configured value down, so keep
 // this in sync with config.defaultPricingLiquidityCents. Larger = gentler moves.
-const DefaultPricingLiquidityCents = 300_000
+const DefaultPricingLiquidityCents = 500_000
 
 // CreateMarket validates the market and its selections through the domain
 // rules in internal/betting, then persists them atomically together with a
@@ -83,8 +85,8 @@ func (s Store) CreateMarket(ctx context.Context, req CreateMarketRequest) (betti
 	if err := market.Validate(); err != nil {
 		return betting.Market{}, err
 	}
-	if len(req.Selections) == 0 || len(req.Selections) > maxSelectionsPerMarket {
-		return betting.Market{}, fmt.Errorf("%w: a market requires between 1 and %d selections", betting.ErrInvalid, maxSelectionsPerMarket)
+	if len(req.Selections) == 0 || len(req.Selections) > MaxSelectionsPerMarket {
+		return betting.Market{}, fmt.Errorf("%w: a market requires between 1 and %d selections", betting.ErrInvalid, MaxSelectionsPerMarket)
 	}
 	if req.DynamicPricing {
 		if req.PricingLiquidityCents <= 0 {

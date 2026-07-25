@@ -219,19 +219,89 @@ func (s Store) ListMarkets(ctx context.Context) ([]MarketRow, error) {
 
 // ListOpenMarkets returns markets currently open for wagering (state open,
 // inside their open/close window) with only their active selections, soonest
-// closing time first.
+// closing time first. It applies no restrictions, so it is for admin views;
+// member views must use ListOpenMarketsForUser.
 func (s Store) ListOpenMarkets(ctx context.Context) ([]MarketRow, error) {
 	return s.listMarkets(ctx, fmt.Sprintf(marketRowsSQL,
 		" AND s.active",
-		"m.state = 'open' AND m.closes_at > now() AND (m.opens_at IS NULL OR m.opens_at <= now())",
+		openMarketPredicate,
 		"ASC"))
 }
 
-func (s Store) listMarkets(ctx context.Context, query string) ([]MarketRow, error) {
+// ListOpenMarketsForUser is the member's board: the open markets minus
+// everything this member is restricted from. A whole-market restriction hides
+// the market; a selection-level one hides just that outcome and leaves the
+// rest bettable. A market left with no selections they may back is dropped
+// rather than shown as an empty card.
+//
+// Hiding is a courtesy, not the control: PlaceWager re-checks restrictions
+// against the database, so a member who reconstructs the form still cannot bet.
+func (s Store) ListOpenMarketsForUser(ctx context.Context, userID string) ([]MarketRow, error) {
+	if !isUUID(userID) {
+		return nil, fmt.Errorf("%w: listing markets requires a user ID", betting.ErrInvalid)
+	}
+	markets, err := s.listMarkets(ctx, fmt.Sprintf(marketRowsSQL,
+		" AND s.active",
+		openMarketPredicate+` AND NOT EXISTS (
+			SELECT 1 FROM market_restrictions r
+			WHERE r.market_id = m.id AND r.user_id = $1::uuid AND r.selection_id IS NULL)`,
+		"ASC"), userID)
+	if err != nil {
+		return nil, err
+	}
+
+	hidden, err := s.restrictedSelections(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(hidden) == 0 {
+		return markets, nil
+	}
+	visible := make([]MarketRow, 0, len(markets))
+	for _, market := range markets {
+		selections := make([]MarketSelectionRow, 0, len(market.Selections))
+		for _, selection := range market.Selections {
+			if hidden[selection.ID] {
+				continue
+			}
+			selections = append(selections, selection)
+		}
+		if len(selections) == 0 {
+			continue
+		}
+		market.Selections = selections
+		visible = append(visible, market)
+	}
+	return visible, nil
+}
+
+// restrictedSelections is the set of selection IDs this member may not back.
+func (s Store) restrictedSelections(ctx context.Context, userID string) (map[string]bool, error) {
+	rows, err := s.DB.Query(ctx, `
+		SELECT selection_id::text FROM market_restrictions
+		WHERE user_id = $1::uuid AND selection_id IS NOT NULL`, userID)
+	if err != nil {
+		return nil, fmt.Errorf("load member selection restrictions: %w", err)
+	}
+	defer rows.Close()
+	hidden := make(map[string]bool)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan member selection restriction: %w", err)
+		}
+		hidden[id] = true
+	}
+	return hidden, rows.Err()
+}
+
+const openMarketPredicate = "m.state = 'open' AND m.closes_at > now() AND (m.opens_at IS NULL OR m.opens_at <= now())"
+
+func (s Store) listMarkets(ctx context.Context, query string, args ...any) ([]MarketRow, error) {
 	if s.DB == nil {
 		return nil, errors.New("bettingpg: PostgreSQL pool is required")
 	}
-	rows, err := s.DB.Query(ctx, query)
+	rows, err := s.DB.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query markets: %w", err)
 	}

@@ -921,3 +921,11 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .betting-selection-line { align-items: center; display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .35rem; }
 .betting-set-line-form input[name="odds"] { width: 4.5rem; }
 .betting-set-line-form input[name="reason"] { width: 8rem; }
+.betting-outcome-controls { align-items: center; display: flex; flex-wrap: wrap; gap: .7rem; margin: .2rem 0 0; }
+.betting-outcome-controls button { background: var(--white); border: 1px solid var(--green); border-radius: 4px; color: var(--green); cursor: pointer; font: inherit; font-size: .78rem; font-weight: 800; padding: .4rem .8rem; }
+.betting-outcome-controls button:hover:not(:disabled) { background: #eef4ef; }
+.betting-outcome-controls button:disabled { border-color: #b8c1bb; color: #6c7770; cursor: not-allowed; }
+.betting-restrict { margin-top: .4rem; }
+.betting-restrict summary { color: #8c2f2f; cursor: pointer; font-size: .74rem; font-weight: 800; }
+.betting-restrict-form { align-items: center; display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
+.betting-restrict-form select { border: 1px solid #b8c1bb; border-radius: 4px; font: inherit; font-size: .76rem; max-width: 11rem; padding: .3rem .4rem; }

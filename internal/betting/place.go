@@ -9,6 +9,25 @@ import (
 	"github.com/dgunzy/go-book/internal/ledger"
 )
 
+// Restriction bars one member from betting a market, or from one side of it.
+// An empty SelectionID means the whole market: they cannot back anything on
+// it. A set SelectionID bars only that outcome — the player a prop is about
+// may be kept off one side of their own line while the rest stays open.
+type Restriction struct {
+	UserID      ID
+	SelectionID ID
+	Reason      string
+}
+
+// Restricts reports whether this restriction bars the given member from the
+// given selection.
+func (r Restriction) Restricts(userID, selectionID ID) bool {
+	if r.UserID != userID {
+		return false
+	}
+	return r.SelectionID == "" || r.SelectionID == selectionID
+}
+
 // PlaceWagerCommand is the pure input required to accept a new pending
 // wager. The caller resolves the market, selection, and restriction list
 // from storage; this function performs no I/O.
@@ -17,7 +36,7 @@ type PlaceWagerCommand struct {
 	UserID             ID
 	Market             Market
 	Selection          Selection
-	RestrictedUsers    []ID
+	Restrictions       []Restriction
 	FundingAccountType FundingAccountType
 	Stake              ledger.Money
 	IdempotencyKey     string
@@ -57,8 +76,8 @@ func PlaceWager(command PlaceWagerCommand) (Wager, error) {
 	if !command.Selection.Active {
 		return Wager{}, ErrSelectionInactive
 	}
-	for _, restricted := range command.RestrictedUsers {
-		if restricted == command.UserID {
+	for _, restriction := range command.Restrictions {
+		if restriction.Restricts(command.UserID, command.Selection.ID) {
 			return Wager{}, ErrUserRestricted
 		}
 	}

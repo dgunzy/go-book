@@ -99,9 +99,17 @@ func TestPlaceWagerValidationFailures(t *testing.T) {
 			wantErr: ErrSelectionMismatch,
 		},
 		{
-			name: "restricted user",
+			name: "member restricted from the whole market",
 			mutate: func(c PlaceWagerCommand) PlaceWagerCommand {
-				c.RestrictedUsers = []ID{testUserID}
+				c.Restrictions = []Restriction{{UserID: testUserID, Reason: "the bet is about them"}}
+				return c
+			},
+			wantErr: ErrUserRestricted,
+		},
+		{
+			name: "member restricted from this side",
+			mutate: func(c PlaceWagerCommand) PlaceWagerCommand {
+				c.Restrictions = []Restriction{{UserID: testUserID, SelectionID: testSelectionID, Reason: "cannot back the under on their own line"}}
 				return c
 			},
 			wantErr: ErrUserRestricted,
@@ -304,5 +312,48 @@ func TestCancelWagerOnlyByOwnerAndOnlyWhilePending(t *testing.T) {
 	accepted.State = WagerAccepted
 	if _, err := CancelWager(accepted, accepted.UserID); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("cancel accepted wager error = %v, want ErrInvalidTransition", err)
+	}
+}
+
+// A side-level restriction bars exactly one outcome. The member keeps the rest
+// of the board — the point of restricting a side rather than the market.
+func TestPlaceWagerAllowsOtherSidesWhenOneIsRestricted(t *testing.T) {
+	t.Parallel()
+	command := placeCommand()
+	command.Restrictions = []Restriction{
+		{UserID: testUserID, SelectionID: "00000000-0000-4000-8000-0000000000aa", Reason: "cannot back the under on their own line"},
+	}
+	if _, err := PlaceWager(command); err != nil {
+		t.Fatalf("PlaceWager() error = %v, want the other side to stay bettable", err)
+	}
+}
+
+// A restriction on somebody else must not touch this member.
+func TestPlaceWagerIgnoresAnotherMembersRestriction(t *testing.T) {
+	t.Parallel()
+	command := placeCommand()
+	command.Restrictions = []Restriction{{UserID: testAdminID, Reason: "not this member"}}
+	if _, err := PlaceWager(command); err != nil {
+		t.Fatalf("PlaceWager() error = %v, want another member's restriction to be ignored", err)
+	}
+}
+
+func TestRestrictionRestricts(t *testing.T) {
+	t.Parallel()
+	const otherSelection ID = "00000000-0000-4000-8000-0000000000bb"
+	wholeMarket := Restriction{UserID: testUserID}
+	oneSide := Restriction{UserID: testUserID, SelectionID: testSelectionID}
+
+	if !wholeMarket.Restricts(testUserID, testSelectionID) || !wholeMarket.Restricts(testUserID, otherSelection) {
+		t.Fatal("a whole-market restriction must bar every selection")
+	}
+	if !oneSide.Restricts(testUserID, testSelectionID) {
+		t.Fatal("a side restriction must bar its own selection")
+	}
+	if oneSide.Restricts(testUserID, otherSelection) {
+		t.Fatal("a side restriction must not bar another selection")
+	}
+	if wholeMarket.Restricts(testAdminID, testSelectionID) {
+		t.Fatal("a restriction must not apply to another member")
 	}
 }

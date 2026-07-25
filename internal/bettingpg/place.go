@@ -46,7 +46,7 @@ func (s Store) PlaceWager(ctx context.Context, req PlaceWagerRequest) (betting.W
 	if err != nil {
 		return betting.Wager{}, err
 	}
-	restricted, err := loadRestrictedUsers(ctx, tx, req.MarketID)
+	restricted, err := loadRestrictions(ctx, tx, req.MarketID)
 	if err != nil {
 		return betting.Wager{}, err
 	}
@@ -60,7 +60,7 @@ func (s Store) PlaceWager(ctx context.Context, req PlaceWagerRequest) (betting.W
 		UserID:             betting.ID(req.UserID),
 		Market:             market,
 		Selection:          selection,
-		RestrictedUsers:    restricted,
+		Restrictions:       restricted,
 		FundingAccountType: req.FundingAccountType,
 		Stake:              stake,
 		IdempotencyKey:     req.IdempotencyKey,

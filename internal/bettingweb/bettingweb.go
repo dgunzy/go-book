@@ -30,10 +30,14 @@ import (
 )
 
 const (
-	maxFormBytes  = 64 << 10
-	maxReasonLen  = 500
-	maxTitleLen   = 200
-	selectionSlot = 6
+	maxFormBytes = 64 << 10
+	maxReasonLen = 500
+	maxTitleLen  = 200
+	// startingSelectionSlots is how many blank outcome rows a fresh create
+	// form renders. It is a starting point, not a limit: the page adds more on
+	// demand and the parser reads whatever the form submits, up to the store's
+	// MaxSelectionsPerMarket.
+	startingSelectionSlots = 4
 
 	redirectBookWagers   = "/book/wagers"
 	redirectAdminMarkets = "/admin/markets"
@@ -55,6 +59,11 @@ type SessionReader interface {
 type MarketStore interface {
 	ListMarkets(context.Context) ([]bettingpg.MarketRow, error)
 	ListOpenMarkets(context.Context) ([]bettingpg.MarketRow, error)
+	ListOpenMarketsForUser(ctx context.Context, userID string) ([]bettingpg.MarketRow, error)
+	RestrictMember(context.Context, bettingpg.RestrictRequest) error
+	LiftRestriction(ctx context.Context, marketID, userID, selectionID string) error
+	ListRestrictions(context.Context) ([]bettingpg.RestrictionRow, error)
+	ListMembers(context.Context) ([]bettingpg.MemberOption, error)
 	ListMarketableMatches(context.Context) ([]bettingpg.MatchMarketOption, error)
 	CreateMarket(context.Context, bettingpg.CreateMarketRequest) (betting.Market, error)
 	OpenMarket(ctx context.Context, marketID, actor string) error
@@ -154,6 +163,8 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /admin/markets/{id}/open", h.adminOpenMarket)
 	h.mux.HandleFunc("POST /admin/markets/{id}/close", h.adminCloseMarket)
 	h.mux.HandleFunc("POST /admin/markets/{id}/selections/{selectionID}/line", h.adminSetLine)
+	h.mux.HandleFunc("POST /admin/markets/{id}/restrict", h.adminRestrictMember)
+	h.mux.HandleFunc("POST /admin/markets/{id}/restrict/lift", h.adminLiftRestriction)
 	h.mux.HandleFunc("GET /admin/markets/{id}/settle", h.adminSettleForm)
 	h.mux.HandleFunc("POST /admin/markets/{id}/settle", h.adminSettleMarket)
 	h.mux.HandleFunc("GET /admin/wagers", h.adminWagers)
@@ -359,12 +370,15 @@ type pageData struct {
 	Outstanding       []settleUpView
 	WagerRecord       []wagerRecordView
 	Settlements       []bettingpg.SettlementRow
+	Restrictions      []bettingpg.RestrictionRow
+	Members           []bettingpg.MemberOption
 	FormError         string
 	Notice            string
 	BackLink          string
 	Form              url.Values
 	NewMarketID       string
 	SelectionSlots    []int
+	MaxSelections     int
 	MarketableMatches []bettingpg.MatchMarketOption
 	// AutoApproveDollars and DefaultLineWeightDollars are the human-readable
 	// current settings shown on the help page.
@@ -395,7 +409,7 @@ func (h *Handler) bookMarkets(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	views, ok := h.openMarketViews(w, r.Context(), true)
+	views, ok := h.openMarketViews(w, r.Context(), session.UserID, true)
 	if !ok {
 		return
 	}
@@ -544,8 +558,19 @@ func (h *Handler) adminMarkets(w http.ResponseWriter, r *http.Request) {
 		h.internalError(w)
 		return
 	}
+	restrictions, err := h.deps.Markets.ListRestrictions(r.Context())
+	if err != nil {
+		h.internalError(w)
+		return
+	}
+	members, err := h.deps.Markets.ListMembers(r.Context())
+	if err != nil {
+		h.internalError(w)
+		return
+	}
 	h.render(w, "admin_markets", pageData{
 		Title: "Markets", Current: "admin-markets", Session: session, Markets: plainViews(markets),
+		Restrictions: restrictions, Members: members,
 	})
 }
 
@@ -566,7 +591,7 @@ func (h *Handler) adminMarketNew(w http.ResponseWriter, r *http.Request) {
 	}
 	h.render(w, "admin_market_new", pageData{
 		Title: "New market", Current: "admin-markets", Session: session,
-		NewMarketID: marketID, Form: defaultMarketForm(h.pricingLiquidityDefaultCents), SelectionSlots: selectionSlots(), MarketableMatches: matches,
+		NewMarketID: marketID, Form: defaultMarketForm(h.pricingLiquidityDefaultCents), SelectionSlots: selectionSlots(nil), MaxSelections: bettingpg.MaxSelectionsPerMarket, MarketableMatches: matches,
 	})
 }
 
@@ -639,7 +664,7 @@ func (h *Handler) rerenderCreateForm(w http.ResponseWriter, r *http.Request, ses
 	}
 	h.renderStatus(w, http.StatusBadRequest, "admin_market_new", pageData{
 		Title: "New market", Current: "admin-markets", Session: session, FormError: formError,
-		NewMarketID: marketID, Form: r.PostForm, SelectionSlots: selectionSlots(), MarketableMatches: matches,
+		NewMarketID: marketID, Form: r.PostForm, SelectionSlots: selectionSlots(r.PostForm), MaxSelections: bettingpg.MaxSelectionsPerMarket, MarketableMatches: matches,
 	})
 }
 
@@ -883,8 +908,18 @@ func (h *Handler) checkedForm(w http.ResponseWriter, r *http.Request, session pr
 
 // --- shared helpers --------------------------------------------------------
 
-func (h *Handler) openMarketViews(w http.ResponseWriter, ctx context.Context, withPlaceKeys bool) ([]marketView, bool) {
-	markets, err := h.deps.Markets.ListOpenMarkets(ctx)
+// openMarketViews builds the open board. userID scopes it to what that member
+// may bet: markets and sides they are restricted from are not shown at all.
+// Pass an empty userID for an admin view of the whole board. Hiding is a
+// courtesy — placement re-checks the restriction against the database.
+func (h *Handler) openMarketViews(w http.ResponseWriter, ctx context.Context, userID string, withPlaceKeys bool) ([]marketView, bool) {
+	var markets []bettingpg.MarketRow
+	var err error
+	if userID == "" {
+		markets, err = h.deps.Markets.ListOpenMarkets(ctx)
+	} else {
+		markets, err = h.deps.Markets.ListOpenMarketsForUser(ctx, userID)
+	}
 	if err != nil {
 		h.internalError(w)
 		return nil, false
@@ -1029,12 +1064,36 @@ func defaultMarketForm(liquidityDefaultCents int64) url.Values {
 	}
 }
 
-func selectionSlots() []int {
-	slots := make([]int, selectionSlot)
+// selectionSlots returns the outcome row numbers to render. A fresh form gets
+// a handful of blank rows; a form coming back from a validation error keeps
+// every row the admin had filled in, however many they added.
+func selectionSlots(form url.Values) []int {
+	count := startingSelectionSlots
+	if used := highestSelectionSlot(form); used >= count {
+		count = used + 1
+	}
+	if count > bettingpg.MaxSelectionsPerMarket {
+		count = bettingpg.MaxSelectionsPerMarket
+	}
+	slots := make([]int, count)
 	for i := range slots {
 		slots[i] = i + 1
 	}
 	return slots
+}
+
+// highestSelectionSlot finds the largest outcome row number the form actually
+// carries, so a market with sixteen runners round-trips through a validation
+// error without losing rows.
+func highestSelectionSlot(form url.Values) int {
+	highest := 0
+	for slot := 1; slot <= bettingpg.MaxSelectionsPerMarket; slot++ {
+		if strings.TrimSpace(form.Get(fmt.Sprintf("selection_terms_%d", slot))) != "" ||
+			strings.TrimSpace(form.Get(fmt.Sprintf("selection_odds_%d", slot))) != "" {
+			highest = slot
+		}
+	}
+	return highest
 }
 
 func parseCreateMarketForm(form url.Values) (bettingpg.CreateMarketRequest, string) {
@@ -1098,7 +1157,9 @@ func parseCreateMarketForm(form url.Values) (bettingpg.CreateMarketRequest, stri
 		request.OpensAt = opensAt
 	}
 
-	lastSlot := selectionSlot
+	// Read every outcome row the form carries, not a fixed number: an outright
+	// can name the whole field. A match market is always exactly two sides.
+	lastSlot := bettingpg.MaxSelectionsPerMarket
 	if request.Type == betting.MarketMatch {
 		lastSlot = 2
 	}

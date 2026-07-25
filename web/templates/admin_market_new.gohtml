@@ -118,6 +118,10 @@
       </label>
     </div>
     {{end}}
+    <p class="betting-outcome-controls">
+      <button type="button" data-add-outcome data-max="{{.MaxSelections}}">Add another outcome</button>
+      <span class="betting-hint" data-outcome-count-hint>Up to {{.MaxSelections}} outcomes. Leave unused rows blank.</span>
+    </p>
   </fieldset>
 
   <div class="betting-form-actions">

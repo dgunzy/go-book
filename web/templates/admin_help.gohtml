@@ -29,13 +29,14 @@
     <li><strong>Match</strong> — tied to a specific head-to-head match so it can settle <em>automatically</em> from the verified result.</li>
   </ul>
   <p class="help-callout"><strong>Match markets need no copied IDs.</strong> First create the match on the <a href="/admin/matches">Matches</a> page with its required players. On the market form choose <strong>Match</strong>, then pick it from the readable list of valid matches without a market. Teams remain visible for context, while the market title and bet outcomes are derived from the assigned player names. Set only the two prices and times. Recording the result later settles the linked market and updates player standings from the same event.</p>
+  <p>A future or prop can have as many outcomes as it needs — a leading-points-getter market names every golfer. The form starts with a few rows and <strong>Add another outcome</strong> gives you more, up to 32. Leave unused rows blank; they are ignored.</p>
   <p>Choose the odds sign separately from its numeric magnitude, which works on phone number keyboards. All dates and times shown or entered in the app are <strong>Atlantic time</strong> (ADT in summer, AST in winter). The market is created in <strong>draft</strong>; click <strong>Open</strong> when you're ready to take bets, and <strong>Close</strong> to stop taking them.</p>
 </section>
 
 <section class="help-section" aria-labelledby="help-pricing">
   <h2 id="help-pricing">Dynamic pricing (the line moves on its own)</h2>
   <p>New markets have <strong>dynamic pricing on by default</strong>, with a ${{.DefaultLineWeightDollars}} line weight — you don't need to enter anything. As accepted action comes in, the line automatically shortens on the heavily-backed side and lengthens on the other to balance the book. A larger liquidity moves the line less per bet; uncheck the box to keep a fixed line.</p>
-  <p class="help-callout"><strong>The line can only travel so far.</strong> Prices taken at different times can be combined, so if a line ran far enough a member could back one side early, wait for the move, back the other side, and be paid whatever the result — free money out of the book. The engine therefore lets each side's price lengthen only by its share of the margin the market opened with, keeping a cushion in reserve. The practical effect: <strong>a thin opening line moves very little.</strong> A −110 / −110 market can travel about two points a side and then stops dead however much action lands; −130 / +100 gets about three. If you want a livelier line, <strong>open it wider</strong> — there is no setting that gives both big moves and a book that cannot be picked off.</p>
+  <p class="help-callout"><strong>The line can only travel so far.</strong> Prices taken at different times can be combined, so if a line ran far enough a member could back one side early, wait for the move, back the other side, and be paid whatever the result — free money out of the book. The engine therefore lets each side's price lengthen only by its share of the margin the market opened with, keeping a cushion in reserve. The practical effect: <strong>a thin opening line moves very little.</strong> A −110 / −110 market can travel about two points a side and then stops dead however much action lands; −130 / +100 gets about three. Every outcome gives up the same <em>proportion</em> of its own price, so on a sixteen-runner outright the longshots move in step with the favourites rather than swinging wildly. If you want a livelier line, <strong>open it wider</strong> — there is no setting that gives both big moves and a book that cannot be picked off.</p>
   <p>You can also <strong>move a line by hand</strong> at any time while a market is draft or open: type the new price beside the selection on <a href="/admin/markets">Manage markets</a>, say why, and set it. That sets the price the engine works from, so the move sticks instead of being recomputed away by the next bet, and the rest of the board is repriced from it immediately. Every hand-set move is recorded with your name and reason.</p>
   <p>A bettor is <strong>locked in at the odds they were shown</strong> when they placed. The move only affects the next bettor. If the line moves while a bet is still pending, the bet still fills at the price the member was quoted — <a href="/admin/wagers">Review wagers</a> shows you the live line beside it so you can accept or reject it on purpose.</p>
 </section>
@@ -73,6 +74,16 @@
     <li><strong>Action on the board</strong> — the accepted bets still waiting on a result.</li>
   </ul>
   <p>The ledger state and outbox queues stay at the bottom of the page: if <strong>Unbalanced</strong> is anything other than zero, or failed outbox events pile up, tell your operator.</p>
+</section>
+
+<section class="help-section" aria-labelledby="help-restrictions">
+  <h2 id="help-restrictions">Keeping a member off a bet</h2>
+  <p>When a bet is about someone, they should not be able to back it — and on a two-way prop they often should not be able to back <em>one</em> side of it. On <a href="/admin/markets">Manage markets</a>, open <strong>Restrict a member</strong> on the market, choose the member, choose either <strong>the whole market</strong> or a single outcome, and give a reason.</p>
+  <ul>
+    <li>A <strong>whole-market</strong> restriction hides the market from that member completely.</li>
+    <li>A <strong>single outcome</strong> restriction hides just that outcome. They still see the market and can back the other side — so the player whose eagles line it is can take the over but never the under.</li>
+  </ul>
+  <p>Hiding is only the courtesy: a restricted wager is refused by the server as well, so it does not matter if they have the page open from before or go looking for the link. Restrictions are listed under the market table with who set them and why, and <strong>Lift</strong> puts the bet back in front of that member. Lifting a whole-market restriction leaves any single-outcome ones in place.</p>
 </section>
 
 <section class="help-section" aria-labelledby="help-settle-up">

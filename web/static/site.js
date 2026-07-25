@@ -210,3 +210,48 @@ document.querySelectorAll("[data-match-create-form]").forEach((form) => {
   });
   form.addEventListener("submit", () => validateMatchParticipants(form));
 });
+
+// Outcome rows on the market create form.
+//
+// A prop can name the whole field, so the form ships a few blank rows and adds
+// more on demand rather than hard-coding a number. Without JavaScript the rows
+// that render are still fully usable — this only adds more of them.
+document.querySelectorAll("[data-add-outcome]").forEach((button) => {
+  const fieldset = button.closest("fieldset");
+  if (!fieldset) return;
+  const max = Number(button.dataset.max || 0);
+
+  button.addEventListener("click", () => {
+    const rows = fieldset.querySelectorAll(".betting-selection-slot");
+    const last = rows[rows.length - 1];
+    if (!last) return;
+    const next = rows.length + 1;
+    if (max && next > max) {
+      button.disabled = true;
+      return;
+    }
+
+    const row = last.cloneNode(true);
+    row.querySelectorAll("input, select").forEach((field) => {
+      const name = field.getAttribute("name");
+      if (name) field.setAttribute("name", name.replace(/_\d+$/, `_${next}`));
+      const label = field.getAttribute("aria-label");
+      if (label) field.setAttribute("aria-label", label.replace(/\d+/, String(next)));
+      if (field.tagName === "SELECT") {
+        field.selectedIndex = 0;
+      } else if (field.type !== "hidden") {
+        field.value = "";
+      }
+    });
+    row.querySelectorAll("label").forEach((label) => {
+      const text = label.childNodes[0];
+      if (text && text.nodeType === Node.TEXT_NODE && /Outcome \d+/.test(text.textContent)) {
+        text.textContent = text.textContent.replace(/Outcome \d+/, `Outcome ${next}`);
+      }
+    });
+    last.after(row);
+    const firstField = row.querySelector("input");
+    if (firstField) firstField.focus();
+    if (max && next >= max) button.disabled = true;
+  });
+});

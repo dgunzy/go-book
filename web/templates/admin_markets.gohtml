@@ -51,10 +51,62 @@
             {{if or (eq .Market.State "open") (eq .Market.State "closed") (eq .Market.State "settlement_pending")}}
             <a class="betting-action-link" href="/admin/markets/{{.Market.ID}}/settle">Settle / void</a>
             {{end}}
+            {{if or (eq .Market.State "open") (eq .Market.State "draft")}}
+            <details class="betting-restrict">
+              <summary>Restrict a member</summary>
+              <form method="post" action="/admin/markets/{{.Market.ID}}/restrict" class="betting-inline-form betting-restrict-form" hx-post="/admin/markets/{{.Market.ID}}/restrict" hx-target="this" hx-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <label class="visually-hidden" for="restrict-member-{{.Market.ID}}">Member</label>
+                <select id="restrict-member-{{.Market.ID}}" name="user_id" required>
+                  <option value="">Choose a member</option>
+                  {{range $.Members}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+                </select>
+                <label class="visually-hidden" for="restrict-outcome-{{.Market.ID}}">Outcome</label>
+                <select id="restrict-outcome-{{.Market.ID}}" name="selection_id">
+                  <option value="">The whole market</option>
+                  {{range .Selections}}<option value="{{.ID}}">{{.DisplayTerms}} only</option>{{end}}
+                </select>
+                <label class="visually-hidden" for="restrict-reason-{{.Market.ID}}">Reason</label>
+                <input id="restrict-reason-{{.Market.ID}}" name="reason" maxlength="500" placeholder="Why" required>
+                <button type="submit" class="betting-danger-button">Restrict</button>
+              </form>
+            </details>
+            {{end}}
           </td>
         </tr>
         {{else}}
         <tr><td colspan="7" class="private-empty-cell">No markets exist yet.</td></tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section aria-labelledby="restrictions-heading">
+  <div class="private-section-heading"><h2 id="restrictions-heading">Restricted members</h2></div>
+  <p class="pulse-note">A restricted member does not see the market, or the side, at all — and a wager on it is refused even if they go looking for it. Use it when the bet is about them.</p>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-wide private-table-stack">
+      <thead><tr><th scope="col">Member</th><th scope="col">Market</th><th scope="col">Restricted from</th><th scope="col">Reason</th><th scope="col">By</th><th scope="col">Actions</th></tr></thead>
+      <tbody>
+        {{range .Restrictions}}
+        <tr>
+          <th scope="row">{{.MemberName}}</th>
+          <td data-label="Market">{{.MarketTitle}}</td>
+          <td data-label="Restricted from">{{if .WholeMarket}}The whole market{{else}}{{.SelectionTerms}}{{end}}</td>
+          <td data-label="Reason">{{.Reason}}</td>
+          <td data-label="By">{{.RestrictedBy}}</td>
+          <td class="betting-actions-cell is-stack-block" data-label="Actions">
+            <form method="post" action="/admin/markets/{{.MarketID}}/restrict/lift" class="betting-inline-form" hx-post="/admin/markets/{{.MarketID}}/restrict/lift" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <input type="hidden" name="user_id" value="{{.UserID}}">
+              <input type="hidden" name="selection_id" value="{{.SelectionID}}">
+              <button type="submit">Lift</button>
+            </form>
+          </td>
+        </tr>
+        {{else}}
+        <tr><td colspan="6" class="private-empty-cell">Nobody is restricted from any live market.</td></tr>
         {{end}}
       </tbody>
     </table>

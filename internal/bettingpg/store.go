@@ -151,19 +151,23 @@ func loadSelections(ctx context.Context, tx pgx.Tx, marketID string) ([]betting.
 	return selections, semanticKeys, nil
 }
 
-func loadRestrictedUsers(ctx context.Context, tx pgx.Tx, marketID string) ([]betting.ID, error) {
-	rows, err := tx.Query(ctx, `SELECT user_id::text FROM market_restrictions WHERE market_id = $1::uuid`, marketID)
+func loadRestrictions(ctx context.Context, tx pgx.Tx, marketID string) ([]betting.Restriction, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT user_id::text, coalesce(selection_id::text, ''), reason
+		FROM market_restrictions WHERE market_id = $1::uuid`, marketID)
 	if err != nil {
 		return nil, fmt.Errorf("load market restrictions for %s: %w", marketID, err)
 	}
 	defer rows.Close()
-	var restricted []betting.ID
+	var restricted []betting.Restriction
 	for rows.Next() {
-		var userID string
-		if err := rows.Scan(&userID); err != nil {
+		var userID, selectionID, reason string
+		if err := rows.Scan(&userID, &selectionID, &reason); err != nil {
 			return nil, fmt.Errorf("scan market restriction: %w", err)
 		}
-		restricted = append(restricted, betting.ID(userID))
+		restricted = append(restricted, betting.Restriction{
+			UserID: betting.ID(userID), SelectionID: betting.ID(selectionID), Reason: reason,
+		})
 	}
 	return restricted, rows.Err()
 }

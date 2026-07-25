@@ -49,6 +49,9 @@ var creditLimitDefaultSQL string
 //go:embed 000011_manual_line_moves.up.sql
 var manualLineMovesSQL string
 
+//go:embed 000012_selection_restrictions.up.sql
+var selectionRestrictionsSQL string
+
 // All returns migrations in application order.
 func All() []Definition {
 	return []Definition{
@@ -63,6 +66,7 @@ func All() []Definition {
 		newDefinition(9, "match_history_and_rosters", matchHistoryAndRostersSQL),
 		newDefinition(10, "credit_limit_default", creditLimitDefaultSQL),
 		newDefinition(11, "manual_line_moves", manualLineMovesSQL),
+		newDefinition(12, "selection_restrictions", selectionRestrictionsSQL),
 	}
 }
 

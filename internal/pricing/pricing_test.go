@@ -319,3 +319,105 @@ func TestRepriceKeepsAHeavilyBackedMarketSafe(t *testing.T) {
 	}
 	t.Logf("clamped line: %d / %+d (was -186 / +141 unclamped)", favourite, dog)
 }
+
+// pointsGetterBoard is the shape that prompted this: a sixteen-runner outright
+// with a wide margin, where one member backing their favourite must not swing
+// everyone else's price around.
+func pointsGetterBoard() []ledger.AmericanOdds {
+	return []ledger.AmericanOdds{
+		500, 600, 600, 900, 900, 900, 900, 1400,
+		1400, 1800, 1800, 2500, 2500, 2500, 2500, 3000,
+	}
+}
+
+func TestRepriceOnAManyArmBoardStaysSafeAndProportionate(t *testing.T) {
+	t.Parallel()
+	opening := pointsGetterBoard()
+	inputs := make([]SelectionInput, len(opening))
+	for i, odds := range opening {
+		inputs[i] = SelectionInput{OpeningOdds: odds}
+	}
+	// A big bet on the favourite, far more than this book would normally see.
+	inputs[0].StakeCents = 200_000
+
+	results, err := Reprice(inputs, 500_000)
+	if err != nil {
+		t.Fatalf("Reprice() error = %v", err)
+	}
+
+	// The backed arm shortens; nobody else may drift past their floor.
+	if ImpliedProbability(results[0].Odds) <= ImpliedProbability(opening[0]) {
+		t.Fatalf("backed arm = %d, want a shorter price than its opening %d", results[0].Odds, opening[0])
+	}
+	floors := driftFloors(impliedAll(opening), overroundOf(opening))
+	for i, result := range results {
+		if got := ImpliedProbability(result.Odds); got < floors[i]-1e-9 {
+			t.Errorf("arm %d drifted to %d (p %.5f), past its floor %.5f", i, result.Odds, got, floors[i])
+		}
+	}
+
+	// Every arm moves by a similar proportion of its own price, so a longshot
+	// is not swung around by a bet on the favourite.
+	for i := 1; i < len(results); i++ {
+		before, after := ImpliedProbability(opening[i]), ImpliedProbability(results[i].Odds)
+		if change := (before - after) / before; change > 0.25 {
+			t.Errorf("arm %d (%d) moved %.1f%% of its own probability, want a proportionate move",
+				i, opening[i], change*100)
+		}
+	}
+}
+
+// The arbitrage property has to hold on a many-arm board too: backing every
+// runner at the best price each is ever posted must still cost more than it
+// can return.
+func TestRepriceManyArmBoardCannotBeBackedAcross(t *testing.T) {
+	t.Parallel()
+	opening := pointsGetterBoard()
+	best := make([]bestPrice, len(opening))
+
+	for _, liquidity := range []int64{100_000, 500_000, 2_000_000} {
+		for backed := range opening {
+			for _, stake := range []int64{0, 50_000, 250_000, 1_000_000, 50_000_000} {
+				inputs := make([]SelectionInput, len(opening))
+				for i, odds := range opening {
+					inputs[i] = SelectionInput{OpeningOdds: odds}
+					if i == backed {
+						inputs[i].StakeCents = stake
+					}
+				}
+				results, err := Reprice(inputs, liquidity)
+				if err != nil {
+					t.Fatalf("Reprice() error = %v", err)
+				}
+				for i, result := range results {
+					best[i].see(result.Odds)
+				}
+			}
+		}
+	}
+
+	var sum float64
+	for _, b := range best {
+		sum += b.probability
+	}
+	if sum <= 1.0 {
+		t.Fatalf("backing all sixteen arms at their best prices implies %.4f: that is free money", sum)
+	}
+	t.Logf("sixteen arms at their most generous: %.4f (opened at %.4f)", sum, overroundOf(opening))
+}
+
+func impliedAll(odds []ledger.AmericanOdds) []float64 {
+	priors := make([]float64, len(odds))
+	for i, o := range odds {
+		priors[i] = ImpliedProbability(o)
+	}
+	return priors
+}
+
+func overroundOf(odds []ledger.AmericanOdds) float64 {
+	var total float64
+	for _, o := range odds {
+		total += ImpliedProbability(o)
+	}
+	return total
+}

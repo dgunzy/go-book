@@ -52,10 +52,12 @@ Prices taken at different times can be combined. If a member backs one side at
 the opening price and the line then runs far enough, the other side becomes
 generous enough that backing it too pays more than the pair costs — a guaranteed
 profit whatever the result. The engine therefore lets each selection's implied
-probability fall no further than its share of the opening margin (80% of
-`margin / selections`, keeping the rest as a cushion against rounding). The sum
-of the most generous prices the book will ever post then always stays above even
-money.
+probability fall no further than a fixed proportion of itself — 80% of
+`margin / overround`, keeping the rest as a cushion against rounding. The sum of
+the most generous prices the book will ever post then always stays above even
+money. Sharing the budget proportionally rather than equally matters on a long
+outright: an equal share of probability is a couple of points on the favourite
+but a doubling of the outsider's price.
 
 The practical consequence: **a thin opening line can only move a little.** A
 `-110 / -110` market carries a 4.76% margin, so it can travel about two points
