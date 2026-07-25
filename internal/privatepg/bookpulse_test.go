@@ -77,6 +77,16 @@ func TestBookPulseComputesExposureAndSwing(t *testing.T) {
 	if !match4.Outcomes[0].Worst || match4.Outcomes[1].Worst {
 		t.Fatal("the favourite winning is the outcome that costs the house most; it should be the marked row")
 	}
+	// Match 5 has no action: every outcome nets zero, so no row costs the book
+	// more than another and none may be marked. Marking one would paint an idle
+	// market as the book's biggest risk.
+	idle := pulse.Exposure[1]
+	for i, outcome := range idle.Outcomes {
+		if outcome.Worst {
+			t.Errorf("idle market outcome %d (%s) is marked worst with nothing at stake", i, outcome.Selection)
+		}
+	}
+
 	// The empty market swings zero either way, so it must not move the totals.
 	if pulse.WorstCase.Cents != -4_000 || pulse.BestCase.Cents != 10_400 {
 		t.Fatalf("swing = worst %d best %d, want -4000 and 10400", pulse.WorstCase.Cents, pulse.BestCase.Cents)

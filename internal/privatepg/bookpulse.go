@@ -174,7 +174,14 @@ func (r *Readers) exposureRows(ctx context.Context) ([]privateweb.MarketExposure
 				Currency: bookCurrency,
 			}
 		}
-		worst, _ := marketSwing(*market)
+		// Only mark a worst outcome when the outcomes actually differ. A market
+		// nobody has bet nets zero whichever way it lands, and so does a
+		// perfectly balanced one; marking a row there would flag an idle market
+		// as the book's biggest risk.
+		worst, best := marketSwing(*market)
+		if worst == best {
+			continue
+		}
 		for j := range market.Outcomes {
 			if market.Outcomes[j].HouseNet.Cents == worst {
 				market.Outcomes[j].Worst = true

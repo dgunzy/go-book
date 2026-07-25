@@ -810,8 +810,11 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .pulse-swing small { color: #5b6760; font-size: .7rem; margin-top: auto; }
 .pulse-swing a { color: var(--green); font-weight: 800; }
 .pulse-note { color: #5b6760; font-size: .78rem; margin: -.2rem 0 .7rem; max-width: 62ch; }
-.private-table tbody tr.is-worst-outcome { background: #fdf6f4; }
-.private-table tbody tr.is-worst-outcome:hover { background: #f9edec; }
+/* Tint the outcome cells only. The market name is a rowspan cell living in the
+   first outcome's row, so tinting the whole row bled the highlight across every
+   row of that market and made one flagged outcome look like a flagged market. */
+.private-table tbody tr.is-worst-outcome > td { background: #fdf6f4; }
+.private-table tbody tr.is-worst-outcome:hover > td { background: #f9edec; }
 .private-table .is-behind-text { color: #b03a2e; }
 .private-table .is-ahead-text { color: #0f6f96; }
 .pulse-chart { margin: 0; }
