@@ -16,7 +16,18 @@
           <td><span class="private-status">{{.Market.Type}}</span></td>
           <td><span class="private-status">{{.Market.State}}</span></td>
           <td>{{.Market.Currency}}</td>
-          <td>{{when .Market.ClosesAt}}</td>
+          <td>{{when .Market.ClosesAt}}
+            {{if or (eq .Market.State "open") (eq .Market.State "draft")}}
+            <form method="post" action="/admin/markets/{{.Market.ID}}/close-time" class="betting-inline-form betting-close-time-form" hx-post="/admin/markets/{{.Market.ID}}/close-time" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <label class="visually-hidden" for="closes-{{.Market.ID}}">New closing time</label>
+              <input type="datetime-local" id="closes-{{.Market.ID}}" name="closes_at" required>
+              <label class="visually-hidden" for="closes-reason-{{.Market.ID}}">Why the closing time is moving</label>
+              <input id="closes-reason-{{.Market.ID}}" name="reason" maxlength="500" placeholder="Why" required>
+              <button type="submit">Move</button>
+            </form>
+            {{end}}
+          </td>
           <td>
             {{$market := .Market}}
             {{range .Selections}}

@@ -935,3 +935,7 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .private-tabs a { border-bottom: 3px solid transparent; color: #5b6760; font-size: .82rem; font-weight: 800; padding: .55rem .9rem; text-decoration: none; }
 .private-tabs a:hover { color: var(--ink); }
 .private-tabs a[aria-current="page"] { border-bottom-color: var(--green); color: var(--ink); }
+.betting-close-time-form { margin-top: .35rem; }
+.betting-close-time-form input[type="datetime-local"] { border: 1px solid #b8c1bb; border-radius: 4px; font: inherit; font-size: .74rem; padding: .25rem .35rem; width: auto; }
+.betting-close-time-form input[name="reason"] { width: 7rem; }
+.dashboard-panel[hidden] { display: none; }

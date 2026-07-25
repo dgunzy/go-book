@@ -255,3 +255,47 @@ document.querySelectorAll("[data-add-outcome]").forEach((button) => {
     if (max && next >= max) button.disabled = true;
   });
 });
+
+// Admin dashboard tabs.
+//
+// The dashboard is one page of everything, which is right when the book is
+// quiet and unreadable once there are a lot of bets. The panels are all
+// rendered — no extra requests — and this shows one at a time. Without
+// JavaScript nothing is hidden, so the page still works top to bottom.
+document.querySelectorAll("[data-dashboard-tabs]").forEach((tabs) => {
+  const panels = document.querySelectorAll("[data-panel]");
+  if (!panels.length) return;
+  const links = tabs.querySelectorAll("[data-tab]");
+
+  const show = (name) => {
+    let matched = false;
+    panels.forEach((panel) => {
+      const isMatch = panel.dataset.panel === name;
+      panel.hidden = !isMatch;
+      matched = matched || isMatch;
+    });
+    if (!matched) return false;
+    links.forEach((link) => {
+      if (link.dataset.tab === name) {
+        link.setAttribute("aria-current", "page");
+      } else {
+        link.removeAttribute("aria-current");
+      }
+    });
+    return true;
+  };
+
+  links.forEach((link) => {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      if (show(link.dataset.tab)) {
+        // Keep the tab in the URL so a refresh, or a link to someone else,
+        // lands on the same view.
+        history.replaceState(null, "", "#" + link.dataset.tab);
+      }
+    });
+  });
+
+  const fromHash = window.location.hash.replace("#", "");
+  if (!fromHash || !show(fromHash)) show(links[0].dataset.tab);
+});

@@ -4,6 +4,15 @@
   <p>How the book is doing, what is still at risk, and who is running hot. Snapshot as of {{when .Pulse.AsOf}} · CAD.</p>
 </header>
 
+<nav class="private-tabs" aria-label="Dashboard views" data-dashboard-tabs>
+  <a href="#overview" data-tab="overview" aria-current="page">Overview</a>
+  <a href="#exposure" data-tab="exposure">Exposure</a>
+  <a href="#players" data-tab="players">Players</a>
+  <a href="#action" data-tab="action">Action</a>
+  <a href="#health" data-tab="health">Ledger health</a>
+</nav>
+
+<div class="dashboard-panel" data-panel="overview">
 <section class="pulse-hero" aria-labelledby="house-result-heading">
   <div class="pulse-hero-figure {{if lt .Pulse.HouseResult.Cents 0}}is-down{{else}}is-up{{end}}">
     <span id="house-result-heading">House result</span>
@@ -43,6 +52,9 @@
   </div>
 </section>
 
+</div>
+
+<div class="dashboard-panel" data-panel="exposure">
 <section aria-labelledby="exposure-heading">
   <div class="private-section-heading"><h2 id="exposure-heading">Exposure by market</h2></div>
   <p class="pulse-note">What the house nets on each outcome: every stake in the market less what that side would be paid. The row that costs the book most is marked.</p>
@@ -72,6 +84,9 @@
   </div>
 </section>
 
+</div>
+
+<div class="dashboard-panel" data-panel="players">
 <section aria-labelledby="standings-heading">
   <div class="private-section-heading"><h2 id="standings-heading">Player standings</h2></div>
   <p class="pulse-note">Each member's realized profit or loss against the book, straight from the ledger. Live bets do not count until they settle.</p>
@@ -137,6 +152,9 @@
   {{end}}
 </section>
 
+</div>
+
+<div class="dashboard-panel" data-panel="action">
 <section aria-labelledby="open-action-heading">
   <div class="private-section-heading"><h2 id="open-action-heading">Action on the board</h2></div>
   <p class="pulse-note">Accepted bets still waiting on a result, newest first.</p>
@@ -162,6 +180,9 @@
   </div>
 </section>
 
+</div>
+
+<div class="dashboard-panel" data-panel="health">
 <section class="reconciliation-state {{if .Reconciliation.LedgerBalanced}}is-clear{{else}}is-alert{{end}}" aria-labelledby="ledger-state-heading">
   <div>
     <span>Ledger state</span>
@@ -181,4 +202,5 @@
     <article><span>Failed outbox</span><strong>{{.Reconciliation.FailedOutboxEvents}}</strong></article>
   </div>
 </section>
+</div>
 {{end}}

@@ -66,3 +66,49 @@ func parseLineOdds(value string) (ledger.AmericanOdds, error) {
 	}
 	return ledger.NewAmericanOdds(int32(parsed))
 }
+
+// adminSetCloseTime moves when a market stops taking action. Wagers already on
+// it keep their odds and stand; this only changes how long new money can come
+// in.
+func (h *Handler) adminSetCloseTime(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	marketID := r.PathValue("id")
+	if !isUUID(marketID) {
+		h.failPost(w, r, session, http.StatusNotFound, "The requested market was not found.", redirectAdminMarkets)
+		return
+	}
+	closesAt, err := parseFormTime(strings.TrimSpace(r.PostForm.Get("closes_at")))
+	if err != nil {
+		h.failPost(w, r, session, http.StatusBadRequest,
+			"Choose a valid closing date and time in Atlantic time.", redirectAdminMarkets)
+		return
+	}
+	reason := strings.TrimSpace(r.PostForm.Get("reason"))
+	if reason == "" || len(reason) > maxReasonLen {
+		h.failPost(w, r, session, http.StatusBadRequest,
+			"Say why the closing time is moving (up to 500 characters) — it goes on the audit trail.", redirectAdminMarkets)
+		return
+	}
+
+	if err := h.deps.Markets.SetMarketCloseTime(r.Context(), marketID, closesAt, session.UserID, reason); err != nil {
+		status, text := storeErrorStatus(err)
+		switch {
+		case errors.Is(err, bettingpg.ErrCloseTimeInPast):
+			status, text = http.StatusBadRequest,
+				"That time has already passed. To stop taking action now, use Close."
+		case errors.Is(err, bettingpg.ErrMarketNotPriceable):
+			status, text = http.StatusConflict,
+				"Only a draft or open market's closing time can be moved."
+		}
+		h.failPost(w, r, session, status, text, redirectAdminMarkets)
+		return
+	}
+	h.completePost(w, r, redirectAdminMarkets, "Closing time moved.",
+		"Wagers already on this market keep their odds; only new action is affected.")
+}

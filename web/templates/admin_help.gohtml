@@ -33,6 +33,12 @@
   <p>Choose the odds sign separately from its numeric magnitude, which works on phone number keyboards. All dates and times shown or entered in the app are <strong>Atlantic time</strong> (ADT in summer, AST in winter). The market is created in <strong>draft</strong>; click <strong>Open</strong> when you're ready to take bets, and <strong>Close</strong> to stop taking them.</p>
 </section>
 
+<section class="help-section" aria-labelledby="help-close-time">
+  <h2 id="help-close-time">Moving a market's closing time</h2>
+  <p>Tee times move. On <a href="/admin/markets">Manage markets</a>, a draft or open market has a closing time you can change: pick the new time, say why, and hit <strong>Move</strong>. Wagers already on it keep their odds and stand — only how long new money can come in changes.</p>
+  <p>The new time has to be in the future. To stop taking action right now, use <strong>Close</strong> instead. A market that has already closed cannot have its time moved, because reopening it would let money in against a result people may already know. Every change is recorded with the old time, the new time, your name and your reason.</p>
+</section>
+
 <section class="help-section" aria-labelledby="help-pricing">
   <h2 id="help-pricing">Dynamic pricing (the line moves on its own)</h2>
   <p>New markets have <strong>dynamic pricing on by default</strong>, with a ${{.DefaultLineWeightDollars}} line weight — you don't need to enter anything. As accepted action comes in, the line automatically shortens on the heavily-backed side and lengthens on the other to balance the book. A larger liquidity moves the line less per bet; uncheck the box to keep a fixed line.</p>
@@ -85,7 +91,8 @@
     <li><strong>Player standings</strong> — each member's realized profit or loss against the book, read straight from the ledger, with their record and total action. Bars run right of the line for players who are ahead of the book and left for those behind. Live bets are not counted until they settle.</li>
     <li><strong>Action on the board</strong> — the accepted bets still waiting on a result.</li>
   </ul>
-  <p>The ledger state and outbox queues stay at the bottom of the page: if <strong>Unbalanced</strong> is anything other than zero, or failed outbox events pile up, tell your operator.</p>
+  <p>The dashboard is split into tabs — <strong>Overview</strong>, <strong>Exposure</strong>, <strong>Players</strong>, <strong>Action</strong> and <strong>Ledger health</strong> — so a busy book stays readable. The tab you are on is kept in the address bar, so a refresh or a shared link lands in the same place.</p>
+  <p>The ledger state and outbox queues stay under <strong>Ledger health</strong>: if <strong>Unbalanced</strong> is anything other than zero, or failed outbox events pile up, tell your operator.</p>
 </section>
 
 <section class="help-section" aria-labelledby="help-member-book">

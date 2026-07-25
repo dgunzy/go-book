@@ -471,3 +471,33 @@ func TestAdminDashboardSeparatesOwedFromResults(t *testing.T) {
 		t.Error("player standings no longer show the betting result")
 	}
 }
+
+// The dashboard is one page of everything, which stops being readable once
+// there is a lot of action. It is split into panels with a tab strip; every
+// panel is still rendered, so nothing is lost without JavaScript.
+func TestAdminDashboardIsSplitIntoTabbedPanels(t *testing.T) {
+	deps, _ := testDependencies(Session{UserID: "admin-1", DisplayName: "Book Admin", Role: RoleAdmin, Active: true})
+	response := httptest.NewRecorder()
+	newHandler(t, deps).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin", nil))
+
+	body := response.Body.String()
+	for _, panel := range []string{"overview", "exposure", "players", "action", "health"} {
+		if !strings.Contains(body, `data-panel="`+panel+`"`) {
+			t.Errorf("dashboard has no %q panel", panel)
+		}
+		if !strings.Contains(body, `data-tab="`+panel+`"`) {
+			t.Errorf("dashboard has no %q tab", panel)
+		}
+	}
+	// Nothing may be hidden server-side: without JavaScript the whole page
+	// must still read top to bottom.
+	if strings.Contains(body, `data-panel="exposure" hidden`) || strings.Contains(body, "<div class=\"dashboard-panel\" hidden") {
+		t.Error("a panel is hidden in the rendered HTML; it should only be hidden by script")
+	}
+	// The content is all still there.
+	for _, expected := range []string{"House result", "Exposure by market", "Player standings", "Owed and owing", "Action on the board", "Ledger state"} {
+		if !strings.Contains(body, expected) {
+			t.Errorf("dashboard lost its %q section", expected)
+		}
+	}
+}

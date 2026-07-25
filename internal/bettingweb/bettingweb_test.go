@@ -52,12 +52,21 @@ type fakeMarkets struct {
 	voidCalls    []bettingpg.VoidMarketRequest
 	setLineErr   error
 	lineCalls    []setLineCall
+	closeTimeErr error
+	closeTimes   []closeTimeCall
 	restrictErr  error
 	restricted   []bettingpg.RestrictRequest
 	lifted       []struct{ market, user, selection string }
 	restrictions []bettingpg.RestrictionRow
 	members      []bettingpg.MemberOption
 	scopedUsers  []string
+}
+
+type closeTimeCall struct {
+	marketID string
+	closesAt time.Time
+	actor    string
+	reason   string
 }
 
 type setLineCall struct {
@@ -123,6 +132,11 @@ func (f *fakeMarkets) SetOpeningLine(_ context.Context, marketID, selectionID st
 		return false, f.setLineErr
 	}
 	return true, nil
+}
+
+func (f *fakeMarkets) SetMarketCloseTime(_ context.Context, marketID string, closesAt time.Time, actorUserID, reason string) error {
+	f.closeTimes = append(f.closeTimes, closeTimeCall{marketID, closesAt, actorUserID, reason})
+	return f.closeTimeErr
 }
 
 func (f *fakeMarkets) VoidMarket(_ context.Context, req bettingpg.VoidMarketRequest) (bettingpg.SettleReport, error) {
@@ -2085,5 +2099,104 @@ func TestPlaceForMemberLeavesItPendingWhenCreditWillNotCoverIt(t *testing.T) {
 	body2 := w.Body.String()
 	if !strings.Contains(body2, "approval queue") || !strings.Contains(body2, "does not cover this stake") {
 		t.Fatalf("body = %q, want it to explain the wager is pending and why", body2)
+	}
+}
+
+func closeTimePath() string { return "/admin/markets/" + testMarketID + "/close-time" }
+
+func TestSetCloseTimeSendsTheNewTimeAndActor(t *testing.T) {
+	markets := &fakeMarkets{}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	when := time.Now().Add(26 * time.Hour).Truncate(time.Minute)
+	body := url.Values{
+		"csrf_token": {testCSRF}, "closes_at": {when.Format("2006-01-02T15:04")},
+		"reason": {"tee times moved to the afternoon"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, closeTimePath(), strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	if len(markets.closeTimes) != 1 {
+		t.Fatalf("SetMarketCloseTime calls = %d, want 1", len(markets.closeTimes))
+	}
+	call := markets.closeTimes[0]
+	if call.marketID != testMarketID || call.actor != testUserID {
+		t.Fatalf("call = %+v", call)
+	}
+	if call.reason != "tee times moved to the afternoon" {
+		t.Fatalf("reason = %q", call.reason)
+	}
+	// The time is read as Atlantic, the same as everywhere else in the app.
+	if call.closesAt.IsZero() {
+		t.Fatal("the new closing time did not reach the store")
+	}
+}
+
+func TestSetCloseTimeRejectsBadInputAndNonAdmins(t *testing.T) {
+	future := time.Now().Add(26 * time.Hour).Format("2006-01-02T15:04")
+	for _, test := range []struct {
+		name    string
+		session privateweb.Session
+		body    url.Values
+		status  int
+	}{
+		{"member cannot move it", memberSession(),
+			url.Values{"csrf_token": {testCSRF}, "closes_at": {future}, "reason": {"nope"}}, http.StatusForbidden},
+		{"no reason", adminSession(),
+			url.Values{"csrf_token": {testCSRF}, "closes_at": {future}, "reason": {"  "}}, http.StatusBadRequest},
+		{"unparseable time", adminSession(),
+			url.Values{"csrf_token": {testCSRF}, "closes_at": {"whenever"}, "reason": {"x"}}, http.StatusBadRequest},
+		{"no csrf token", adminSession(),
+			url.Values{"closes_at": {future}, "reason": {"x"}}, http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			markets := &fakeMarkets{}
+			handler := newTestHandler(t, test.session, markets, &fakeWagers{})
+			r := httptest.NewRequest(http.MethodPost, closeTimePath(), strings.NewReader(test.body.Encode()))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code != test.status {
+				t.Fatalf("status = %d, want %d", w.Code, test.status)
+			}
+			if len(markets.closeTimes) != 0 {
+				t.Fatal("a rejected close-time change reached the store")
+			}
+		})
+	}
+}
+
+func TestSetCloseTimeExplainsAPastTimeAndAClosedMarket(t *testing.T) {
+	future := time.Now().Add(26 * time.Hour).Format("2006-01-02T15:04")
+	for _, test := range []struct {
+		name   string
+		err    error
+		status int
+		expect string
+	}{
+		{"already passed", bettingpg.ErrCloseTimeInPast, http.StatusBadRequest, "use Close"},
+		{"market closed", bettingpg.ErrMarketNotPriceable, http.StatusConflict, "draft or open"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			markets := &fakeMarkets{closeTimeErr: test.err}
+			handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+			body := url.Values{"csrf_token": {testCSRF}, "closes_at": {future}, "reason": {"moving it"}}.Encode()
+			r := httptest.NewRequest(http.MethodPost, closeTimePath(), strings.NewReader(body))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			r.Header.Set("HX-Request", "true")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code != test.status {
+				t.Fatalf("status = %d, want %d", w.Code, test.status)
+			}
+			if !strings.Contains(w.Body.String(), test.expect) {
+				t.Fatalf("body = %q, want it to mention %q", w.Body.String(), test.expect)
+			}
+		})
 	}
 }
