@@ -53,18 +53,18 @@
 <section aria-labelledby="active-heading">
   <div class="private-section-heading"><h2 id="active-heading">What you have riding</h2><a href="/book/wagers">All wagers <span aria-hidden="true">&rarr;</span></a></div>
   <div class="private-table-wrap">
-    <table class="private-table private-table-wide">
+    <table class="private-table private-table-wide private-table-stack">
       <thead><tr><th scope="col">Placed</th><th scope="col">Market</th><th scope="col">Your pick</th><th scope="col">Odds</th><th scope="col">Stake</th><th scope="col">To win</th><th scope="col">Status</th></tr></thead>
       <tbody>
         {{range .Dashboard.ActiveWagers}}
         <tr>
-          <td>{{when .PlacedAt}}</td>
+          <td data-label="Placed">{{when .PlacedAt}}</td>
           <th scope="row">{{.Market}}<small>Closes {{when .ClosesAt}}</small></th>
-          <td>{{.Selection}}</td>
-          <td class="private-odds">{{odds .Odds}}</td>
-          <td class="private-money">{{money .Stake}}</td>
-          <td class="private-money">{{money .PotentialProfit}}</td>
-          <td><span class="private-status{{if .Pending}} private-status-warning{{end}}">{{.Status}}</span></td>
+          <td data-label="Selection">{{.Selection}}</td>
+          <td class="private-odds" data-label="Odds">{{odds .Odds}}</td>
+          <td class="private-money" data-label="Stake">{{money .Stake}}</td>
+          <td class="private-money" data-label="To win">{{money .PotentialProfit}}</td>
+          <td data-label="Status"><span class="private-status{{if .Pending}} private-status-warning{{end}}">{{.Status}}</span></td>
         </tr>
         {{else}}
         <tr><td colspan="7" class="private-empty-cell">Nothing riding right now. <a href="/book/markets">Browse the markets</a> to place a wager.</td></tr>
@@ -78,15 +78,15 @@
 <section aria-labelledby="activity-heading">
   <div class="private-section-heading"><h2 id="activity-heading">Recent activity</h2><a href="/book/ledger">All activity <span aria-hidden="true">&rarr;</span></a></div>
   <div class="private-table-wrap">
-    <table class="private-table">
+    <table class="private-table private-table-stack">
       <thead><tr><th scope="col">Date</th><th scope="col">Activity</th><th scope="col">Wager</th><th scope="col">Amount</th></tr></thead>
       <tbody>
         {{range .Dashboard.RecentActivity}}
         <tr>
-          <td>{{when .OccurredAt}}</td>
+          <td data-label="When">{{when .OccurredAt}}</td>
           <th scope="row">{{.Description}}<small>{{.TransactionType}}</small></th>
-          <td>{{if .ReferenceLabel}}{{.ReferenceLabel}}{{else}}<span class="private-reference">{{.Reference}}</span>{{end}}</td>
-          <td class="private-money">{{money .Amount}}</td>
+          <td data-label="Reference">{{if .ReferenceLabel}}{{.ReferenceLabel}}{{else}}<span class="private-reference">{{.Reference}}</span>{{end}}</td>
+          <td class="private-money" data-label="Amount">{{money .Amount}}</td>
         </tr>
         {{else}}
         <tr><td colspan="4" class="private-empty-cell">No ledger activity yet.</td></tr>

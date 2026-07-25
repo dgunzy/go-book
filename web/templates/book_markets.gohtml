@@ -16,14 +16,14 @@
     </p>
   </div>
   <div class="private-table-wrap">
-    <table class="private-table">
+    <table class="private-table private-table-stack">
       <thead><tr><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Place a wager</th></tr></thead>
       <tbody>
         {{range .Selections}}
         <tr>
           <th scope="row">{{.DisplayTerms}}</th>
-          <td class="private-odds">{{odds .OfferedAmericanOdds}}</td>
-          <td>
+          <td class="private-odds" data-label="Odds">{{odds .OfferedAmericanOdds}}</td>
+          <td class="is-stack-block" data-label="Place a wager">
             <form method="post" action="/book/wagers" class="betting-place-form" hx-post="/book/wagers" hx-target="this" hx-swap="outerHTML">
               <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
               <input type="hidden" name="market_id" value="{{.MarketID}}">

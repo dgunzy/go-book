@@ -15,17 +15,17 @@
 <section aria-labelledby="pending-wagers-heading">
   <h2 id="pending-wagers-heading" class="visually-hidden">Pending wagers</h2>
   <div class="private-table-wrap">
-    <table class="private-table private-table-wide">
+    <table class="private-table private-table-wide private-table-stack">
       <thead><tr><th scope="col">Placed</th><th scope="col">Member</th><th scope="col">Market</th><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Live line</th><th scope="col">Stake</th><th scope="col">To win</th><th scope="col">Actions</th></tr></thead>
       <tbody>
         {{range .AdminWagers}}
         <tr{{if .MovedToMember}} class="is-line-moved"{{end}}>
-          <td>{{when .PlacedAt}}</td>
+          <td data-label="Placed">{{when .PlacedAt}}</td>
           <th scope="row">{{.UserDisplayName}}</th>
-          <td>{{.MarketTitle}}</td>
-          <td>{{.SelectionTerms}}</td>
-          <td class="private-odds">{{odds .Odds}}</td>
-          <td class="private-odds betting-line-cell">
+          <td data-label="Market">{{.MarketTitle}}</td>
+          <td data-label="Selection">{{.SelectionTerms}}</td>
+          <td class="private-odds" data-label="Odds">{{odds .Odds}}</td>
+          <td class="private-odds betting-line-cell is-stack-block" data-label="Live line">
             {{if .LiveLineAvailable}}
               <span class="betting-line-price">{{odds .CurrentOdds}}</span>
               {{if .MovedToMember}}
@@ -41,9 +41,9 @@
               <span class="betting-line-flag">Off the board</span>
             {{end}}
           </td>
-          <td class="private-money">{{money .Stake}}</td>
-          <td class="private-money">{{money .PotentialProfit}}</td>
-          <td class="betting-actions-cell">
+          <td class="private-money" data-label="Stake">{{money .Stake}}</td>
+          <td class="private-money" data-label="To win">{{money .PotentialProfit}}</td>
+          <td class="betting-actions-cell is-stack-block" data-label="Actions">
             <form method="post" action="/admin/wagers/{{.ID}}/accept" class="betting-inline-form" hx-post="/admin/wagers/{{.ID}}/accept" hx-target="this" hx-swap="outerHTML">
               <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
               <button type="submit">Accept</button>

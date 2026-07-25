@@ -47,7 +47,7 @@
   <div class="private-section-heading"><h2 id="exposure-heading">Exposure by market</h2></div>
   <p class="pulse-note">What the house nets on each outcome: every stake in the market less what that side would be paid. The row that costs the book most is marked.</p>
   <div class="private-table-wrap">
-    <table class="private-table private-table-wide">
+    <table class="private-table private-table-wide private-table-stack">
       <thead><tr><th scope="col">Market</th><th scope="col">Outcome</th><th scope="col">Bets</th><th scope="col">Stake on it</th><th scope="col">Pays out</th><th scope="col">House nets</th></tr></thead>
       <tbody>
         {{range .Pulse.Exposure}}
@@ -55,13 +55,13 @@
         {{range $index, $outcome := .Outcomes}}
         <tr{{if $outcome.Worst}} class="is-worst-outcome"{{end}}>
           {{if eq $index 0}}
-          <th scope="row" rowspan="{{len $market.Outcomes}}">{{$market.Market}}<small>{{$market.State}} · closes {{when $market.ClosesAt}} · {{money $market.Stake}} in</small></th>
+          <th scope="row" rowspan="{{len $market.Outcomes}}" class="is-stack-hidden">{{$market.Market}}<small>{{$market.State}} · closes {{when $market.ClosesAt}} · {{money $market.Stake}} in</small></th>
           {{end}}
-          <td>{{$outcome.Selection}}</td>
-          <td>{{$outcome.Wagers}}</td>
-          <td class="private-money">{{money $outcome.Stake}}</td>
-          <td class="private-money">{{money $outcome.Payout}}</td>
-          <td class="private-money{{if lt $outcome.HouseNet.Cents 0}} is-behind-text{{end}}">{{money $outcome.HouseNet}}</td>
+          <td class="is-stack-block" data-label="Outcome">{{$outcome.Selection}}<small class="is-stack-only">{{$market.Market}}</small></td>
+          <td data-label="Bets">{{$outcome.Wagers}}</td>
+          <td class="private-money" data-label="Stake on it">{{money $outcome.Stake}}</td>
+          <td class="private-money" data-label="Pays out">{{money $outcome.Payout}}</td>
+          <td class="private-money{{if lt $outcome.HouseNet.Cents 0}} is-behind-text{{end}}" data-label="House nets">{{money $outcome.HouseNet}}</td>
         </tr>
         {{end}}
         {{else}}
@@ -83,22 +83,22 @@
       <span class="pulse-key-scale">Longest bar = {{money .Pulse.PlayerScale}}</span>
     </figcaption>
     <div class="private-table-wrap">
-      <table class="private-table pulse-standings">
+      <table class="private-table pulse-standings private-table-stack">
         <thead><tr><th scope="col">Player</th><th scope="col">Net</th><th scope="col">Ahead / behind</th><th scope="col">Record</th><th scope="col">Live</th><th scope="col">Handle</th></tr></thead>
         <tbody>
           {{range .Pulse.Players}}
           <tr>
             <th scope="row">{{.Name}}</th>
-            <td class="private-money{{if .Ahead}} is-ahead-text{{else if lt .Net.Cents 0}} is-behind-text{{end}}">{{money .Net}}</td>
-            <td class="pulse-plot">
+            <td class="private-money{{if .Ahead}} is-ahead-text{{else if lt .Net.Cents 0}} is-behind-text{{end}}" data-label="Net">{{money .Net}}</td>
+            <td class="pulse-plot" data-label="Ahead / behind">
               <div class="pulse-track" title="{{.Name}}: {{money .Net}}">
                 <div class="pulse-half is-left">{{if lt .Net.Cents 0}}<div class="pulse-bar is-behind" style="width:{{.BarPercent}}%"></div>{{end}}</div>
                 <div class="pulse-half is-right">{{if .Ahead}}<div class="pulse-bar is-ahead" style="width:{{.BarPercent}}%"></div>{{end}}</div>
               </div>
             </td>
-            <td>{{.Won}}&ndash;{{.Lost}}{{if .Pushed}} <small>({{.Pushed}} push)</small>{{end}}</td>
-            <td>{{.Open}}</td>
-            <td class="private-money">{{money .Handle}}</td>
+            <td data-label="Record">{{.Won}}&ndash;{{.Lost}}{{if .Pushed}} <small>({{.Pushed}} push)</small>{{end}}</td>
+            <td data-label="Live">{{.Open}}</td>
+            <td class="private-money" data-label="Handle">{{money .Handle}}</td>
           </tr>
           {{end}}
         </tbody>
@@ -119,14 +119,14 @@
   </div>
   {{if .Pulse.Outstanding}}
   <div class="private-table-wrap">
-    <table class="private-table">
+    <table class="private-table private-table-stack">
       <thead><tr><th scope="col">Member</th><th scope="col">Balance</th><th scope="col">Position</th></tr></thead>
       <tbody>
         {{range .Pulse.Outstanding}}
         <tr>
           <th scope="row">{{.Name}}</th>
-          <td class="private-money{{if .Owes}} is-behind-text{{else}} is-ahead-text{{end}}">{{money .Balance}}</td>
-          <td>{{if .Owes}}Owes the book{{else}}The book owes them{{end}}</td>
+          <td class="private-money{{if .Owes}} is-behind-text{{else}} is-ahead-text{{end}}" data-label="Balance">{{money .Balance}}</td>
+          <td data-label="Position">{{if .Owes}}Owes the book{{else}}The book owes them{{end}}</td>
         </tr>
         {{end}}
       </tbody>
@@ -141,18 +141,18 @@
   <div class="private-section-heading"><h2 id="open-action-heading">Action on the board</h2></div>
   <p class="pulse-note">Accepted bets still waiting on a result, newest first.</p>
   <div class="private-table-wrap">
-    <table class="private-table private-table-wide">
+    <table class="private-table private-table-wide private-table-stack">
       <thead><tr><th scope="col">Placed</th><th scope="col">Member</th><th scope="col">Market</th><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Stake</th><th scope="col">To win</th></tr></thead>
       <tbody>
         {{range .Pulse.OpenWagers}}
         <tr>
-          <td>{{when .PlacedAt}}</td>
+          <td data-label="Placed">{{when .PlacedAt}}</td>
           <th scope="row">{{.Member}}</th>
-          <td>{{.Market}}</td>
-          <td>{{.Selection}}</td>
-          <td class="private-odds">{{odds .Odds}}</td>
-          <td class="private-money">{{money .Stake}}</td>
-          <td class="private-money">{{money .ToWin}}</td>
+          <td data-label="Market">{{.Market}}</td>
+          <td data-label="Selection">{{.Selection}}</td>
+          <td class="private-odds" data-label="Odds">{{odds .Odds}}</td>
+          <td class="private-money" data-label="Stake">{{money .Stake}}</td>
+          <td class="private-money" data-label="To win">{{money .ToWin}}</td>
         </tr>
         {{else}}
         <tr><td colspan="7" class="private-empty-cell">No bets are live right now.</td></tr>

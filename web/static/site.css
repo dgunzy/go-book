@@ -862,3 +862,47 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .private-table tbody tr.is-reversed .private-money { text-decoration: line-through; }
 .settle-up-form select { border: 1px solid #b8c1bb; border-radius: 4px; font: inherit; font-size: .78rem; padding: .3rem .4rem; }
 .settle-up-form input[name="amount"] { width: 6rem; }
+
+/* Stacked tables on phones.
+   A table marked .private-table-stack drops its header row on a narrow screen
+   and becomes one card per row, each cell labelled from data-label. Nothing on
+   these pages should need a sideways swipe — placing a bet least of all. */
+@media (max-width: 680px) {
+  .private-table-stack { min-width: 0; width: 100%; }
+  .private-table-stack thead { display: none; }
+  .private-table-stack, .private-table-stack tbody, .private-table-stack tr { display: block; }
+  .private-table-stack tbody tr { border-bottom: 1px solid #e1e5e1; padding: .8rem .85rem; }
+  .private-table-stack tbody tr:last-child { border-bottom: 0; }
+  .private-table-stack tbody th[scope="row"] { border: 0; display: block; font-size: .95rem; padding: 0 0 .4rem; }
+  .private-table-stack tbody td { align-items: baseline; border: 0; display: flex; gap: 1rem; justify-content: space-between; padding: .2rem 0; text-align: right; white-space: normal; }
+  .private-table-stack tbody td::before { color: #5b6760; content: attr(data-label); flex: 0 0 auto; font-size: .64rem; font-weight: 800; margin-right: auto; text-align: left; text-transform: uppercase; }
+  /* A cell with several parts keeps them together on the right, beside the
+     label, instead of spreading across the card. */
+  .private-table-stack tbody td { column-gap: .4rem; }
+  .private-table-stack tbody td:not([data-label])::before { content: none; }
+  .private-table-stack tbody td.private-empty-cell { display: block; text-align: center !important; }
+  .private-table-stack tbody td.is-stack-block { display: block; padding-top: .5rem; text-align: left; }
+  .private-table-stack tbody td.is-stack-block::before { display: block; margin-bottom: .3rem; }
+  /* Forms inside a stacked row get the full width: a thumb-sized target,
+     not a field squeezed into a table cell. */
+  .private-table-stack .betting-place-form, .private-table-stack .betting-inline-form { display: flex; margin: 0 0 .4rem; width: 100%; }
+  .private-table-stack .betting-place-form input[name="stake"],
+  .private-table-stack .betting-inline-form input:not([type="hidden"]),
+  .private-table-stack .settle-up-form select { flex: 1 1 auto; min-width: 0; width: auto; }
+  .private-table-stack .betting-place-form button, .private-table-stack .betting-inline-form button { flex: 0 0 auto; padding: .5rem 1rem; }
+  .private-table-stack .pulse-plot { display: block; padding-top: .5rem; width: auto; }
+  .private-table-stack .pulse-plot::before { display: block; margin-bottom: .3rem; }
+}
+.is-stack-only { display: none; }
+@media (max-width: 680px) {
+  .private-table-stack tbody th.is-stack-hidden { display: none; }
+  .private-table-stack .is-stack-only { color: #6c7770; display: block; font-size: .68rem; font-weight: 500; }
+}
+@media (max-width: 680px) {
+  /* Settle-up has three inputs in a row; on a phone each gets its own line
+     so the note field is not a two-character slot. */
+  .private-table-stack .settle-up-form { flex-wrap: wrap; gap: .45rem; }
+  .private-table-stack .settle-up-form select,
+  .private-table-stack .settle-up-form input[name="reason"] { flex: 1 0 100%; }
+  .private-table-stack .settle-up-form input[name="amount"] { flex: 1 1 6rem; }
+}

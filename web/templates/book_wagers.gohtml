@@ -7,16 +7,16 @@
 <section aria-labelledby="my-wagers-heading">
   <h2 id="my-wagers-heading" class="visually-hidden">Wager history</h2>
   <div class="private-table-wrap">
-    <table class="private-table private-table-wide">
+    <table class="private-table private-table-wide private-table-stack">
       <thead><tr><th scope="col">Placed</th><th scope="col">Market</th><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Live line</th><th scope="col">Stake</th><th scope="col">To win</th><th scope="col">Status</th></tr></thead>
       <tbody>
         {{range .MemberWagers}}
         <tr>
-          <td>{{when .PlacedAt}}</td>
+          <td data-label="Placed">{{when .PlacedAt}}</td>
           <th scope="row">{{.MarketTitle}}</th>
-          <td>{{.SelectionTerms}}</td>
-          <td class="private-odds">{{odds .Odds}}</td>
-          <td class="private-odds betting-line-cell">
+          <td data-label="Selection">{{.SelectionTerms}}</td>
+          <td class="private-odds" data-label="Odds">{{odds .Odds}}</td>
+          <td class="private-odds betting-line-cell is-stack-block" data-label="Live line">
             {{if .ShowLiveLine}}
               <span class="betting-line-price">{{odds .CurrentOdds}}</span>
               {{if .MovedAgainstMember}}
@@ -31,9 +31,9 @@
               <span class="betting-line-flag">&mdash;</span>
             {{end}}
           </td>
-          <td class="private-money">{{money .Stake}}</td>
-          <td class="private-money">{{money .PotentialProfit}}</td>
-          <td class="betting-actions-cell">
+          <td class="private-money" data-label="Stake">{{money .Stake}}</td>
+          <td class="private-money" data-label="To win">{{money .PotentialProfit}}</td>
+          <td class="betting-actions-cell is-stack-block" data-label="Status">
             <span class="private-status">{{if .Cancelled}}cancelled{{else}}{{.State}}{{end}}</span>
             {{if and .RejectionReason (not .Cancelled)}}<small class="betting-reason">{{.RejectionReason}}</small>{{end}}
             {{if .CanCancel}}
