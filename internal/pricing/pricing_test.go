@@ -421,3 +421,49 @@ func overroundOf(odds []ledger.AmericanOdds) float64 {
 	}
 	return total
 }
+
+// Money arriving on a side must never make that same side's price better for
+// the next person backing it. If it can, a member moves the line in their own
+// favour simply by betting into it, then fills again at the improved price.
+//
+// This is what happened to Cabot Cup Match 2 on 2026-07-25. The market opened
+// -115 / -115. With $500 on Marshall/Ramy the board showed -138; once the
+// opposite side hit its drift floor the backed side was pushed back out to
+// -129 and pinned there, so later bets on it filled at a better price than the
+// earlier ones no matter how much money piled on.
+func TestRepriceNeverImprovesTheBackedSide(t *testing.T) {
+	t.Parallel()
+
+	openings := [][]ledger.AmericanOdds{
+		{-115, -115}, // the live Match 2 line
+		{-110, -110},
+		{-130, 100}, // the live Match 1 line
+		{-200, 160},
+		{-120, 250, 400},
+	}
+	for _, opening := range openings {
+		for _, liquidity := range []int64{100_000, 300_000, 500_000} {
+			previous := ImpliedProbability(opening[0])
+			previousStake := int64(0)
+			for stake := int64(0); stake <= 2_000_000; stake += 25_000 {
+				inputs := make([]SelectionInput, len(opening))
+				for i, odds := range opening {
+					inputs[i] = SelectionInput{OpeningOdds: odds}
+				}
+				inputs[0].StakeCents = stake
+				out, err := Reprice(inputs, liquidity)
+				if err != nil {
+					t.Fatalf("Reprice(%v, b=%d, $%d) error = %v", opening, liquidity, stake/100, err)
+				}
+				// A falling implied probability is a lengthening price: better
+				// for the member holding that side, paid for by the book.
+				if backed := ImpliedProbability(out[0].Odds); backed < previous-1e-9 {
+					t.Fatalf("opening %v (b=%d): backed side improved when its own stake rose from $%d to $%d — now %d (implied %.5f, was %.5f)",
+						opening, liquidity, previousStake/100, stake/100, out[0].Odds, backed, previous)
+				} else {
+					previous, previousStake = backed, stake
+				}
+			}
+		}
+	}
+}

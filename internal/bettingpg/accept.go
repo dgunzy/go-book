@@ -118,7 +118,10 @@ func (s Store) AcceptWager(ctx context.Context, wagerID, actorUserID string) (be
 	if err != nil {
 		return betting.Wager{}, err
 	}
-	result, err := betting.AcceptWager(wager, betting.ID(actorUserID), time.Now(), betting.AcceptanceAccountRefs{
+	// One acceptance instant, used for the ledger, the event envelope, and the
+	// wagers row alike, so the audit trail agrees with itself.
+	acceptedAt := time.Now().UTC()
+	result, err := betting.AcceptWager(wager, betting.ID(actorUserID), acceptedAt, betting.AcceptanceAccountRefs{
 		UserFundingAccountID: userAccountID,
 		EscrowAccountID:      escrowAccountID,
 	}, eventID)
@@ -139,7 +142,7 @@ func (s Store) AcceptWager(ctx context.Context, wagerID, actorUserID string) (be
 		UPDATE wagers
 		SET state = 'accepted', accepted_at = $2, accepted_by = nullif($3, '')::uuid, acceptance_ledger_transaction_id = $4::uuid
 		WHERE id = $1::uuid AND state = 'pending'`,
-		wagerID, result.Wager.PlacedAt, acceptedBy, transactionID)
+		wagerID, acceptedAt, acceptedBy, transactionID)
 	if err != nil {
 		return betting.Wager{}, fmt.Errorf("update wager to accepted: %w", err)
 	}

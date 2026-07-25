@@ -753,3 +753,68 @@ func TestCancelWagerConflictsWithBookRejection(t *testing.T) {
 		t.Fatalf("rejection reason = %q, want the book's original reason", reason)
 	}
 }
+
+// A wager that waits in the approval queue must record when it was actually
+// accepted, not when it was placed. accepted_at was previously written from the
+// wager's placed_at, which is the same instant for an auto-approved wager and
+// so looked correct, but silently mis-stamped every admin acceptance: two of
+// Match 2's wagers on 2026-07-25 sat pending 54 and 57 minutes yet claimed to
+// have been accepted the moment they were placed. That hides how long a member
+// waited and makes the ledger disagree with the acceptance event.
+func TestAcceptWagerRecordsWhenItWasAcceptedNotPlaced(t *testing.T) {
+	pool := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	store := Store{DB: pool}
+
+	f := buildFixture(t, ctx, pool, 10_000)
+	wagerID, err := betting.NewEventID()
+	if err != nil {
+		t.Fatal(err)
+	}
+	wager, err := store.PlaceWager(ctx, PlaceWagerRequest{
+		WagerID:            string(wagerID),
+		UserID:             f.UserA,
+		MarketID:           f.MarketID,
+		SelectionID:        f.SelectionAID,
+		FundingAccountType: betting.FundingUserCash,
+		StakeCents:         1_000,
+		Currency:           f.Currency,
+		IdempotencyKey:     "accept-timestamp:" + f.Suffix,
+	})
+	if err != nil {
+		t.Fatalf("PlaceWager() error = %v", err)
+	}
+
+	// Stand in for an admin who reviews the queue a while later. The gap only
+	// has to be resolvable by the column, which keeps microseconds.
+	time.Sleep(10 * time.Millisecond)
+
+	if _, err := store.AcceptWager(ctx, string(wager.ID), f.UserB); err != nil {
+		t.Fatalf("AcceptWager() error = %v", err)
+	}
+
+	var placedAt, acceptedAt time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT placed_at, accepted_at FROM wagers WHERE id = $1::uuid`, string(wager.ID),
+	).Scan(&placedAt, &acceptedAt); err != nil {
+		t.Fatalf("read wager timestamps: %v", err)
+	}
+	if !acceptedAt.After(placedAt) {
+		t.Fatalf("accepted_at %s is not after placed_at %s: a wager that waited for approval "+
+			"must not claim it was accepted the instant it was placed", acceptedAt, placedAt)
+	}
+
+	// The acceptance event and the wagers row describe the same moment, so the
+	// audit trail cannot disagree with itself about when the stake moved.
+	var eventAt time.Time
+	if err := pool.QueryRow(ctx,
+		`SELECT created_at FROM outbox_events WHERE aggregate_id = $1::uuid AND event_type = 'WagerAccepted.v1'`,
+		string(wager.ID),
+	).Scan(&eventAt); err != nil {
+		t.Fatalf("read acceptance event: %v", err)
+	}
+	if gap := eventAt.Sub(acceptedAt); gap < -time.Second || gap > time.Second {
+		t.Errorf("acceptance event is %s away from accepted_at; they should describe one instant", gap)
+	}
+}
