@@ -180,3 +180,142 @@ func TestRepriceExtremeStakeStaysInRange(t *testing.T) {
 		}
 	}
 }
+
+// bestPrice tracks the most generous price a selection has been offered at,
+// which is the one a member would combine with the other side to arbitrage.
+type bestPrice struct{ probability float64 }
+
+func (b *bestPrice) see(odds ledger.AmericanOdds) {
+	p := ImpliedProbability(odds)
+	if b.probability == 0 || p < b.probability {
+		b.probability = p
+	}
+}
+
+// TestRepriceNeverOpensAnArbitrage is the property that matters: prices taken
+// at different moments can be combined, so the book is only safe if the sum of
+// the most generous price it ever posts on every side stays above even money.
+// Anything at or below 1 means a member can back both sides and be paid
+// whatever happens.
+func TestRepriceNeverOpensAnArbitrage(t *testing.T) {
+	t.Parallel()
+	openings := [][]ledger.AmericanOdds{
+		{-130, 100},     // the live Match 1 line
+		{-115, -115},    // a balanced two-way
+		{-105, -115},    // a thin two-way
+		{-200, 160},     // a heavy favourite
+		{-1000, 700},    // a lopsided line
+		{150, -180},     // reversed order
+		{200, 200, 200}, // a three-way
+		{-120, 250, 400},
+	}
+	stakeSteps := []int64{0, 5_000, 25_000, 100_000, 500_000, 2_000_000, 100_000_000}
+	liquidities := []int64{100_000, 300_000, 500_000, 1_500_000}
+
+	for _, opening := range openings {
+		for _, liquidity := range liquidities {
+			// Walk action onto each side in turn, at every size, and remember
+			// the best price each side is ever shown.
+			best := make([]bestPrice, len(opening))
+			for _, side := range []int{0, 1} {
+				for _, stake := range stakeSteps {
+					inputs := make([]SelectionInput, len(opening))
+					for i, odds := range opening {
+						inputs[i] = SelectionInput{OpeningOdds: odds}
+						if i == side {
+							inputs[i].StakeCents = stake
+						}
+					}
+					results, err := Reprice(inputs, liquidity)
+					if err != nil {
+						t.Fatalf("Reprice(%v, %d) error = %v", opening, liquidity, err)
+					}
+					for i, result := range results {
+						best[i].see(result.Odds)
+					}
+				}
+			}
+			var sum, openingSum float64
+			for i, b := range best {
+				sum += b.probability
+				openingSum += ImpliedProbability(opening[i])
+			}
+			// Below even money the pair pays more than it costs, whatever the
+			// result: that is the arbitrage. Exactly even money is a wash and
+			// is all a market posted with no margin can offer.
+			if sum < 1.0-1e-9 {
+				t.Errorf("opening %v at liquidity %d can be arbitraged: best prices imply %.4f, want at least 1",
+					opening, liquidity, sum)
+			}
+			// A market posted with a real margin must keep some of it: an
+			// exactly break-even board is one rounding step from a hole.
+			if openingSum > 1.0+1e-9 && sum <= 1.0 {
+				t.Errorf("opening %v at liquidity %d spent its whole %.2f%% margin: best prices imply %.4f",
+					opening, liquidity, (openingSum-1)*100, sum)
+			}
+		}
+	}
+}
+
+// TestRepriceHoldsTheLineWhenThereIsNoMargin covers a market posted with no
+// overround: there is nothing to spend on movement, so any move at all would
+// hand out an arbitrage. The line must stay where it opened.
+func TestRepriceHoldsTheLineWhenThereIsNoMargin(t *testing.T) {
+	t.Parallel()
+	inputs := []SelectionInput{
+		{OpeningOdds: 100, StakeCents: 5_000_000},
+		{OpeningOdds: -100, StakeCents: 0},
+	}
+	results, err := Reprice(inputs, 300_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, result := range results {
+		if ImpliedProbability(result.Odds) < ImpliedProbability(inputs[i].OpeningOdds)-1e-9 {
+			t.Fatalf("selection %d drifted to %d from an opening line with no margin to spend",
+				i, result.Odds)
+		}
+	}
+}
+
+// TestRepriceKeepsAHeavilyBackedMarketSafe is the case that was reported from
+// the live book: $1,130 on the favourite against $150 on the dog moved the
+// line from -130/+100 to -186/+141, and +141 combined with the -130 someone
+// had already taken is a guaranteed profit. The drift floor has to stop the
+// dog's price short of that.
+func TestRepriceKeepsAHeavilyBackedMarketSafe(t *testing.T) {
+	t.Parallel()
+	inputs := []SelectionInput{
+		{OpeningOdds: -130, StakeCents: 113_000},
+		{OpeningOdds: 100, StakeCents: 15_000},
+	}
+	results, err := Reprice(inputs, 300_000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	favourite, dog := results[0].Odds, results[1].Odds
+
+	// Anyone holding the opening -130 must not be able to pair it with the
+	// dog's current price for a guaranteed profit.
+	locked := ImpliedProbability(-130) + ImpliedProbability(dog)
+	if locked <= 1.0 {
+		t.Fatalf("opening -130 paired with %d implies %.4f: that is an arbitrage", dog, locked)
+	}
+	// The same in the other direction, for a member who took the opening +100.
+	locked = ImpliedProbability(100) + ImpliedProbability(favourite)
+	if locked <= 1.0 {
+		t.Fatalf("opening +100 paired with %d implies %.4f: that is an arbitrage", favourite, locked)
+	}
+	// The line still moved toward the money — this is a floor, not a freeze.
+	if favourite >= -130 {
+		t.Fatalf("favourite = %d, want a shorter price than the -130 it opened at", favourite)
+	}
+	if dog <= 100 {
+		t.Fatalf("dog = %d, want a longer price than the +100 it opened at", dog)
+	}
+	// And it stops well short of the +141 that opened the hole.
+	if ImpliedProbability(dog) < ImpliedProbability(141) {
+		t.Fatalf("dog = %d, which is at least as generous as the +141 that was arbitrageable", dog)
+	}
+	t.Logf("clamped line: %d / %+d (was -186 / +141 unclamped)", favourite, dog)
+}

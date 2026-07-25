@@ -49,6 +49,16 @@ type fakeMarkets struct {
 	openCalls   []string
 	settleCalls []bettingpg.SettleMarketRequest
 	voidCalls   []bettingpg.VoidMarketRequest
+	setLineErr  error
+	lineCalls   []setLineCall
+}
+
+type setLineCall struct {
+	marketID    string
+	selectionID string
+	odds        ledger.AmericanOdds
+	actor       string
+	reason      string
 }
 
 func (f *fakeMarkets) ListMarkets(context.Context) ([]bettingpg.MarketRow, error) {
@@ -76,6 +86,15 @@ func (f *fakeMarkets) SettleMarket(_ context.Context, req bettingpg.SettleMarket
 	f.settleCalls = append(f.settleCalls, req)
 	return bettingpg.SettleReport{}, f.settleErr
 }
+func (f *fakeMarkets) SetOpeningLine(_ context.Context, marketID, selectionID string,
+	odds ledger.AmericanOdds, actorUserID, reason string) (bool, error) {
+	f.lineCalls = append(f.lineCalls, setLineCall{marketID, selectionID, odds, actorUserID, reason})
+	if f.setLineErr != nil {
+		return false, f.setLineErr
+	}
+	return true, nil
+}
+
 func (f *fakeMarkets) VoidMarket(_ context.Context, req bettingpg.VoidMarketRequest) (bettingpg.SettleReport, error) {
 	f.voidCalls = append(f.voidCalls, req)
 	return bettingpg.SettleReport{}, f.voidErr
@@ -1222,5 +1241,125 @@ func TestWagerRecordIsAdminOnly(t *testing.T) {
 	}
 	if strings.Contains(w.Body.String(), "Dan Guns") {
 		t.Fatal("a member saw another member's wager record")
+	}
+}
+
+func setLineForm(odds, reason string) string {
+	return url.Values{"csrf_token": {testCSRF}, "odds": {odds}, "reason": {reason}}.Encode()
+}
+
+func setLinePath() string {
+	return "/admin/markets/" + testMarketID + "/selections/" + testSelID + "/line"
+}
+
+func TestSetLineSendsTheOpeningPriceAndSessionActor(t *testing.T) {
+	markets := &fakeMarkets{}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	r := httptest.NewRequest(http.MethodPost, setLinePath(), strings.NewReader(setLineForm("-150", "steam on the other side")))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	if len(markets.lineCalls) != 1 {
+		t.Fatalf("SetOpeningLine calls = %d, want 1", len(markets.lineCalls))
+	}
+	call := markets.lineCalls[0]
+	if call.marketID != testMarketID || call.selectionID != testSelID {
+		t.Fatalf("call targeted %s/%s", call.marketID, call.selectionID)
+	}
+	if call.odds != -150 || call.reason != "steam on the other side" || call.actor != testUserID {
+		t.Fatalf("call = %+v", call)
+	}
+}
+
+func TestSetLineAcceptsTheWayAdminsWriteOdds(t *testing.T) {
+	for _, test := range []struct {
+		input string
+		want  ledger.AmericanOdds
+	}{
+		{"-150", -150}, {"+120", 120}, {"120", 120}, {" -110 ", -110},
+	} {
+		t.Run(test.input, func(t *testing.T) {
+			markets := &fakeMarkets{}
+			handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+			r := httptest.NewRequest(http.MethodPost, setLinePath(), strings.NewReader(setLineForm(test.input, "adjusting")))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code != http.StatusSeeOther {
+				t.Fatalf("status = %d, want 303", w.Code)
+			}
+			if markets.lineCalls[0].odds != test.want {
+				t.Fatalf("odds = %d, want %d", markets.lineCalls[0].odds, test.want)
+			}
+		})
+	}
+}
+
+func TestSetLineRejectsBadInput(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		body   string
+		status int
+	}{
+		// American odds exclude the ambiguous range between -100 and +100.
+		{"inside the dead band", setLineForm("50", "nope"), http.StatusBadRequest},
+		{"not a number", setLineForm("evens", "nope"), http.StatusBadRequest},
+		{"no reason", setLineForm("-150", "   "), http.StatusBadRequest},
+		{"no csrf token", url.Values{"odds": {"-150"}, "reason": {"x"}}.Encode(), http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			markets := &fakeMarkets{}
+			handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+			r := httptest.NewRequest(http.MethodPost, setLinePath(), strings.NewReader(test.body))
+			r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code != test.status {
+				t.Fatalf("status = %d, want %d", w.Code, test.status)
+			}
+			if len(markets.lineCalls) != 0 {
+				t.Fatal("a rejected line change reached the store")
+			}
+		})
+	}
+}
+
+func TestSetLineIsAdminOnly(t *testing.T) {
+	markets := &fakeMarkets{}
+	handler := newTestHandler(t, memberSession(), markets, &fakeWagers{})
+
+	r := httptest.NewRequest(http.MethodPost, setLinePath(), strings.NewReader(setLineForm("-150", "sneaky")))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403", w.Code)
+	}
+	if len(markets.lineCalls) != 0 {
+		t.Fatal("a member moved a line")
+	}
+}
+
+func TestSetLineReportsAClosedMarket(t *testing.T) {
+	markets := &fakeMarkets{setLineErr: bettingpg.ErrMarketNotPriceable}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	r := httptest.NewRequest(http.MethodPost, setLinePath(), strings.NewReader(setLineForm("-150", "too late")))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "draft or open") {
+		t.Fatalf("body = %q", w.Body.String())
 	}
 }

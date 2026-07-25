@@ -68,6 +68,8 @@ jobs:
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000008_one_active_match_market.up.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000009_match_history_and_rosters.up.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000010_credit_limit_default.up.sql
+          psql -1 -v ON_ERROR_STOP=1 -f migrations/000011_manual_line_moves.up.sql
+          psql -1 -v ON_ERROR_STOP=1 -f migrations/000011_manual_line_moves.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000010_credit_limit_default.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000009_match_history_and_rosters.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000008_one_active_match_market.down.sql
@@ -82,6 +84,7 @@ jobs:
           go run ./cmd/cabot migrate
           # Rollback rehearsal on seeded (but not financially promoted) data,
           # then prove the migration path re-applies cleanly from scratch.
+          psql -1 -v ON_ERROR_STOP=1 -f migrations/000011_manual_line_moves.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000010_credit_limit_default.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000009_match_history_and_rosters.down.sql
           psql -1 -v ON_ERROR_STOP=1 -f migrations/000008_one_active_match_market.down.sql

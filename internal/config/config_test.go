@@ -29,8 +29,8 @@ func TestLoadDefaults(t *testing.T) {
 	if config.WagerAutoApproveMaxCents != 20_000 {
 		t.Errorf("WagerAutoApproveMaxCents = %d, want 20000", config.WagerAutoApproveMaxCents)
 	}
-	if config.PricingLiquidityDefaultCents != 300_000 {
-		t.Errorf("PricingLiquidityDefaultCents = %d, want 300000", config.PricingLiquidityDefaultCents)
+	if config.PricingLiquidityDefaultCents != 500_000 {
+		t.Errorf("PricingLiquidityDefaultCents = %d, want 500000", config.PricingLiquidityDefaultCents)
 	}
 	if config.DefaultCreditLimitCents != 150_000 {
 		t.Errorf("DefaultCreditLimitCents = %d, want 150000", config.DefaultCreditLimitCents)

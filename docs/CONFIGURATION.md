@@ -21,7 +21,7 @@ There are two kinds of settings:
 | Setting | Env var | Default | Meaning | Where to change |
 |---|---|---|---|---|
 | Auto-approve max stake | `WAGER_AUTO_APPROVE_MAX_CENTS` | `20000` ($200) | Stakes at or below this are accepted immediately; larger ones wait for manual admin approval. `0` sends every wager to manual review. Each member sees the limit that applies to them on their book overview. | GitOps ConfigMap; per-player override on Members page |
-| Dynamic-pricing liquidity | `PRICING_LIQUIDITY_DEFAULT_CENTS` | `300000` ($3,000) | Default line-movement sensitivity ("b") for a new market when the admin enables dynamic pricing without typing a value. **Larger = the line moves less per dollar of action.** Set per market on the create form. | GitOps ConfigMap; per market on the create form |
+| Dynamic-pricing liquidity | `PRICING_LIQUIDITY_DEFAULT_CENTS` | `500000` ($5,000) | Default line-movement sensitivity ("b") for a new market when the admin enables dynamic pricing without typing a value. **Larger = the line moves less per dollar of action.** Sets the pace of movement, not its limit: how far a line can ever travel is bounded by the drift floor in `internal/pricing`, which keeps the book un-arbitrageable. Set per market on the create form. | GitOps ConfigMap; per market on the create form |
 | Default credit limit (new members) | `DEFAULT_CREDIT_LIMIT_CENTS` | `150000` ($1,500) | Credit limit a newly invited member is created with: how far their balance may go negative before wagers are refused. Changing it does not move existing members. | GitOps ConfigMap; per-player on Members page |
 | Credit limit (per player) | — (DB column `users.credit_limit_cents`) | the configured default above | A member's own limit once set, overriding the default for them. | Members page only |
 | Auto-approve override (per player) | — (DB column `users.wager_auto_approve_max_cents`) | unset → book default | Per-player auto-approve threshold; blank uses the book default, `0` forces manual review. | Members page only |
@@ -32,16 +32,37 @@ The engine tilts the backed side's weight by `exp(stake / b)` and renormalises t
 preserve the overround, so a bigger `b` means gentler moves. For a `-110 / -110`
 match with money on one side:
 
-| Bet | b = $3,000 (default) |
+| Bet | b = $5,000 (default), `-110 / -110` |
 |---|---|
-| $100 | ≈ -114 |
-| $300 | ≈ -122 |
-| $600 | ≈ -136 |
-| $1,000 | ≈ -157 |
+| $100 | ≈ -112 / -108 |
+| $300 | ≈ -117 / -103 |
+| $600 | ≈ -119 / -102 (floor reached) |
+| $1,000+ | ≈ -119 / -102 (floor reached) |
 
-Lower `b` (e.g. $1,000) for a livelier line; raise it (e.g. $10,000) for a very
-sticky one. Every accepted wager keeps the exact price it was shown; a move only
-affects the next bettor.
+Lower `b` for a livelier line; raise it for a stickier one. Every accepted wager
+keeps the exact price it was shown; a move only affects the next bettor.
+
+### The drift floor: why the line stops moving
+
+Liquidity sets the pace of movement; it does not set the limit. That is the
+**drift floor** in `internal/pricing`, and it is not configurable, because it is
+what keeps the book from being arbitraged against its own line movement.
+
+Prices taken at different times can be combined. If a member backs one side at
+the opening price and the line then runs far enough, the other side becomes
+generous enough that backing it too pays more than the pair costs — a guaranteed
+profit whatever the result. The engine therefore lets each selection's implied
+probability fall no further than its share of the opening margin (80% of
+`margin / selections`, keeping the rest as a cushion against rounding). The sum
+of the most generous prices the book will ever post then always stays above even
+money.
+
+The practical consequence: **a thin opening line can only move a little.** A
+`-110 / -110` market carries a 4.76% margin, so it can travel about two points
+per side and no further, however much action lands. Wider openings buy more
+room — `-130 / +100` carries 6.52% and moves about three points per side. If you
+want livelier movement, post a wider line; there is no setting that grants both
+big moves and no arbitrage.
 
 ## Platform / runtime settings
 

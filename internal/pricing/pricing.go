@@ -31,6 +31,15 @@ const MaxOdds = 10000
 // odds clamp this bounds the per-market line move.
 const maxTiltExponent = 40.0
 
+// arbitrageSafetyFraction is how much of the opening margin the line is
+// allowed to spend on movement. The rest is kept as a cushion, so a market
+// cannot be walked to exactly break-even by rounding.
+const arbitrageSafetyFraction = 0.8
+
+// maxRoundingSteps bounds the walk back to a safe integer price after
+// rounding. One or two steps is always enough in practice.
+const maxRoundingSteps = 32
+
 var (
 	// ErrTooFewSelections is returned when repricing is asked to balance a
 	// market with fewer than two selections; there is nothing to balance.
@@ -90,18 +99,108 @@ func Reprice(selections []SelectionInput, liquidityCents int64) ([]SelectionResu
 		weightSum += weights[i]
 	}
 
-	results := make([]SelectionResult, len(selections))
+	probabilities := make([]float64, len(selections))
 	for i := range selections {
 		// Rescale so the tilted probabilities sum back to the original
 		// overround, keeping the house margin constant.
-		probability := weights[i] * (overround / weightSum)
-		odds, err := AmericanFromProbability(probability)
+		probabilities[i] = weights[i] * (overround / weightSum)
+	}
+	floors := driftFloors(priors, overround)
+	applyDriftFloors(probabilities, floors, overround)
+
+	results := make([]SelectionResult, len(selections))
+	for i := range selections {
+		odds, err := AmericanFromProbability(probabilities[i])
 		if err != nil {
 			return nil, err
+		}
+		// Rounding to an integer price can land a shade more generous than the
+		// floor allows, so walk it back to the first price that still clears.
+		for step := 0; step < maxRoundingSteps && ImpliedProbability(odds) < floors[i]; step++ {
+			shorter, err := shortenOnePoint(odds)
+			if err != nil || shorter == odds {
+				break
+			}
+			odds = shorter
 		}
 		results[i] = SelectionResult{Odds: odds}
 	}
 	return results, nil
+}
+
+// driftFloors returns the lowest implied probability each selection may be
+// offered at — that is, the longest price it may ever reach.
+//
+// This is what stops a member arbitraging the book against its own line
+// movement. Prices taken at different times can be combined, so the book is
+// only safe if the sum of the most generous price it will ever post on every
+// side still exceeds even money. Each side starts at its opening probability
+// and the sum of those exceeds 1 by the margin, so sharing the margin out
+// across the selections and letting no side fall further than its share keeps
+// that sum above 1 no matter how the action lands.
+func driftFloors(priors []float64, overround float64) []float64 {
+	allowance := (overround - 1.0) / float64(len(priors)) * arbitrageSafetyFraction
+	if allowance < 0 {
+		// A market posted at or below even money has no margin to spend, so
+		// any movement at all would open an arbitrage: the line stays put.
+		allowance = 0
+	}
+	floors := make([]float64, len(priors))
+	for i, prior := range priors {
+		floors[i] = prior - allowance
+	}
+	return floors
+}
+
+// applyDriftFloors lifts any selection that has drifted past its floor back to
+// it and rescales the rest so the overround is unchanged. Lifting one side
+// pushes the others down, which can put another below its own floor, so it
+// repeats until nothing new is clamped — at most once per selection.
+func applyDriftFloors(probabilities, floors []float64, overround float64) {
+	clamped := make([]bool, len(probabilities))
+	for pass := 0; pass <= len(probabilities); pass++ {
+		var fixed, free float64
+		newlyClamped := false
+		for i := range probabilities {
+			switch {
+			case clamped[i]:
+				fixed += floors[i]
+			case probabilities[i] < floors[i]:
+				probabilities[i] = floors[i]
+				clamped[i] = true
+				fixed += floors[i]
+				newlyClamped = true
+			default:
+				free += probabilities[i]
+			}
+		}
+		if !newlyClamped || free <= 0 {
+			return
+		}
+		scale := (overround - fixed) / free
+		for i := range probabilities {
+			if !clamped[i] {
+				probabilities[i] *= scale
+			}
+		}
+	}
+}
+
+// shortenOnePoint moves a price one American point toward the book, which
+// raises its implied probability.
+func shortenOnePoint(odds ledger.AmericanOdds) (ledger.AmericanOdds, error) {
+	value := int32(odds)
+	switch {
+	case value > 100:
+		value--
+	case value == 100:
+		value = -100
+	case value > -MaxOdds:
+		value--
+	default:
+		return odds, nil
+	}
+	return ledger.NewAmericanOdds(value)
 }
 
 // ImpliedProbability converts American odds to their implied probability,

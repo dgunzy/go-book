@@ -918,3 +918,6 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
   .wager-record .wager-record-pick, .wager-record .betting-line-cell { min-width: 0; }
 }
 .wager-record .private-status { white-space: nowrap; }
+.betting-selection-line { align-items: center; display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .35rem; }
+.betting-set-line-form input[name="odds"] { width: 4.5rem; }
+.betting-set-line-form input[name="reason"] { width: 8rem; }

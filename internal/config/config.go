@@ -176,10 +176,13 @@ const defaultAutoApproveMaxCents = 20_000
 // the two must be changed together.
 const defaultCreditLimitCents = 150_000
 
-// defaultPricingLiquidityCents is the default dynamic-pricing liquidity: $3,000.
-// This keeps line moves gentle for a friends' book — a few hundred dollars of
-// action nudges the line a handful of points rather than swinging it.
-const defaultPricingLiquidityCents = 300_000
+// defaultPricingLiquidityCents is the default dynamic-pricing liquidity:
+// $5,000. Larger means the line moves less per dollar of action, which keeps
+// moves gentle for a friends' book where a single member's stake is a large
+// share of the action. The hard limit on how far a line can travel is the
+// drift floor in internal/pricing, not this number: liquidity sets the pace,
+// the floor sets the destination.
+const defaultPricingLiquidityCents = 500_000
 
 func parseAutoApproveThreshold(value string) (int64, error) {
 	cents, err := strconv.ParseInt(strings.TrimSpace(value), 10, 64)

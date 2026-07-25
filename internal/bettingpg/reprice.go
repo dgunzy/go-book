@@ -10,7 +10,6 @@ import (
 	"github.com/dgunzy/go-book/internal/betting"
 	"github.com/dgunzy/go-book/internal/events"
 	"github.com/dgunzy/go-book/internal/ledger"
-	"github.com/dgunzy/go-book/internal/pricing"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -52,46 +51,13 @@ func (s Store) RepriceMarketAfterWager(ctx context.Context, marketID, triggerWag
 		return false, nil
 	}
 
-	selectionIDs, openingOdds, offeredOdds, err := lockSelectionsForPricing(ctx, tx, marketID)
+	changed, err := repriceInTx(ctx, tx, marketID, priceMove{
+		DynamicPricing: dynamicPricing,
+		LiquidityCents: liquidityCents,
+		TriggerWagerID: triggerWagerID,
+	})
 	if err != nil {
 		return false, err
-	}
-	if len(selectionIDs) < 2 {
-		return false, nil
-	}
-	stakes, err := acceptedStakeBySelection(ctx, tx, marketID)
-	if err != nil {
-		return false, err
-	}
-
-	inputs := make([]pricing.SelectionInput, len(selectionIDs))
-	for i, id := range selectionIDs {
-		inputs[i] = pricing.SelectionInput{OpeningOdds: openingOdds[i], StakeCents: stakes[id]}
-	}
-	repriced, err := pricing.Reprice(inputs, liquidityCents)
-	if err != nil {
-		return false, fmt.Errorf("reprice market %s: %w", marketID, err)
-	}
-
-	changed := false
-	for i, id := range selectionIDs {
-		newOdds := repriced[i].Odds
-		if newOdds == offeredOdds[i] {
-			continue
-		}
-		if _, err := tx.Exec(ctx, `
-			UPDATE selections SET offered_american_odds = $2, updated_at = now() WHERE id = $1::uuid`,
-			id, int32(newOdds)); err != nil {
-			return false, fmt.Errorf("update selection %s line: %w", id, err)
-		}
-		if _, err := tx.Exec(ctx, `
-			INSERT INTO selection_price_changes
-			(market_id, selection_id, trigger_wager_id, old_american_odds, new_american_odds, exposure_cents)
-			VALUES ($1::uuid, $2::uuid, nullif($3, '')::uuid, $4, $5, $6)`,
-			marketID, id, triggerWagerID, int32(offeredOdds[i]), int32(newOdds), stakes[id]); err != nil {
-			return false, fmt.Errorf("record price change for selection %s: %w", id, err)
-		}
-		changed = true
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, fmt.Errorf("commit reprice for market %s: %w", marketID, err)

@@ -18,7 +18,22 @@
           <td>{{.Market.Currency}}</td>
           <td>{{when .Market.ClosesAt}}</td>
           <td>
-            {{range .Selections}}<span class="betting-selection-chip">{{.DisplayTerms}} <span class="private-odds">{{odds .OfferedAmericanOdds}}</span>{{if .Moved}} <span class="betting-line-moved" title="Opened at {{odds .OpeningAmericanOdds}}">(from {{odds .OpeningAmericanOdds}})</span>{{end}}</span>{{end}}
+            {{$market := .Market}}
+            {{range .Selections}}
+            <div class="betting-selection-line">
+              <span class="betting-selection-chip">{{.DisplayTerms}} <span class="private-odds">{{odds .OfferedAmericanOdds}}</span>{{if .Moved}} <span class="betting-line-moved" title="Opened at {{odds .OpeningAmericanOdds}}">(from {{odds .OpeningAmericanOdds}})</span>{{end}}</span>
+              {{if or (eq $market.State "open") (eq $market.State "draft")}}
+              <form method="post" action="/admin/markets/{{$market.ID}}/selections/{{.ID}}/line" class="betting-inline-form betting-set-line-form" hx-post="/admin/markets/{{$market.ID}}/selections/{{.ID}}/line" hx-target="this" hx-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <label class="visually-hidden" for="line-{{.ID}}">New line for {{.DisplayTerms}}</label>
+                <input id="line-{{.ID}}" name="odds" value="{{odds .OpeningAmericanOdds}}" inputmode="numeric" size="6" required>
+                <label class="visually-hidden" for="line-reason-{{.ID}}">Why the line is being moved</label>
+                <input id="line-reason-{{.ID}}" name="reason" maxlength="500" placeholder="Why" required>
+                <button type="submit">Set line</button>
+              </form>
+              {{end}}
+            </div>
+            {{end}}
           </td>
           <td class="betting-actions-cell">
             {{if eq .Market.State "draft"}}

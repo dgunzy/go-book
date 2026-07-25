@@ -60,6 +60,7 @@ type MarketStore interface {
 	OpenMarket(ctx context.Context, marketID, actor string) error
 	CloseMarket(ctx context.Context, marketID, actor string) error
 	SettleMarket(context.Context, bettingpg.SettleMarketRequest) (bettingpg.SettleReport, error)
+	SetOpeningLine(ctx context.Context, marketID, selectionID string, odds ledger.AmericanOdds, actorUserID, reason string) (bool, error)
 	VoidMarket(context.Context, bettingpg.VoidMarketRequest) (bettingpg.SettleReport, error)
 }
 
@@ -152,6 +153,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /admin/markets", h.adminCreateMarket)
 	h.mux.HandleFunc("POST /admin/markets/{id}/open", h.adminOpenMarket)
 	h.mux.HandleFunc("POST /admin/markets/{id}/close", h.adminCloseMarket)
+	h.mux.HandleFunc("POST /admin/markets/{id}/selections/{selectionID}/line", h.adminSetLine)
 	h.mux.HandleFunc("GET /admin/markets/{id}/settle", h.adminSettleForm)
 	h.mux.HandleFunc("POST /admin/markets/{id}/settle", h.adminSettleMarket)
 	h.mux.HandleFunc("GET /admin/wagers", h.adminWagers)
