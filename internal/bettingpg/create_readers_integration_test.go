@@ -258,6 +258,155 @@ func TestListWagersScopingByUserAndState(t *testing.T) {
 	}
 }
 
+// A board should read like a price board: shortest price at the top, longest
+// shot at the bottom. Selections used to come back ordered by their UUID, which
+// on a sixteen-name prop such as "Leading points getter" is no order at all —
+// the favourite could sit anywhere in the list.
+func TestMarketSelectionsComeBackShortestPriceFirst(t *testing.T) {
+	pool := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	store := Store{DB: pool}
+
+	admin := makeUser(t, ctx, pool, "Order Admin")
+	marketID := mustNewUUID(t, ctx, store)
+	t.Cleanup(func() {
+		cctx, ccancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer ccancel()
+		_, _ = pool.Exec(cctx, `DELETE FROM outbox_events WHERE aggregate_id = $1::uuid`, marketID)
+		_, _ = pool.Exec(cctx, `DELETE FROM selections WHERE market_id = $1::uuid`, marketID)
+		_, _ = pool.Exec(cctx, `DELETE FROM markets WHERE id = $1::uuid`, marketID)
+	})
+
+	// Deliberately created out of order, and spanning the negative/positive
+	// boundary where "shorter" is easy to get backwards: -250 is a shorter
+	// price than -110, which is shorter than +100, which is shorter than +3000.
+	request := futureCreateRequest(admin, marketID)
+	request.Title = "Leading points getter"
+	request.Selections = []CreateMarketSelection{
+		{Key: "rushton", DisplayTerms: "Rushton", OfferedAmericanOdds: 3000},
+		{Key: "clarke", DisplayTerms: "Clarke", OfferedAmericanOdds: 600},
+		{Key: "wright", DisplayTerms: "Wright", OfferedAmericanOdds: -110},
+		{Key: "guns", DisplayTerms: "Guns", OfferedAmericanOdds: 2500},
+		{Key: "marshall", DisplayTerms: "Marshall", OfferedAmericanOdds: -250},
+		{Key: "kiley", DisplayTerms: "Kiley", OfferedAmericanOdds: 100},
+	}
+	if _, err := store.CreateMarket(ctx, request); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.OpenMarket(ctx, marketID, admin); err != nil {
+		t.Fatal(err)
+	}
+
+	board, err := store.ListOpenMarkets(ctx)
+	if err != nil {
+		t.Fatalf("ListOpenMarkets() error = %v", err)
+	}
+	market, ok := findMarketRow(board, marketID)
+	if !ok {
+		t.Fatal("the open market is missing from the board")
+	}
+
+	want := []ledger.AmericanOdds{-250, -110, 100, 600, 2500, 3000}
+	got := make([]ledger.AmericanOdds, 0, len(market.Selections))
+	for _, selection := range market.Selections {
+		got = append(got, selection.OfferedAmericanOdds)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("selections = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("selections are not shortest price first:\n got %v\nwant %v", got, want)
+		}
+	}
+}
+
+// A whole board posted for one event closes at the same moment, so closing time
+// alone decides nothing and the order falls to the tiebreak. That used to be the
+// market's UUID, which is no order at all; it is now creation order, so the list
+// reads the way the markets were put up.
+func TestMarketsSharingACloseTimeAreOrderedByCreation(t *testing.T) {
+	pool := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	store := Store{DB: pool}
+
+	admin := makeUser(t, ctx, pool, "Creation Order Admin")
+	firstID := mustNewUUID(t, ctx, store)
+	secondID := mustNewUUID(t, ctx, store)
+	t.Cleanup(func() {
+		cctx, ccancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer ccancel()
+		for _, id := range []string{firstID, secondID} {
+			_, _ = pool.Exec(cctx, `DELETE FROM outbox_events WHERE aggregate_id = $1::uuid`, id)
+			_, _ = pool.Exec(cctx, `DELETE FROM selections WHERE market_id = $1::uuid`, id)
+			_, _ = pool.Exec(cctx, `DELETE FROM markets WHERE id = $1::uuid`, id)
+		}
+	})
+
+	// Both markets close at the very same instant, as a board posted for one
+	// event does, so only creation order can separate them.
+	first := futureCreateRequest(admin, firstID)
+	first.Title = "Posted first"
+	second := futureCreateRequest(admin, secondID)
+	second.Title = "Posted second"
+	second.ClosesAt = first.ClosesAt
+
+	if _, err := store.CreateMarket(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateMarket(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{firstID, secondID} {
+		if err := store.OpenMarket(ctx, id, admin); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// The member board runs soonest-closing first, so within one closing time
+	// the market posted first is the one listed first.
+	board, err := store.ListOpenMarkets(ctx)
+	if err != nil {
+		t.Fatalf("ListOpenMarkets() error = %v", err)
+	}
+	if got := relativeOrder(board, firstID, secondID); got != firstID {
+		t.Errorf("member board lists %s first; the market posted first should lead an ascending list", marketLabel(got, firstID, secondID))
+	}
+
+	// The admin list runs newest-closing first, and its tiebreak follows the
+	// same direction, so the most recently posted market leads.
+	all, err := store.ListMarkets(ctx)
+	if err != nil {
+		t.Fatalf("ListMarkets() error = %v", err)
+	}
+	if got := relativeOrder(all, firstID, secondID); got != secondID {
+		t.Errorf("admin list leads with %s; a descending list should lead with the most recently posted market", marketLabel(got, firstID, secondID))
+	}
+}
+
+// relativeOrder reports which of two market IDs appears first in a listing.
+func relativeOrder(markets []MarketRow, a, b string) string {
+	for _, market := range markets {
+		if market.ID == a || market.ID == b {
+			return market.ID
+		}
+	}
+	return ""
+}
+
+func marketLabel(got, first, second string) string {
+	switch got {
+	case first:
+		return "the market posted first"
+	case second:
+		return "the market posted second"
+	default:
+		return "neither market"
+	}
+}
+
 func containsMarket(markets []MarketRow, id string) bool {
 	_, ok := findMarketRow(markets, id)
 	return ok

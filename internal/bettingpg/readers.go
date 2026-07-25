@@ -200,6 +200,20 @@ type UserWagerRow struct {
 	MarketState     betting.MarketState
 }
 
+// Markets are ordered by closing time, then by when they were created. A whole
+// board posted for the same event closes at the same moment, so closing time
+// alone decides nothing and creation order is what a reader actually expects —
+// the order the markets were put up. Both follow the caller's direction, so a
+// list reading newest-first is newest-first the whole way down. Market ID is a
+// last resort for stability only; on its own, as this used to sort, it is a
+// random UUID order.
+//
+// Selections come back shortest price first, so a board reads like a price
+// board: the favourite at the top down to the longest shot. Ascending American
+// odds is exactly that order without any arithmetic — valid prices are at most
+// -100 or at least +100, so -500, -110, +100, +3000 runs from most likely to
+// least. Sorting by selection ID instead, as this used to, is a random UUID
+// order, which on a sixteen-name prop looks like no order at all.
 const marketRowsSQL = `
 SELECT m.id::text, m.market_type, coalesce(m.match_id::text, ''), m.title, m.state, m.currency::text,
        m.dynamic_pricing, m.opens_at, m.closes_at,
@@ -209,7 +223,7 @@ SELECT m.id::text, m.market_type, coalesce(m.match_id::text, ''), m.title, m.sta
 FROM markets m
 LEFT JOIN selections s ON s.market_id = m.id%s
 WHERE %s
-ORDER BY m.closes_at %s, m.id, s.id`
+ORDER BY m.closes_at %[3]s, m.created_at %[3]s, m.id, s.offered_american_odds, s.display_terms, s.id`
 
 // ListMarkets returns every market with all of its selections for the admin
 // market list, newest closing time first.
