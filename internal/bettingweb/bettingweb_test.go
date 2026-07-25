@@ -1797,3 +1797,33 @@ func TestWagerRecordOffersVoidOnAcceptedWagersOnly(t *testing.T) {
 		t.Fatal("a settled wager must not offer Void")
 	}
 }
+
+// Both wager views must be reachable in one tap from either page and from the
+// sidebar: the record was previously only findable through a link inside a
+// sentence.
+func TestWagerViewsAreEasyToMoveBetween(t *testing.T) {
+	wagers := &fakeWagers{record: []bettingpg.WagerRecordRow{
+		recordRowFixture(-180, -208, -271, betting.MarketOpen, ""),
+	}}
+	handler := newTestHandlerWithSettlements(t, adminSession(), &fakeMarkets{}, wagers, &fakeSettlements{})
+
+	for path, current := range map[string]string{
+		"/admin/wagers":        `href="/admin/wagers" aria-current="page"`,
+		"/admin/wagers/record": `href="/admin/wagers/record" aria-current="page"`,
+	} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		body := w.Body.String()
+		if !strings.Contains(body, `class="private-tabs"`) {
+			t.Errorf("%s has no tab strip", path)
+		}
+		// Both destinations are present on both pages.
+		if !strings.Contains(body, `<a href="/admin/wagers/record"`) || !strings.Contains(body, `<a href="/admin/wagers"`) {
+			t.Errorf("%s does not link to both wager views", path)
+		}
+		// And the tab for the page you are on is marked as current.
+		if !strings.Contains(body, current) {
+			t.Errorf("%s does not mark its own tab as current", path)
+		}
+	}
+}

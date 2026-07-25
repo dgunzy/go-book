@@ -929,3 +929,9 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .betting-restrict summary { color: #8c2f2f; cursor: pointer; font-size: .74rem; font-weight: 800; }
 .betting-restrict-form { align-items: center; display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .4rem; }
 .betting-restrict-form select { border: 1px solid #b8c1bb; border-radius: 4px; font: inherit; font-size: .76rem; max-width: 11rem; padding: .3rem .4rem; }
+
+/* Two views of the same thing get tabs, not a link buried in a sentence. */
+.private-tabs { border-bottom: 1px solid #d8ddd8; display: flex; flex-wrap: wrap; gap: .2rem; margin: -.6rem 0 1.4rem; }
+.private-tabs a { border-bottom: 3px solid transparent; color: #5b6760; font-size: .82rem; font-weight: 800; padding: .55rem .9rem; text-decoration: none; }
+.private-tabs a:hover { color: var(--ink); }
+.private-tabs a[aria-current="page"] { border-bottom-color: var(--green); color: var(--ink); }

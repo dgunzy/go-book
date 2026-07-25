@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>{{.Title}} | Cabot Cup</title>
-  <link rel="stylesheet" href="/assets/site.css?v=20260725-props-restrictions">
-  <script src="/assets/site.js?v=20260725-props-restrictions" defer></script>
+  <link rel="stylesheet" href="/assets/site.css?v=20260725-wager-tabs">
+  <script src="/assets/site.js?v=20260725-wager-tabs" defer></script>
 </head>
 <body class="private-body">
   <a class="skip-link" href="#private-main">Skip to content</a>
@@ -23,6 +23,7 @@
         <a href="/admin/matches" {{if eq .Current "admin-matches"}}aria-current="page"{{end}}>Matches</a>
         <a href="/admin/markets" {{if eq .Current "admin-markets"}}aria-current="page"{{end}}>Manage markets</a>
         <a href="/admin/wagers" {{if eq .Current "admin-wagers"}}aria-current="page"{{end}}>Review wagers</a>
+        <a href="/admin/wagers/record" {{if eq .Current "admin-wager-record"}}aria-current="page"{{end}}>Wager record</a>
         <a href="/admin/settle-up" {{if eq .Current "admin-settle-up"}}aria-current="page"{{end}}>Settle up</a>
         <a href="/admin/members" {{if eq .Current "admin-members"}}aria-current="page"{{end}}>Members</a>
         <a href="/admin/help" {{if eq .Current "admin-help"}}aria-current="page"{{end}}>Help</a>

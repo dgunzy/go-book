@@ -120,7 +120,7 @@ func (h *Handler) adminWagerRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.render(w, "admin_wager_record", pageData{
-		Title: "Wager record", Current: "admin-wagers", Session: session,
+		Title: "Wager record", Current: "admin-wager-record", Session: session,
 		WagerRecord: wagerRecordViews(rows),
 	})
 }

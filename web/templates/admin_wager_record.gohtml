@@ -1,8 +1,14 @@
 {{define "private_content"}}
 <header class="private-page-heading">
   <div><p class="private-kicker">Book administration</p><h1>Wager record</h1></div>
-  <p>Every wager the book has taken, with the line it opened at, the price the member got, and where it closed. <a href="/admin/wagers">Back to pending wagers</a>.</p>
+  <p>Every wager the book has taken, with the line it opened at, the price the member got, and where it closed.</p>
 </header>
+
+<nav class="private-tabs" aria-label="Wager views">
+  <a href="/admin/wagers" {{if eq .Current "admin-wagers"}}aria-current="page"{{end}}>Pending review</a>
+  <a href="/admin/wagers/record" {{if eq .Current "admin-wager-record"}}aria-current="page"{{end}}>Full record</a>
+</nav>
+
 
 <p class="pulse-note">Voiding one wager returns that member's stake and leaves every other bet on the market standing — unlike voiding the market, which refunds everybody. A member who repeatedly takes a better number than the close is beating the book on price, whether or not the bets land. While a market is still open there is no closing line yet, so the comparison is withheld rather than guessed at.</p>
 
