@@ -88,7 +88,16 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 	var dispatcher *events.Dispatcher
 	var publicCompetition publicweb.CompetitionReader
 	if applicationConfig.PrivateAppEnabled {
-		pool, err := postgresdb.Open(ctx, applicationConfig.DatabaseURL)
+		// The network policy often admits a new pod a moment after it starts, so
+		// the first connect is refused for reasons that have nothing to do with
+		// the database's health. Retry inside a bounded budget rather than
+		// exiting and making every rollout a crash-and-restart.
+		pool, err := postgresdb.OpenWithRetry(ctx, applicationConfig.DatabaseURL, applicationConfig.DatabaseConnectTimeout,
+			func(attempt int, wait time.Duration, connectErr error) {
+				logger.Warn("database not reachable yet, retrying",
+					"attempt", attempt, "retry_in", wait.String(),
+					"budget", applicationConfig.DatabaseConnectTimeout.String(), "error", connectErr)
+			})
 		if err != nil {
 			return fmt.Errorf("open private application database: %w", err)
 		}

@@ -38,6 +38,10 @@ type Config struct {
 	// in cents) applied to a new market when the admin enables dynamic pricing
 	// without typing a value. Larger = the line moves less per dollar of action.
 	PricingLiquidityDefaultCents int64
+	// DatabaseConnectTimeout bounds how long startup retries an initial database
+	// connection before giving up. It must stay below the deployment's liveness
+	// kill deadline, or the process is killed mid-retry.
+	DatabaseConnectTimeout time.Duration
 	// DefaultCreditLimitCents is the credit limit a new member is created with:
 	// how far their cash balance may go negative before wagers are refused.
 	// Admins raise or lower it per player afterwards on the Members page.
@@ -90,6 +94,15 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 	}
 
 	creditLimitDefaultCents, err := parseCreditLimitDefault(valueOrDefault(lookup, "DEFAULT_CREDIT_LIMIT_CENTS", strconv.FormatInt(defaultCreditLimitCents, 10)))
+	if err != nil {
+		return Config{}, err
+	}
+
+	// Bounded well under the liveness probe's kill deadline (first check at 10s,
+	// then every 20s, 3 failures => ~50s). See docs/CONFIGURATION.md.
+	databaseConnectTimeout, err := parseBoundedDuration(
+		"DATABASE_CONNECT_TIMEOUT", valueOrDefault(lookup, "DATABASE_CONNECT_TIMEOUT", "30s"), time.Second, 45*time.Second,
+	)
 	if err != nil {
 		return Config{}, err
 	}
@@ -149,6 +162,7 @@ func Load(lookup func(string) (string, bool)) (Config, error) {
 		WagerAutoApproveMaxCents:     autoApproveMaxCents,
 		PricingLiquidityDefaultCents: pricingLiquidityDefaultCents,
 		DefaultCreditLimitCents:      creditLimitDefaultCents,
+		DatabaseConnectTimeout:       databaseConnectTimeout,
 	}, nil
 }
 

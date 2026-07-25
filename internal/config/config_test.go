@@ -37,6 +37,35 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadDatabaseConnectTimeout(t *testing.T) {
+	t.Parallel()
+
+	config, err := Load(mapLookup(nil))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if config.DatabaseConnectTimeout != 30*time.Second {
+		t.Errorf("DatabaseConnectTimeout = %s, want 30s", config.DatabaseConnectTimeout)
+	}
+
+	config, err = Load(mapLookup(map[string]string{"DATABASE_CONNECT_TIMEOUT": "10s"}))
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if config.DatabaseConnectTimeout != 10*time.Second {
+		t.Errorf("DatabaseConnectTimeout = %s, want 10s", config.DatabaseConnectTimeout)
+	}
+
+	// The upper bound protects the process from retrying past the liveness
+	// probe's kill deadline, which would be worse than failing fast.
+	if _, err := Load(mapLookup(map[string]string{"DATABASE_CONNECT_TIMEOUT": "5m"})); err == nil {
+		t.Error("Load() accepted a connect timeout that outlives the liveness probe")
+	}
+	if _, err := Load(mapLookup(map[string]string{"DATABASE_CONNECT_TIMEOUT": "soon"})); err == nil {
+		t.Error("Load() accepted a non-duration connect timeout")
+	}
+}
+
 func TestLoadDefaultCreditLimitOverride(t *testing.T) {
 	t.Parallel()
 

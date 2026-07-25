@@ -54,6 +54,23 @@ affects the next bettor.
 | `SESSION_TTL` | `12h` | Session lifetime (1m–7d). |
 | `LOGIN_ATTEMPT_TTL` | `10m` | OIDC login-attempt lifetime (1m–30m). |
 | `SHUTDOWN_TIMEOUT` | `10s` | Graceful shutdown budget. |
+| `DATABASE_CONNECT_TIMEOUT` | `30s` | How long startup retries an unreachable database before giving up (1s–45s). See below. |
+
+### Reference: startup database connect
+
+A new pod usually reaches the database a moment before the network policy admits
+it, so the very first connect is refused for reasons unrelated to database
+health. The process retries with capped exponential backoff (250ms up to 3s)
+until this budget runs out, instead of exiting and turning every rollout into a
+crash-and-restart. A genuinely unreachable database still fails loudly at the
+end of the budget, and a shutdown signal abandons the wait immediately.
+
+**The budget must stay below the deployment's liveness kill deadline**, or the
+kubelet kills the process mid-retry — worse than failing fast. With the probes in
+`gitops/apps/cabot-cup-next/deployment.yaml` liveness would kill at roughly 50s
+(first check 10s, then every 20s, 3 failures), hence the 45s upper bound. The
+deployment also sets a `startupProbe` (20 x 2s = 40s of grace) which holds
+liveness off until the process is serving, so the two must be changed together.
 
 ## Database selection
 
