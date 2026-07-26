@@ -33,7 +33,17 @@
             {{range .Selections}}
             <div class="betting-selection-line">
               <span class="betting-selection-chip">{{.DisplayTerms}} <span class="private-odds">{{odds .OfferedAmericanOdds}}</span>{{if .Moved}} <span class="betting-line-moved" title="Opened at {{odds .OpeningAmericanOdds}}">(from {{odds .OpeningAmericanOdds}})</span>{{end}}</span>
+              {{if .MaxStakeCents}}<span class="betting-side-limit">max {{dollars .MaxStakeCents}} each</span>{{end}}
               {{if or (eq $market.State "open") (eq $market.State "draft")}}
+              <form method="post" action="/admin/markets/{{$market.ID}}/limit" class="betting-inline-form betting-limit-form" hx-post="/admin/markets/{{$market.ID}}/limit" hx-target="this" hx-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <input type="hidden" name="selection_id" value="{{.ID}}">
+                <label class="visually-hidden" for="limit-{{.ID}}">Max per member on this outcome</label>
+                <input id="limit-{{.ID}}" name="max_stake" value="{{if .MaxStakeCents}}{{dollars .MaxStakeCents}}{{end}}" inputmode="decimal" size="6" placeholder="no limit">
+                <label class="visually-hidden" for="limit-reason-{{.ID}}">Why the limit is changing</label>
+                <input id="limit-reason-{{.ID}}" name="reason" maxlength="500" placeholder="Why" required>
+                <button type="submit">Set max</button>
+              </form>
               <form method="post" action="/admin/markets/{{$market.ID}}/selections/{{.ID}}/line" class="betting-inline-form betting-set-line-form" hx-post="/admin/markets/{{$market.ID}}/selections/{{.ID}}/line" hx-target="this" hx-swap="outerHTML">
                 <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
                 <label class="visually-hidden" for="line-{{.ID}}">New line for {{.DisplayTerms}}</label>

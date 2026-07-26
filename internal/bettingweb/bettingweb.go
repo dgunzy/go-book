@@ -71,6 +71,7 @@ type MarketStore interface {
 	SettleMarket(context.Context, bettingpg.SettleMarketRequest) (bettingpg.SettleReport, error)
 	SetOpeningLine(ctx context.Context, marketID, selectionID string, odds ledger.AmericanOdds, actorUserID, reason string) (bool, error)
 	SetMarketCloseTime(ctx context.Context, marketID string, closesAt time.Time, actorUserID, reason string) error
+	SetStakeLimit(ctx context.Context, marketID, selectionID string, cents int64, actorUserID, reason string) error
 	VoidMarket(context.Context, bettingpg.VoidMarketRequest) (bettingpg.SettleReport, error)
 }
 
@@ -175,6 +176,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /admin/markets/{id}/close", h.adminCloseMarket)
 	h.mux.HandleFunc("POST /admin/markets/{id}/selections/{selectionID}/line", h.adminSetLine)
 	h.mux.HandleFunc("POST /admin/markets/{id}/close-time", h.adminSetCloseTime)
+	h.mux.HandleFunc("POST /admin/markets/{id}/limit", h.adminSetStakeLimit)
 	h.mux.HandleFunc("POST /admin/markets/{id}/restrict", h.adminRestrictMember)
 	h.mux.HandleFunc("POST /admin/markets/{id}/restrict/lift", h.adminLiftRestriction)
 	h.mux.HandleFunc("GET /admin/markets/{id}/settle", h.adminSettleForm)
@@ -1205,9 +1207,17 @@ func parseCreateMarketForm(form url.Values) (bettingpg.CreateMarketRequest, stri
 		if err != nil {
 			return request, fmt.Sprintf("Outcome %d odds must have a magnitude of at least 100, for example −110 or +150.", slot)
 		}
-		request.Selections = append(request.Selections, bettingpg.CreateMarketSelection{
+		selection := bettingpg.CreateMarketSelection{
 			Key: fmt.Sprintf("outcome-%d", slot), DisplayTerms: terms, OfferedAmericanOdds: odds,
-		})
+		}
+		if raw := strings.TrimSpace(form.Get(fmt.Sprintf("selection_max_%d", slot))); raw != "" {
+			cents, err := parseStakeCents(raw)
+			if err != nil {
+				return request, fmt.Sprintf("Outcome %d's limit must be a dollars-and-cents amount, or blank.", slot)
+			}
+			selection.MaxStakeCents = cents
+		}
+		request.Selections = append(request.Selections, selection)
 	}
 	if len(request.Selections) == 0 {
 		return request, "Add at least one outcome and its odds."

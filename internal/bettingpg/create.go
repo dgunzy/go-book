@@ -18,6 +18,9 @@ import (
 
 // CreateMarketSelection is one bettable outcome supplied with a new market.
 type CreateMarketSelection struct {
+	// MaxStakeCents caps what one member may have on this side. Zero means the
+	// side is limited only by the market's own cap, if it has one.
+	MaxStakeCents       int64
 	Key                 string
 	DisplayTerms        string
 	OfferedAmericanOdds int32
@@ -102,6 +105,7 @@ func (s Store) CreateMarket(ctx context.Context, req CreateMarketRequest) (betti
 		}
 	}
 	selections := make([]betting.Selection, 0, len(req.Selections))
+	selectionCaps := make(map[string]int64, len(req.Selections))
 	seenKeys := make(map[string]bool, len(req.Selections))
 	for _, request := range req.Selections {
 		selectionID, err := betting.NewEventID()
@@ -124,6 +128,7 @@ func (s Store) CreateMarket(ctx context.Context, req CreateMarketRequest) (betti
 			return betting.Market{}, fmt.Errorf("%w: selection key %q is duplicated", betting.ErrInvalid, selection.Key)
 		}
 		seenKeys[selection.Key] = true
+		selectionCaps[selection.Key] = request.MaxStakeCents
 		selections = append(selections, selection)
 	}
 
@@ -178,10 +183,11 @@ func (s Store) CreateMarket(ctx context.Context, req CreateMarketRequest) (betti
 		// opening_american_odds is seeded equal to the offered line and stays
 		// fixed as the prior the pricing engine reprices from.
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO selections (id, market_id, selection_key, display_terms, offered_american_odds, opening_american_odds, semantic_result_key, active)
-			VALUES ($1::uuid, $2::uuid, $3, $4, $5, $5, nullif($6, ''), true)`,
+			INSERT INTO selections (id, market_id, selection_key, display_terms, offered_american_odds, opening_american_odds, semantic_result_key, active, max_stake_cents)
+			VALUES ($1::uuid, $2::uuid, $3, $4, $5, $5, nullif($6, ''), true, nullif($7, 0::bigint))`,
 			string(selection.ID), string(selection.MarketID), selection.Key, selection.DisplayTerms,
-			int32(selection.OfferedAmericanOdds), selection.SemanticResultKey); err != nil {
+			int32(selection.OfferedAmericanOdds), selection.SemanticResultKey,
+			selectionCaps[selection.Key]); err != nil {
 			return betting.Market{}, fmt.Errorf("insert selection %q for market %s: %w", selection.Key, market.ID, err)
 		}
 	}

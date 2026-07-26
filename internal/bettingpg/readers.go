@@ -14,6 +14,9 @@ import (
 
 // MarketSelectionRow is one selection inside a market browse row.
 type MarketSelectionRow struct {
+	// MaxStakeCents caps what one member may have on this side; zero means
+	// only the market's own cap applies, if it has one.
+	MaxStakeCents       int64
 	ID                  string
 	Key                 string
 	DisplayTerms        string
@@ -222,6 +225,7 @@ SELECT m.id::text, m.market_type, coalesce(m.match_id::text, ''), m.title, m.sta
        m.dynamic_pricing, coalesce(m.max_stake_cents, 0), m.opens_at, m.closes_at,
        coalesce(s.id::text, ''), coalesce(s.selection_key, ''), coalesce(s.display_terms, ''),
        coalesce(s.offered_american_odds, 100), coalesce(s.opening_american_odds, 100),
+       coalesce(s.max_stake_cents, 0),
        coalesce(s.semantic_result_key, ''), coalesce(s.active, false)
 FROM markets m
 LEFT JOIN selections s ON s.market_id = m.id%s
@@ -334,9 +338,10 @@ func (s Store) listMarkets(ctx context.Context, query string, args ...any) ([]Ma
 		var closesAt time.Time
 		var selectionID, selectionKey, displayTerms, semanticKey string
 		var odds, openingOdds int32
+		var selectionMaxStake int64
 		var active bool
 		if err := rows.Scan(&id, &marketType, &matchID, &title, &state, &currency,
-			&dynamicPricing, &maxStakeCents, &opensAt, &closesAt, &selectionID, &selectionKey, &displayTerms, &odds, &openingOdds, &semanticKey, &active); err != nil {
+			&dynamicPricing, &maxStakeCents, &opensAt, &closesAt, &selectionID, &selectionKey, &displayTerms, &odds, &openingOdds, &selectionMaxStake, &semanticKey, &active); err != nil {
 			return nil, fmt.Errorf("scan market row: %w", err)
 		}
 		position, seen := index[id]
@@ -369,7 +374,7 @@ func (s Store) listMarkets(ctx context.Context, query string, args ...any) ([]Ma
 			return nil, fmt.Errorf("selection %s opening odds: %w", selectionID, err)
 		}
 		result[position].Selections = append(result[position].Selections, MarketSelectionRow{
-			ID: selectionID, Key: selectionKey, DisplayTerms: displayTerms,
+			ID: selectionID, Key: selectionKey, DisplayTerms: displayTerms, MaxStakeCents: selectionMaxStake,
 			OfferedAmericanOdds: parsedOdds, OpeningAmericanOdds: parsedOpeningOdds,
 			SemanticResultKey: semanticKey, Active: active,
 		})

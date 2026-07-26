@@ -43,6 +43,12 @@ type PlaceWagerCommand struct {
 	// ExistingStakeCents is what this member already has on the market,
 	// pending and accepted together.
 	ExistingStakeCents int64
+	// SelectionMaxStakeCents caps what one member may have on this side of
+	// the market, and ExistingSelectionStakeCents is what they already have on
+	// it. A lopsided prop often wants a tight limit on the long side and none
+	// on the short one. Zero means no cap on the side.
+	SelectionMaxStakeCents      int64
+	ExistingSelectionStakeCents int64
 	// MaxPayoutCents is the book-wide ceiling on what a single wager may
 	// return in profit. It exists so a longshot price cannot turn a small
 	// stake into a payout the book cannot cover. Zero means no ceiling.
@@ -110,6 +116,11 @@ func PlaceWager(command PlaceWagerCommand) (Wager, error) {
 	// the money over several wagers must not get around it.
 	if command.MaxStakeCents > 0 &&
 		command.ExistingStakeCents+command.Stake.Cents > command.MaxStakeCents {
+		return Wager{}, ErrStakeAboveLimit
+	}
+	// A side may carry its own, tighter limit. Both apply when both are set.
+	if command.SelectionMaxStakeCents > 0 &&
+		command.ExistingSelectionStakeCents+command.Stake.Cents > command.SelectionMaxStakeCents {
 		return Wager{}, ErrStakeAboveLimit
 	}
 	if strings.TrimSpace(command.IdempotencyKey) == "" {

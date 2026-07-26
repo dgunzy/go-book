@@ -944,3 +944,7 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .table-filter input { border: 1px solid #b8c1bb; border-radius: 4px; flex: 1 1 18rem; font: inherit; font-size: .82rem; max-width: 26rem; padding: .4rem .6rem; }
 .table-filter-count { color: #6c7770; font-size: .74rem; }
 .private-table tbody tr[hidden] { display: none; }
+.betting-side-limit { color: #6c7770; display: inline-block; font-size: .66rem; font-weight: 700; }
+.betting-limit-form input[name="max_stake"] { width: 5rem; }
+.betting-limit-form input[name="reason"] { width: 6rem; }
+.outcome-limit input { font-size: .82rem; }

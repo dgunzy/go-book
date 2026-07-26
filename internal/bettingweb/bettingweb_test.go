@@ -54,12 +54,22 @@ type fakeMarkets struct {
 	lineCalls    []setLineCall
 	closeTimeErr error
 	closeTimes   []closeTimeCall
+	limitErr     error
+	limitCalls   []limitCall
 	restrictErr  error
 	restricted   []bettingpg.RestrictRequest
 	lifted       []struct{ market, user, selection string }
 	restrictions []bettingpg.RestrictionRow
 	members      []bettingpg.MemberOption
 	scopedUsers  []string
+}
+
+type limitCall struct {
+	marketID    string
+	selectionID string
+	cents       int64
+	actor       string
+	reason      string
 }
 
 type closeTimeCall struct {
@@ -137,6 +147,11 @@ func (f *fakeMarkets) SetOpeningLine(_ context.Context, marketID, selectionID st
 func (f *fakeMarkets) SetMarketCloseTime(_ context.Context, marketID string, closesAt time.Time, actorUserID, reason string) error {
 	f.closeTimes = append(f.closeTimes, closeTimeCall{marketID, closesAt, actorUserID, reason})
 	return f.closeTimeErr
+}
+
+func (f *fakeMarkets) SetStakeLimit(_ context.Context, marketID, selectionID string, cents int64, actorUserID, reason string) error {
+	f.limitCalls = append(f.limitCalls, limitCall{marketID, selectionID, cents, actorUserID, reason})
+	return f.limitErr
 }
 
 func (f *fakeMarkets) VoidMarket(_ context.Context, req bettingpg.VoidMarketRequest) (bettingpg.SettleReport, error) {

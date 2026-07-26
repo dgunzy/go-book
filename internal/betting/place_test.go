@@ -419,3 +419,75 @@ func TestPlaceWagerEnforcesTheBookPayoutCeiling(t *testing.T) {
 		t.Fatalf("longshot under the ceiling error = %v", err)
 	}
 }
+
+// A lopsided prop wants a tight limit on the long price and room on the short
+// one: $50 at +750, but real money allowed on -1200.
+func TestPlaceWagerEnforcesAPerSideLimitIndependently(t *testing.T) {
+	t.Parallel()
+	command := placeCommand()
+	command.SelectionMaxStakeCents = 5_000
+
+	command.Stake = ledger.Money{Cents: 5_000, Currency: ledger.CAD}
+	if _, err := PlaceWager(command); err != nil {
+		t.Fatalf("wager landing exactly on the side limit error = %v", err)
+	}
+	command.ExistingSelectionStakeCents = 5_000
+	command.Stake = ledger.Money{Cents: 100, Currency: ledger.CAD}
+	if _, err := PlaceWager(command); !errors.Is(err, ErrStakeAboveLimit) {
+		t.Fatalf("wager past a filled side limit error = %v, want ErrStakeAboveLimit", err)
+	}
+
+	// The other side is a different selection with its own (here, absent)
+	// limit, so what they already have on this one does not follow them.
+	other := placeCommand()
+	other.SelectionMaxStakeCents = 0
+	other.ExistingSelectionStakeCents = 0
+	other.Stake = ledger.Money{Cents: 100_000, Currency: ledger.CAD}
+	if _, err := PlaceWager(other); err != nil {
+		t.Fatalf("wager on the uncapped side error = %v, want it allowed", err)
+	}
+}
+
+// Both caps apply when both are set, and the tighter one is what bites.
+func TestPlaceWagerAppliesMarketAndSideLimitsTogether(t *testing.T) {
+	t.Parallel()
+	command := placeCommand()
+	command.MaxStakeCents = 10_000         // $100 across the market
+	command.SelectionMaxStakeCents = 5_000 // $50 on this side
+
+	// $60 clears the market cap but not the side cap.
+	command.Stake = ledger.Money{Cents: 6_000, Currency: ledger.CAD}
+	if _, err := PlaceWager(command); !errors.Is(err, ErrStakeAboveLimit) {
+		t.Fatalf("wager over the side cap error = %v, want ErrStakeAboveLimit", err)
+	}
+
+	// $50 clears both.
+	command.Stake = ledger.Money{Cents: 5_000, Currency: ledger.CAD}
+	if _, err := PlaceWager(command); err != nil {
+		t.Fatalf("wager under both caps error = %v", err)
+	}
+
+	// With $90 already on the market from the other side, a $50 bet on this
+	// side clears the side cap but breaks the market cap.
+	command.ExistingStakeCents = 9_000
+	if _, err := PlaceWager(command); !errors.Is(err, ErrStakeAboveLimit) {
+		t.Fatalf("wager over the market cap error = %v, want ErrStakeAboveLimit", err)
+	}
+}
+
+// A market cap with no side caps must behave exactly as it did before side
+// caps existed: this is the guarantee for markets already live.
+func TestPlaceWagerMarketOnlyLimitIsUnchanged(t *testing.T) {
+	t.Parallel()
+	command := placeCommand()
+	command.MaxStakeCents = 20_000
+	command.ExistingStakeCents = 15_000
+	command.Stake = ledger.Money{Cents: 5_000, Currency: ledger.CAD}
+	if _, err := PlaceWager(command); err != nil {
+		t.Fatalf("wager filling the market cap exactly error = %v", err)
+	}
+	command.Stake = ledger.Money{Cents: 5_001, Currency: ledger.CAD}
+	if _, err := PlaceWager(command); !errors.Is(err, ErrStakeAboveLimit) {
+		t.Fatalf("wager one cent over the market cap error = %v, want ErrStakeAboveLimit", err)
+	}
+}

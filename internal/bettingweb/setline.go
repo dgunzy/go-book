@@ -112,3 +112,63 @@ func (h *Handler) adminSetCloseTime(w http.ResponseWriter, r *http.Request) {
 	h.completePost(w, r, redirectAdminMarkets, "Closing time moved.",
 		"Wagers already on this market keep their odds; only new action is affected.")
 }
+
+// adminSetStakeLimit changes how much one member may have on a market, or on
+// one side of it. An empty selection sets the market-wide cap.
+func (h *Handler) adminSetStakeLimit(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	marketID := r.PathValue("id")
+	if !isUUID(marketID) {
+		h.failPost(w, r, session, http.StatusNotFound, "The requested market was not found.", redirectAdminMarkets)
+		return
+	}
+	selectionID := strings.TrimSpace(r.PostForm.Get("selection_id"))
+	if selectionID != "" && !isUUID(selectionID) {
+		h.failPost(w, r, session, http.StatusBadRequest,
+			"Choose a valid outcome, or set the limit for the whole market.", redirectAdminMarkets)
+		return
+	}
+	// Blank clears the limit; anything else must be a real amount.
+	var cents int64
+	if raw := strings.TrimSpace(r.PostForm.Get("max_stake")); raw != "" {
+		parsed, err := parseStakeCents(raw)
+		if err != nil {
+			h.failPost(w, r, session, http.StatusBadRequest,
+				"Enter the limit as a dollars-and-cents amount, or leave it blank to remove it.", redirectAdminMarkets)
+			return
+		}
+		cents = parsed
+	}
+	reason := strings.TrimSpace(r.PostForm.Get("reason"))
+	if reason == "" || len(reason) > maxReasonLen {
+		h.failPost(w, r, session, http.StatusBadRequest,
+			"Say why the limit is changing (up to 500 characters) — it goes on the audit trail.", redirectAdminMarkets)
+		return
+	}
+
+	if err := h.deps.Markets.SetStakeLimit(r.Context(), marketID, selectionID, cents, session.UserID, reason); err != nil {
+		status, text := storeErrorStatus(err)
+		if errors.Is(err, bettingpg.ErrMarketNotPriceable) {
+			status, text = http.StatusConflict, "Only a draft or open market's limits can be changed."
+		}
+		h.failPost(w, r, session, status, text, redirectAdminMarkets)
+		return
+	}
+	scope := "the whole market"
+	if selectionID != "" {
+		scope = "that outcome"
+	}
+	detail := "Wagers already on it stand; the limit applies to new money."
+	if cents == 0 {
+		h.completePost(w, r, redirectAdminMarkets, "Limit removed from "+scope+".", detail)
+		return
+	}
+	h.completePost(w, r, redirectAdminMarkets,
+		"Limit on "+scope+" set to $"+formatCentsDollars(cents)+" per member.", detail)
+}

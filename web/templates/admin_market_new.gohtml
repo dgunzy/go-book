@@ -104,7 +104,7 @@
   <label>Most one member may have on it (optional)
     <input name="max_stake" value="{{.Form.Get "max_stake"}}" inputmode="decimal" placeholder="e.g. 50.00 — blank for no limit">
   </label>
-  <p class="betting-hint">A cap for fun lines: counts everything that member already has riding on this market, however many bets they spread it over. Every wager is also capped by the book's maximum payout.</p>
+  <p class="betting-hint">A cap across the whole market: counts everything that member has riding on it, either side, however many bets they spread it over. For a lopsided prop, leave this blank and set a limit on the long side only — each outcome has its own optional cap below. Every wager is also capped by the book's maximum payout.</p>
 
   <fieldset class="betting-selection-slots" data-custom-outcomes {{if eq $type "match"}}hidden{{end}}>
     <legend>Outcomes</legend>
@@ -113,6 +113,9 @@
     <div class="betting-selection-slot outcome-entry">
       <label>Outcome {{.}}
         <input name="selection_terms_{{.}}" value="{{$.Form.Get (printf "selection_terms_%d" .)}}" maxlength="500" placeholder="Yes">
+      </label>
+      <label class="outcome-limit">Max per member (optional)
+        <input name="selection_max_{{.}}" value="{{$.Form.Get (printf "selection_max_%d" .)}}" inputmode="decimal" placeholder="blank = no limit">
       </label>
       <label>American odds
         <span class="odds-entry">

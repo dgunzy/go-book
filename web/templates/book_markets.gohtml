@@ -23,7 +23,7 @@
         {{range .Selections}}
         <tr>
           <th scope="row">{{.DisplayTerms}}</th>
-          <td class="private-odds" data-label="Odds">{{odds .OfferedAmericanOdds}}</td>
+          <td class="private-odds" data-label="Odds">{{odds .OfferedAmericanOdds}}{{if .MaxStakeCents}}<small class="betting-side-limit">max {{dollars .MaxStakeCents}}</small>{{end}}</td>
           <td class="is-stack-block" data-label="Place a wager">
             <form method="post" action="/book/wagers" class="betting-place-form" hx-post="/book/wagers" hx-target="this" hx-swap="outerHTML">
               <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
