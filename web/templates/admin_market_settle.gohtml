@@ -13,6 +13,37 @@
 
 {{if .FormError}}<p class="betting-form-error" role="alert">{{.FormError}}</p>{{end}}
 
+{{if .Stranded}}
+<section class="betting-form" aria-labelledby="stranded-heading">
+  <h2 id="stranded-heading">Wagers this market never graded</h2>
+  <p>These were accepted after the market settled, so the settlement ran without them and their stakes are still sitting in escrow. Grading them now uses the result this market already recorded &mdash; it cannot change that result, and a wager already paid cannot be paid again.</p>
+  <div class="private-table-wrap">
+    <table class="private-table private-table-stack">
+      <thead><tr><th scope="col">Member</th><th scope="col">Backed</th><th scope="col">Stake</th><th scope="col">Grades as</th></tr></thead>
+      <tbody>
+        {{range .Stranded}}
+        <tr>
+          <th scope="row">{{.MemberName}}</th>
+          <td data-label="Backed">{{.Selection}}</td>
+          <td class="private-money" data-label="Stake">{{money .Stake}}</td>
+          <td data-label="Grades as"><span class="private-status">{{.Result}}</span></td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <form method="post" action="/admin/markets/{{.Market.Market.ID}}/regrade" class="betting-form">
+    <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+    <label>Reason (required, recorded in the audit trail)
+      <textarea name="reason" rows="2" maxlength="500" required></textarea>
+    </label>
+    <div class="betting-form-actions">
+      <button type="submit">Grade these wagers</button>
+    </div>
+  </form>
+</section>
+{{end}}
+
 <form method="post" action="/admin/markets/{{.Market.Market.ID}}/settle" class="betting-form">
   <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
 

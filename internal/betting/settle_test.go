@@ -203,6 +203,34 @@ func TestSettleMarketRequiresClosedOrPendingState(t *testing.T) {
 	}
 }
 
+// An already-settled market is only gradable as an explicit regrade, which
+// exists solely to finish a wager the first settlement never saw. Without
+// that flag a second grade would be a silent double payout.
+func TestSettleMarketFromSettledNeedsTheRegradeFlag(t *testing.T) {
+	t.Parallel()
+	command := baseSettleCommand()
+	command.Market.State = MarketSettled
+	if _, err := SettleMarket(command); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("SettleMarket() from settled error = %v, want ErrInvalidTransition", err)
+	}
+
+	regrade := baseSettleCommand()
+	regrade.Market.State = MarketSettled
+	regrade.Regrade = true
+	if _, err := SettleMarket(regrade); err != nil {
+		t.Fatalf("SettleMarket() regrading a settled market error = %v", err)
+	}
+
+	// The flag widens the source state and nothing else: it cannot rescue a
+	// state that was never gradable.
+	draft := baseSettleCommand()
+	draft.Market.State = MarketDraft
+	draft.Regrade = true
+	if _, err := SettleMarket(draft); !errors.Is(err, ErrInvalidTransition) {
+		t.Fatalf("SettleMarket() regrading a draft error = %v, want ErrInvalidTransition", err)
+	}
+}
+
 func TestSettleMarketOutcomeMustCoverEverySelectionExactlyOnce(t *testing.T) {
 	t.Parallel()
 

@@ -38,30 +38,35 @@ func (f fakeSessions) CurrentSession(*http.Request) (privateweb.Session, error) 
 }
 
 type fakeMarkets struct {
-	open         []bettingpg.MarketRow
-	all          []bettingpg.MarketRow
-	matches      []bettingpg.MatchMarketOption
-	createErr    error
-	openErr      error
-	closeErr     error
-	settleErr    error
-	voidErr      error
-	createCalls  []bettingpg.CreateMarketRequest
-	openCalls    []string
-	settleCalls  []bettingpg.SettleMarketRequest
-	voidCalls    []bettingpg.VoidMarketRequest
-	setLineErr   error
-	lineCalls    []setLineCall
-	closeTimeErr error
-	closeTimes   []closeTimeCall
-	limitErr     error
-	limitCalls   []limitCall
-	restrictErr  error
-	restricted   []bettingpg.RestrictRequest
-	lifted       []struct{ market, user, selection string }
-	restrictions []bettingpg.RestrictionRow
-	members      []bettingpg.MemberOption
-	scopedUsers  []string
+	open          []bettingpg.MarketRow
+	all           []bettingpg.MarketRow
+	matches       []bettingpg.MatchMarketOption
+	createErr     error
+	openErr       error
+	closeErr      error
+	settleErr     error
+	voidErr       error
+	createCalls   []bettingpg.CreateMarketRequest
+	openCalls     []string
+	settleCalls   []bettingpg.SettleMarketRequest
+	voidCalls     []bettingpg.VoidMarketRequest
+	setLineErr    error
+	lineCalls     []setLineCall
+	closeTimeErr  error
+	closeTimes    []closeTimeCall
+	limitErr      error
+	limitCalls    []limitCall
+	stranded      []bettingpg.StrandedWagerRow
+	strandedErr   error
+	regradeReport bettingpg.SettleReport
+	regradeErr    error
+	regradeCalls  [][3]string
+	restrictErr   error
+	restricted    []bettingpg.RestrictRequest
+	lifted        []struct{ market, user, selection string }
+	restrictions  []bettingpg.RestrictionRow
+	members       []bettingpg.MemberOption
+	scopedUsers   []string
 }
 
 type limitCall struct {
@@ -157,6 +162,15 @@ func (f *fakeMarkets) SetStakeLimit(_ context.Context, marketID, selectionID str
 func (f *fakeMarkets) VoidMarket(_ context.Context, req bettingpg.VoidMarketRequest) (bettingpg.SettleReport, error) {
 	f.voidCalls = append(f.voidCalls, req)
 	return bettingpg.SettleReport{}, f.voidErr
+}
+
+func (f *fakeMarkets) StrandedWagers(_ context.Context, marketID string) ([]bettingpg.StrandedWagerRow, error) {
+	return f.stranded, f.strandedErr
+}
+
+func (f *fakeMarkets) RegradeStrandedWagers(_ context.Context, marketID, actorUserID, reason string) (bettingpg.SettleReport, error) {
+	f.regradeCalls = append(f.regradeCalls, [3]string{marketID, actorUserID, reason})
+	return f.regradeReport, f.regradeErr
 }
 
 type fakeWagers struct {
@@ -2233,5 +2247,103 @@ func TestWagerRecordFiltersAndLinksToTheMember(t *testing.T) {
 	}
 	if !strings.Contains(body, `data-filter-for="wager-record"`) || !strings.Contains(body, `id="wager-record"`) {
 		t.Error("the record has no filter wired to its table")
+	}
+}
+
+func settledMarketFixture() bettingpg.MarketRow {
+	market := openMarketFixture()
+	market.State = betting.MarketSettled
+	return market
+}
+
+// The settle page is the only place an admin would notice a wager the
+// settlement left behind, so a settled market has to surface it there.
+func TestAdminSettleFormShowsWagersLeftUngraded(t *testing.T) {
+	markets := &fakeMarkets{
+		all: []bettingpg.MarketRow{settledMarketFixture()},
+		stranded: []bettingpg.StrandedWagerRow{{
+			WagerID: "44444444-4444-4444-4444-444444444444", MemberName: "dorothy myers", Selection: "Team A to win",
+			StakeCents: 50_000, Result: betting.ResultWin,
+		}},
+	}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/markets/"+testMarketID+"/settle", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "dorothy myers") || !strings.Contains(body, "/regrade") {
+		t.Fatalf("settle page does not offer to grade the stranded wager: %q", body)
+	}
+}
+
+func TestAdminRegradeRequiresReason(t *testing.T) {
+	markets := &fakeMarkets{all: []bettingpg.MarketRow{settledMarketFixture()}}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	body := url.Values{"csrf_token": {testCSRF}}.Encode() // no reason
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/regrade", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if len(markets.regradeCalls) != 0 {
+		t.Fatal("RegradeStrandedWagers called without a reason")
+	}
+}
+
+// The form carries no outcome, and the handler must not invent one: the store
+// replays what the market already recorded.
+func TestAdminRegradePassesOnlyReasonAndActor(t *testing.T) {
+	markets := &fakeMarkets{
+		all:           []bettingpg.MarketRow{settledMarketFixture()},
+		regradeReport: bettingpg.SettleReport{WinCount: 1, Version: 2},
+	}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	body := url.Values{
+		"csrf_token": {testCSRF},
+		"reason":     {"accepted after the market settled"},
+		// A caller trying to smuggle a different result in must be ignored.
+		"outcome_" + testSelID: {"loss"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/regrade", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	if len(markets.regradeCalls) != 1 {
+		t.Fatalf("regrade calls = %d, want 1", len(markets.regradeCalls))
+	}
+	call := markets.regradeCalls[0]
+	if call[0] != testMarketID || call[1] != testUserID || call[2] != "accepted after the market settled" {
+		t.Fatalf("regrade call = %v, want market, session user, reason", call)
+	}
+}
+
+func TestAdminRegradeRejectsNonAdmin(t *testing.T) {
+	markets := &fakeMarkets{all: []bettingpg.MarketRow{settledMarketFixture()}}
+	handler := newTestHandler(t, memberSession(), markets, &fakeWagers{})
+
+	body := url.Values{"csrf_token": {testCSRF}, "reason": {"let me in"}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/regrade", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code == http.StatusSeeOther && len(markets.regradeCalls) > 0 {
+		t.Fatal("a member was allowed to regrade a market")
+	}
+	if len(markets.regradeCalls) != 0 {
+		t.Fatalf("regrade calls = %d, want 0", len(markets.regradeCalls))
 	}
 }

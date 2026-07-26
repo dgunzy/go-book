@@ -127,6 +127,10 @@ func (s Store) VoidMarket(ctx context.Context, req VoidMarketRequest) (SettleRep
 }
 
 func (s Store) settle(ctx context.Context, marketID, settlementType string, outcome map[string]betting.SettlementResult, actorUserID, reason, verifiedResultID string) (SettleReport, error) {
+	return s.settleWith(ctx, marketID, settlementType, outcome, actorUserID, reason, verifiedResultID, false)
+}
+
+func (s Store) settleWith(ctx context.Context, marketID, settlementType string, outcome map[string]betting.SettlementResult, actorUserID, reason, verifiedResultID string, regrade bool) (SettleReport, error) {
 	tx, err := s.begin(ctx)
 	if err != nil {
 		return SettleReport{}, err
@@ -147,7 +151,7 @@ func (s Store) settle(ctx context.Context, marketID, settlementType string, outc
 		}
 		market.State = betting.MarketClosed
 	}
-	if err := validateSettleableState(market.State, settlementType); err != nil {
+	if err := validateSettleableState(market.State, settlementType, regrade); err != nil {
 		return SettleReport{}, err
 	}
 
@@ -161,7 +165,16 @@ func (s Store) settle(ctx context.Context, marketID, settlementType string, outc
 	if err != nil {
 		return SettleReport{}, err
 	}
-	insertedID, existed, err := insertMarketSettlement(ctx, tx, marketID, string(settlementID), version, settlementType, verifiedResultID, actorUserID, reason, idempotencyKey)
+	// market_settlements requires every version past the first to name the
+	// settlement it follows, so a correction is always traceable back through
+	// the chain to the original grading.
+	supersedesID := ""
+	if version > 1 {
+		if supersedesID, err = previousSettlementID(ctx, tx, marketID, version); err != nil {
+			return SettleReport{}, err
+		}
+	}
+	insertedID, existed, err := insertMarketSettlement(ctx, tx, marketID, string(settlementID), version, settlementType, verifiedResultID, actorUserID, reason, idempotencyKey, supersedesID)
 	if err != nil {
 		return SettleReport{}, err
 	}
@@ -251,6 +264,7 @@ func (s Store) settle(ctx context.Context, marketID, settlementType string, outc
 			Actor:              betting.ID(actorUserID),
 			OccurredAt:         now,
 			MarketEventID:      marketEventID,
+			Regrade:            regrade,
 		})
 	} else {
 		result, err = betting.VoidMarket(betting.VoidMarketCommand{
@@ -337,8 +351,11 @@ func (s Store) settle(ctx context.Context, marketID, settlementType string, outc
 	return report, nil
 }
 
-func validateSettleableState(state betting.MarketState, settlementType string) error {
+func validateSettleableState(state betting.MarketState, settlementType string, regrade bool) error {
 	if settlementType == "graded" {
+		if regrade && state == betting.MarketSettled {
+			return nil
+		}
 		if state != betting.MarketClosed && state != betting.MarketSettlementPending {
 			return fmt.Errorf("%w: state %s", ErrMarketNotSettleable, state)
 		}
@@ -352,6 +369,20 @@ func validateSettleableState(state betting.MarketState, settlementType string) e
 	}
 }
 
+// previousSettlementID returns the settlement immediately below version, which
+// a correcting settlement must point at.
+func previousSettlementID(ctx context.Context, tx pgx.Tx, marketID string, version int) (string, error) {
+	var id string
+	err := tx.QueryRow(ctx, `
+		SELECT id::text FROM market_settlements
+		WHERE market_id = $1::uuid AND version < $2
+		ORDER BY version DESC LIMIT 1`, marketID, version).Scan(&id)
+	if err != nil {
+		return "", fmt.Errorf("load settlement superseded by version %d of market %s: %w", version, marketID, err)
+	}
+	return id, nil
+}
+
 func nextSettlementVersion(ctx context.Context, tx pgx.Tx, marketID string) (int, error) {
 	var version int
 	err := tx.QueryRow(ctx, `SELECT coalesce(max(version), 0) + 1 FROM market_settlements WHERE market_id = $1::uuid`, marketID).Scan(&version)
@@ -362,7 +393,7 @@ func nextSettlementVersion(ctx context.Context, tx pgx.Tx, marketID string) (int
 // insert-with-ON-CONFLICT-DO-NOTHING-then-verify idempotency pattern used
 // throughout legacybook. existed reports whether the idempotency key was
 // already present, in which case id is the pre-existing row's ID.
-func insertMarketSettlement(ctx context.Context, tx pgx.Tx, marketID, settlementID string, version int, settlementType, verifiedResultID, actorUserID, reason, idempotencyKey string) (id string, existed bool, err error) {
+func insertMarketSettlement(ctx context.Context, tx pgx.Tx, marketID, settlementID string, version int, settlementType, verifiedResultID, actorUserID, reason, idempotencyKey, supersedesID string) (id string, existed bool, err error) {
 	// settled_by is a real user reference; a system actor like
 	// "system:settlement-worker" is not a UUID and must be left NULL rather
 	// than passed into the ::uuid cast, which the verified_result_id branch
@@ -372,11 +403,11 @@ func insertMarketSettlement(ctx context.Context, tx pgx.Tx, marketID, settlement
 		settledByUUID = actorUserID
 	}
 	err = tx.QueryRow(ctx, `
-		INSERT INTO market_settlements (id, market_id, version, settlement_type, verified_result_id, settled_by, reason, idempotency_key)
-		VALUES ($1::uuid, $2::uuid, $3, $4, nullif($5, '')::uuid, nullif($6, '')::uuid, nullif($7, ''), $8)
+		INSERT INTO market_settlements (id, market_id, version, settlement_type, verified_result_id, settled_by, reason, idempotency_key, supersedes_settlement_id)
+		VALUES ($1::uuid, $2::uuid, $3, $4, nullif($5, '')::uuid, nullif($6, '')::uuid, nullif($7, ''), $8, nullif($9, '')::uuid)
 		ON CONFLICT (market_id, idempotency_key) DO NOTHING
 		RETURNING id::text`,
-		settlementID, marketID, version, settlementType, verifiedResultID, settledByUUID, reason, idempotencyKey).Scan(&id)
+		settlementID, marketID, version, settlementType, verifiedResultID, settledByUUID, reason, idempotencyKey, supersedesID).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		if err := tx.QueryRow(ctx, `
 			SELECT id::text FROM market_settlements WHERE market_id = $1::uuid AND idempotency_key = $2`,

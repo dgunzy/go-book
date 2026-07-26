@@ -86,6 +86,12 @@ type SettleMarketCommand struct {
 	Actor              ID
 	OccurredAt         time.Time
 	MarketEventID      ID
+	// Regrade allows an already-settled market as the source state, for the
+	// one case where a wager was accepted after its market was graded and so
+	// was never settled with the rest. Only wagers still in accepted state
+	// are graded, so an already-paid wager can never be paid twice; the
+	// caller supplies the market's own recorded outcome, never a new one.
+	Regrade bool
 }
 
 // SettleMarketResult bundles everything the caller must persist atomically:
@@ -109,7 +115,13 @@ func SettleMarket(command SettleMarketCommand) (SettleMarketResult, error) {
 	if err := command.Market.Validate(); err != nil {
 		return SettleMarketResult{}, err
 	}
-	if command.Market.State != MarketClosed && command.Market.State != MarketSettlementPending {
+	switch command.Market.State {
+	case MarketClosed, MarketSettlementPending:
+	case MarketSettled:
+		if !command.Regrade {
+			return SettleMarketResult{}, transitionErr("settle market", string(command.Market.State))
+		}
+	default:
 		return SettleMarketResult{}, transitionErr("settle market", string(command.Market.State))
 	}
 	if command.Version <= 0 {

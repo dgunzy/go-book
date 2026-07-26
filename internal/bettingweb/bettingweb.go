@@ -73,6 +73,8 @@ type MarketStore interface {
 	SetMarketCloseTime(ctx context.Context, marketID string, closesAt time.Time, actorUserID, reason string) error
 	SetStakeLimit(ctx context.Context, marketID, selectionID string, cents int64, actorUserID, reason string) error
 	VoidMarket(context.Context, bettingpg.VoidMarketRequest) (bettingpg.SettleReport, error)
+	StrandedWagers(ctx context.Context, marketID string) ([]bettingpg.StrandedWagerRow, error)
+	RegradeStrandedWagers(ctx context.Context, marketID, actorUserID, reason string) (bettingpg.SettleReport, error)
 }
 
 // WagerStore is the wager surface of bettingpg.Store this handler needs.
@@ -181,6 +183,7 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /admin/markets/{id}/restrict/lift", h.adminLiftRestriction)
 	h.mux.HandleFunc("GET /admin/markets/{id}/settle", h.adminSettleForm)
 	h.mux.HandleFunc("POST /admin/markets/{id}/settle", h.adminSettleMarket)
+	h.mux.HandleFunc("POST /admin/markets/{id}/regrade", h.adminRegradeMarket)
 	h.mux.HandleFunc("GET /admin/wagers", h.adminWagers)
 	h.mux.HandleFunc("GET /admin/wagers/record", h.adminWagerRecord)
 	h.mux.HandleFunc("POST /admin/wagers/{id}/accept", h.adminAcceptWager)
@@ -399,6 +402,9 @@ type pageData struct {
 	SelectionSlots    []int
 	MaxSelections     int
 	MarketableMatches []bettingpg.MatchMarketOption
+	// Stranded lists wagers a settled market never graded, so the settle page
+	// can offer to finish them off.
+	Stranded []strandedWagerView
 	// AutoApproveDollars and DefaultLineWeightDollars are the human-readable
 	// current settings shown on the help page.
 	AutoApproveDollars       string
@@ -746,9 +752,71 @@ func (h *Handler) adminSettleForm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// A settled market can still be holding a wager that was accepted after
+	// grading ran. Showing it here is the only place an admin would look.
+	var stranded []strandedWagerView
+	if market.State == betting.MarketSettled {
+		rows, err := h.deps.Markets.StrandedWagers(r.Context(), market.ID)
+		if err != nil {
+			h.internalError(w)
+			return
+		}
+		stranded = strandedWagerViews(rows)
+	}
 	h.render(w, "admin_market_settle", pageData{
 		Title: "Settle market", Current: "admin-markets", Session: session, Market: plainView(market),
+		Stranded: stranded,
 	})
+}
+
+// strandedWagerView is one ungraded wager on a settled market, with the
+// result the market's own settlement already recorded for its selection.
+type strandedWagerView struct {
+	bettingpg.StrandedWagerRow
+	Stake ledger.Money
+}
+
+func strandedWagerViews(rows []bettingpg.StrandedWagerRow) []strandedWagerView {
+	views := make([]strandedWagerView, 0, len(rows))
+	for _, row := range rows {
+		views = append(views, strandedWagerView{
+			StrandedWagerRow: row,
+			Stake:            ledger.Money{Cents: row.StakeCents, Currency: ledger.CAD},
+		})
+	}
+	return views
+}
+
+// adminRegradeMarket finishes off the wagers a settled market left ungraded.
+// The outcome is not taken from this form: the store replays the market's own
+// recorded settlement, so this cannot change a result or pay a wager twice.
+func (h *Handler) adminRegradeMarket(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	market, ok := h.findMarket(w, r, r.PathValue("id"))
+	if !ok {
+		return
+	}
+	reason := strings.TrimSpace(r.PostForm.Get("reason"))
+	if reason == "" || len(reason) > maxReasonLen {
+		h.failPost(w, r, session, http.StatusBadRequest,
+			"A reason is required (up to 500 characters) and is recorded with the settlement.", redirectAdminMarkets)
+		return
+	}
+	report, err := h.deps.Markets.RegradeStrandedWagers(r.Context(), market.ID, session.UserID, reason)
+	if err != nil {
+		status, text := storeErrorStatus(err)
+		h.failPost(w, r, session, status, text, redirectAdminMarkets)
+		return
+	}
+	graded := report.WinCount + report.LossCount + report.PushCount + report.VoidCount
+	h.completePost(w, r, redirectAdminMarkets, "Ungraded wagers settled.",
+		fmt.Sprintf("%d wager(s) graded against the result this market already recorded.", graded))
 }
 
 func (h *Handler) adminSettleMarket(w http.ResponseWriter, r *http.Request) {
