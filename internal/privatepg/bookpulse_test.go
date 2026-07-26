@@ -29,17 +29,17 @@ func pulseScript(t *testing.T, now time.Time) *scriptedDB {
 			[]any{"m-2", "Match 5", "closed", now, "Side B", int64(0), int64(0), int64(0)},
 		)},
 		{kind: "query", contains: "w.state = 'accepted'", args: []any{openWagerLimit}, rows: rows(
-			[]any{now, "Dan Guns", "Match 4", "Bill, DC to win", int32(-208), int64(30_000), int64(14_423), "CAD"},
+			[]any{now, "user-dan", "Dan Guns", "Match 4", "Bill, DC to win", int32(-208), int64(30_000), int64(14_423), "CAD"},
 		)},
 		{kind: "query", contains: "transaction_type IN", args: []any(nil), rows: rows(
-			[]any{"Dan Guns", int64(40_000), int64(6), int64(2), int64(1), int64(1), int64(120_000)},
-			[]any{"Bill C", int64(-10_000), int64(1), int64(3), int64(0), int64(2), int64(60_000)},
+			[]any{"user-dan", "Dan Guns", int64(40_000), int64(6), int64(2), int64(1), int64(1), int64(120_000)},
+			[]any{"user-bill", "Bill C", int64(-10_000), int64(1), int64(3), int64(0), int64(2), int64(60_000)},
 		)},
 		// Cash positions: Bill is down $150 and has not paid; the book still
 		// owes Dan $300 of winnings.
 		{kind: "query", contains: "account_type = 'user_cash'", args: []any{"CAD"}, rows: rows(
-			[]any{"Bill C", int64(-15_000)},
-			[]any{"Dan Guns", int64(30_000)},
+			[]any{"user-bill", "Bill C", int64(-15_000)},
+			[]any{"user-dan", "Dan Guns", int64(30_000)},
 		)},
 	}}
 }
@@ -100,6 +100,21 @@ func TestBookPulseComputesExposureAndSwing(t *testing.T) {
 
 	if len(pulse.OpenWagers) != 1 || pulse.OpenWagers[0].Member != "Dan Guns" || pulse.OpenWagers[0].Odds != -208 {
 		t.Fatalf("open wagers = %+v", pulse.OpenWagers)
+	}
+	// Every row carries its member ID so the dashboard can link straight to
+	// that member's book.
+	if pulse.OpenWagers[0].MemberID != "user-dan" {
+		t.Fatalf("open wager member ID = %q, want it carried through", pulse.OpenWagers[0].MemberID)
+	}
+	for _, player := range pulse.Players {
+		if player.UserID == "" {
+			t.Fatalf("player %q has no ID to link to", player.Name)
+		}
+	}
+	for _, row := range pulse.Outstanding {
+		if row.UserID == "" {
+			t.Fatalf("outstanding row %q has no ID to link to", row.Name)
+		}
 	}
 
 	// Owed and owing is a cash position, reported apart from the standings:

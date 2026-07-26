@@ -296,6 +296,49 @@ document.querySelectorAll("[data-dashboard-tabs]").forEach((tabs) => {
     });
   });
 
-  const fromHash = window.location.hash.replace("#", "");
-  if (!fromHash || !show(fromHash)) show(links[0].dataset.tab);
+  const showFromHash = () => {
+    const fromHash = window.location.hash.replace("#", "");
+    if (!fromHash || !show(fromHash)) show(links[0].dataset.tab);
+  };
+  // Back, forward, and a hand-edited address all have to move the tab, or the
+  // address bar and the page disagree about where you are.
+  window.addEventListener("hashchange", showFromHash);
+  showFromHash();
+});
+
+// Table filters.
+//
+// A busy board is a long table, and the thing an admin usually wants is one
+// member's bets. This filters the rows already on the page — no request, no
+// pagination to lose your place in. Without JavaScript the table renders in
+// full, which is the behaviour this replaces.
+document.querySelectorAll("[data-filter-for]").forEach((control) => {
+  const table = document.getElementById(control.dataset.filterFor);
+  const input = control.querySelector("[data-filter-input]");
+  const count = control.querySelector("[data-filter-count]");
+  if (!table || !input) return;
+
+  const rows = Array.from(table.querySelectorAll("tbody tr"));
+  // The empty-state row is not data and must never be filtered away.
+  const dataRows = rows.filter((row) => !row.querySelector(".private-empty-cell"));
+
+  const apply = () => {
+    const needle = input.value.trim().toLowerCase();
+    let shown = 0;
+    dataRows.forEach((row) => {
+      const match = !needle || row.textContent.toLowerCase().includes(needle);
+      row.hidden = !match;
+      if (match) shown += 1;
+    });
+    if (count) {
+      if (!needle) {
+        count.textContent = dataRows.length === 1 ? "1 bet" : dataRows.length + " bets";
+      } else {
+        count.textContent = shown + " of " + dataRows.length;
+      }
+    }
+  };
+
+  input.addEventListener("input", apply);
+  apply();
 });

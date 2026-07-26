@@ -14,14 +14,19 @@
 
 <section aria-labelledby="wager-record-heading">
   <h2 id="wager-record-heading" class="visually-hidden">Wager record</h2>
+  <div class="table-filter" data-filter-for="wager-record">
+    <label for="wager-record-filter">Filter</label>
+    <input id="wager-record-filter" type="search" placeholder="Member, market or pick" autocomplete="off" data-filter-input>
+    <span class="table-filter-count" data-filter-count></span>
+  </div>
   <div class="private-table-wrap">
-    <table class="private-table private-table-wide private-table-stack wager-record">
+    <table class="private-table private-table-wide private-table-stack wager-record" id="wager-record">
       <thead><tr><th scope="col">Placed</th><th scope="col">Member</th><th scope="col">Market &amp; pick</th><th scope="col">Opening</th><th scope="col">Taken</th><th scope="col">Closing</th><th scope="col">Against the close</th><th scope="col">Stake</th><th scope="col">Outcome</th></tr></thead>
       <tbody>
         {{range .WagerRecord}}
         <tr{{if .BeatTheClose}} class="is-line-moved"{{end}}>
           <td data-label="Placed">{{when .PlacedAt}}</td>
-          <th scope="row">{{.MemberName}}</th>
+          <th scope="row">{{if .UserID}}<a class="betting-primary-link" href="/admin/members/{{.UserID}}/book">{{.MemberName}}</a>{{else}}{{.MemberName}}{{end}}</th>
           <td class="wager-record-pick" data-label="Market &amp; pick">{{.SelectionTerms}}<small>{{.MarketTitle}}</small></td>
           <td class="private-odds" data-label="Opening">{{odds .OpeningOdds}}</td>
           <td class="private-odds" data-label="Taken"><strong>{{odds .TakenOdds}}</strong></td>

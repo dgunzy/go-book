@@ -103,7 +103,7 @@
         <tbody>
           {{range .Pulse.Players}}
           <tr>
-            <th scope="row">{{.Name}}</th>
+            <th scope="row">{{if .UserID}}<a class="betting-primary-link" href="/admin/members/{{.UserID}}/book">{{.Name}}</a>{{else}}{{.Name}}{{end}}</th>
             <td class="private-money{{if .Ahead}} is-ahead-text{{else if lt .Net.Cents 0}} is-behind-text{{end}}" data-label="Net">{{money .Net}}</td>
             <td class="pulse-plot" data-label="Ahead / behind">
               <div class="pulse-track" title="{{.Name}}: {{money .Net}}">
@@ -139,7 +139,7 @@
       <tbody>
         {{range .Pulse.Outstanding}}
         <tr>
-          <th scope="row">{{.Name}}</th>
+          <th scope="row">{{if .UserID}}<a class="betting-primary-link" href="/admin/members/{{.UserID}}/book">{{.Name}}</a>{{else}}{{.Name}}{{end}}</th>
           <td class="private-money{{if .Owes}} is-behind-text{{else}} is-ahead-text{{end}}" data-label="Balance">{{money .Balance}}</td>
           <td data-label="Position">{{if .Owes}}Owes the book{{else}}The book owes them{{end}}</td>
         </tr>
@@ -157,15 +157,20 @@
 <div class="dashboard-panel" data-panel="action">
 <section aria-labelledby="open-action-heading">
   <div class="private-section-heading"><h2 id="open-action-heading">Action on the board</h2></div>
-  <p class="pulse-note">Accepted bets still waiting on a result, newest first.</p>
+  <p class="pulse-note">Every accepted bet still waiting on a result, newest first. Click a member to open their book.</p>
+  <div class="table-filter" data-filter-for="open-action">
+    <label for="open-action-filter">Filter</label>
+    <input id="open-action-filter" type="search" placeholder="Member, market or pick — e.g. Nasrallah" autocomplete="off" data-filter-input>
+    <span class="table-filter-count" data-filter-count></span>
+  </div>
   <div class="private-table-wrap">
-    <table class="private-table private-table-wide private-table-stack">
+    <table class="private-table private-table-wide private-table-stack" id="open-action">
       <thead><tr><th scope="col">Placed</th><th scope="col">Member</th><th scope="col">Market</th><th scope="col">Selection</th><th scope="col">Odds</th><th scope="col">Stake</th><th scope="col">To win</th></tr></thead>
       <tbody>
         {{range .Pulse.OpenWagers}}
         <tr>
           <td data-label="Placed">{{when .PlacedAt}}</td>
-          <th scope="row">{{.Member}}</th>
+          <th scope="row">{{if .MemberID}}<a class="betting-primary-link" href="/admin/members/{{.MemberID}}/book">{{.Member}}</a>{{else}}{{.Member}}{{end}}</th>
           <td data-label="Market">{{.Market}}</td>
           <td data-label="Selection">{{.Selection}}</td>
           <td class="private-odds" data-label="Odds">{{odds .Odds}}</td>

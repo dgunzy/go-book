@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -109,20 +110,20 @@ func testDependencies(session Session) (Dependencies, *fakeReader) {
 			},
 		}},
 		OpenWagers: []OpenWagerRow{{
-			PlacedAt: now, Member: "Dan Guns", Market: "Cabot Cup 2026 Match 4", Selection: "Bill, DC to win",
+			PlacedAt: now, MemberID: "user-dan", Member: "Dan Guns", Market: "Cabot Cup 2026 Match 4", Selection: "Bill, DC to win",
 			Odds: ledger.AmericanOdds(-208), Stake: ledger.Money{Cents: 30_000, Currency: ledger.CAD},
 			ToWin: ledger.Money{Cents: 14_423, Currency: ledger.CAD},
 		}},
 		Players: []PlayerResult{
-			{Name: "Dan Guns", Net: ledger.Money{Cents: 40_000, Currency: ledger.CAD}, Won: 6, Lost: 2, Pushed: 1, Open: 1,
+			{UserID: "user-dan", Name: "Dan Guns", Net: ledger.Money{Cents: 40_000, Currency: ledger.CAD}, Won: 6, Lost: 2, Pushed: 1, Open: 1,
 				Handle: ledger.Money{Cents: 120_000, Currency: ledger.CAD}, BarPercent: 100},
-			{Name: "Bill C", Net: ledger.Money{Cents: -10_000, Currency: ledger.CAD}, Won: 1, Lost: 3, Open: 2,
+			{UserID: "user-bill", Name: "Bill C", Net: ledger.Money{Cents: -10_000, Currency: ledger.CAD}, Won: 1, Lost: 3, Open: 2,
 				Handle: ledger.Money{Cents: 60_000, Currency: ledger.CAD}, BarPercent: 25},
 		},
 		PlayerScale: ledger.Money{Cents: 40_000, Currency: ledger.CAD},
 		Outstanding: []OutstandingRow{
-			{Name: "Bill C", Balance: ledger.Money{Cents: -15_000, Currency: ledger.CAD}},
-			{Name: "Dan Guns", Balance: ledger.Money{Cents: 30_000, Currency: ledger.CAD}},
+			{UserID: "user-bill", Name: "Bill C", Balance: ledger.Money{Cents: -15_000, Currency: ledger.CAD}},
+			{UserID: "user-dan", Name: "Dan Guns", Balance: ledger.Money{Cents: 30_000, Currency: ledger.CAD}},
 		},
 		OwedToBook: ledger.Money{Cents: 15_000, Currency: ledger.CAD},
 		OwedByBook: ledger.Money{Cents: 30_000, Currency: ledger.CAD},
@@ -499,5 +500,66 @@ func TestAdminDashboardIsSplitIntoTabbedPanels(t *testing.T) {
 		if !strings.Contains(body, expected) {
 			t.Errorf("dashboard lost its %q section", expected)
 		}
+	}
+}
+
+// The dashboard is where an admin actually watches the book, so a member's
+// name has to be a way into their bets rather than a dead end that sends you
+// to the Members page to find them again.
+func TestAdminDashboardLinksMembersToTheirBook(t *testing.T) {
+	deps, _ := testDependencies(Session{UserID: "admin-1", DisplayName: "Book Admin", Role: RoleAdmin, Active: true})
+	response := httptest.NewRecorder()
+	newHandler(t, deps).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin", nil))
+
+	body := response.Body.String()
+	for _, link := range []string{
+		`href="/admin/members/user-dan/book"`,
+		`href="/admin/members/user-bill/book"`,
+	} {
+		if !strings.Contains(body, link) {
+			t.Errorf("dashboard does not link to %q", link)
+		}
+	}
+	// The links appear in every place a member is named: standings, owed and
+	// owing, and the live action list.
+	if strings.Count(body, `href="/admin/members/user-dan/book"`) < 3 {
+		t.Errorf("Dan is named in three sections but linked %d times",
+			strings.Count(body, `href="/admin/members/user-dan/book"`))
+	}
+}
+
+// The action list is filtered in the browser, so the whole board has to be in
+// the HTML: filtering must never be a reason a bet is missing.
+func TestAdminDashboardRendersEveryLiveBetWithAFilter(t *testing.T) {
+	deps, reader := testDependencies(Session{UserID: "admin-1", DisplayName: "Book Admin", Role: RoleAdmin, Active: true})
+	now := time.Date(2026, time.July, 25, 23, 30, 0, 0, time.UTC)
+	// More bets than the old truncated list would have shown.
+	pulse := reader.pulse
+	pulse.OpenWagers = nil
+	for i := 0; i < 40; i++ {
+		pulse.OpenWagers = append(pulse.OpenWagers, OpenWagerRow{
+			PlacedAt: now, MemberID: "user-" + strconv.Itoa(i), Member: "Member " + strconv.Itoa(i),
+			Market: "Leading points getter", Selection: "Runner " + strconv.Itoa(i),
+			Odds: ledger.AmericanOdds(150), Stake: ledger.Money{Cents: 5_000, Currency: ledger.CAD},
+			ToWin: ledger.Money{Cents: 7_500, Currency: ledger.CAD},
+		})
+	}
+	reader.pulse = pulse
+
+	response := httptest.NewRecorder()
+	newHandler(t, deps).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/admin", nil))
+	body := response.Body.String()
+
+	for _, member := range []string{"Member 0", "Member 26", "Member 39"} {
+		if !strings.Contains(body, member) {
+			t.Errorf("live action list is missing %q", member)
+		}
+	}
+	if !strings.Contains(body, `data-filter-for="open-action"`) || !strings.Contains(body, `id="open-action"`) {
+		t.Error("the action list has no filter control wired to it")
+	}
+	// Nothing may be hidden server-side; the filter only hides in the browser.
+	if strings.Contains(body, "<tr hidden") {
+		t.Error("a row is hidden in the rendered HTML")
 	}
 }

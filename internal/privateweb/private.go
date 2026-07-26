@@ -169,7 +169,8 @@ type BookPulse struct {
 
 // OutstandingRow is one member's cash position with the book.
 type OutstandingRow struct {
-	Name string
+	UserID string
+	Name   string
 	// Balance is negative when the member owes the book.
 	Balance ledger.Money
 }
@@ -204,7 +205,10 @@ type ExposureOutcome struct {
 }
 
 type OpenWagerRow struct {
-	PlacedAt  time.Time
+	PlacedAt time.Time
+	// MemberID lets the dashboard link straight to that member's book rather
+	// than sending an admin off to the Members page to find them.
+	MemberID  string
 	Member    string
 	Market    string
 	Selection string
@@ -215,7 +219,8 @@ type OpenWagerRow struct {
 
 // PlayerResult is one member's running record against the book.
 type PlayerResult struct {
-	Name string
+	UserID string
+	Name   string
 	// Net is the member's realized profit or loss from settled wagers.
 	Net    ledger.Money
 	Won    int

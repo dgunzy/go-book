@@ -939,3 +939,8 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .betting-close-time-form input[type="datetime-local"] { border: 1px solid #b8c1bb; border-radius: 4px; font: inherit; font-size: .74rem; padding: .25rem .35rem; width: auto; }
 .betting-close-time-form input[name="reason"] { width: 7rem; }
 .dashboard-panel[hidden] { display: none; }
+.table-filter { align-items: center; display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .6rem; }
+.table-filter label { color: #5b6760; font-size: .7rem; font-weight: 800; text-transform: uppercase; }
+.table-filter input { border: 1px solid #b8c1bb; border-radius: 4px; flex: 1 1 18rem; font: inherit; font-size: .82rem; max-width: 26rem; padding: .4rem .6rem; }
+.table-filter-count { color: #6c7770; font-size: .74rem; }
+.private-table tbody tr[hidden] { display: none; }

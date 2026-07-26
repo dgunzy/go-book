@@ -2200,3 +2200,23 @@ func TestSetCloseTimeExplainsAPastTimeAndAClosedMarket(t *testing.T) {
 		})
 	}
 }
+
+// The record is the other long table an admin scans, so it needs the same two
+// affordances as the dashboard: a filter, and a way into the member's book.
+func TestWagerRecordFiltersAndLinksToTheMember(t *testing.T) {
+	row := recordRowFixture(-180, -208, -271, betting.MarketOpen, "")
+	row.UserID = testUserID
+	wagers := &fakeWagers{record: []bettingpg.WagerRecordRow{row}}
+	handler := newTestHandlerWithSettlements(t, adminSession(), &fakeMarkets{}, wagers, &fakeSettlements{})
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin/wagers/record", nil))
+
+	body := w.Body.String()
+	if !strings.Contains(body, `href="/admin/members/`+testUserID+`/book"`) {
+		t.Error("the record does not link the member to their book")
+	}
+	if !strings.Contains(body, `data-filter-for="wager-record"`) || !strings.Contains(body, `id="wager-record"`) {
+		t.Error("the record has no filter wired to its table")
+	}
+}

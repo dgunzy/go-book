@@ -13,9 +13,11 @@ import (
 // scoped to it rather than added across currencies, which would be meaningless.
 const bookCurrency = ledger.CAD
 
-// openWagerLimit caps the "action on the board" list. Exposure per market is
-// summarised above it, so the list is a recent-activity read, not a ledger.
-const openWagerLimit = 25
+// openWagerLimit bounds the "action on the board" list so a runaway query
+// cannot render an unbounded page. It is deliberately far above what this book
+// will ever have live at once: an admin looking at the board needs to see
+// every bet on it, not the newest handful.
+const openWagerLimit = 500
 
 // BookPulse returns the book-wide dashboard: realized house result, money at
 // risk, per-market exposure, the open action, and every player's record. It
@@ -218,7 +220,7 @@ func (r *Readers) openWagerRows(ctx context.Context) ([]privateweb.OpenWagerRow,
 		var odds int32
 		var stakeCents, profitCents int64
 		var currencyCode string
-		if err := rows.Scan(&row.PlacedAt, &row.Member, &row.Market, &row.Selection,
+		if err := rows.Scan(&row.PlacedAt, &row.MemberID, &row.Member, &row.Market, &row.Selection,
 			&odds, &stakeCents, &profitCents, &currencyCode); err != nil {
 			return nil, fmt.Errorf("scan open wager: %w", err)
 		}
@@ -253,7 +255,7 @@ func (r *Readers) outstandingRows(ctx context.Context) ([]privateweb.Outstanding
 	for rows.Next() {
 		var row privateweb.OutstandingRow
 		var cents int64
-		if err := rows.Scan(&row.Name, &cents); err != nil {
+		if err := rows.Scan(&row.UserID, &row.Name, &cents); err != nil {
 			return nil, fmt.Errorf("scan outstanding balance: %w", err)
 		}
 		row.Balance = ledger.Money{Cents: cents, Currency: bookCurrency}
@@ -277,7 +279,7 @@ func (r *Readers) playerResults(ctx context.Context) ([]privateweb.PlayerResult,
 		var row privateweb.PlayerResult
 		var netCents, handleCents int64
 		var won, lost, pushed, open int64
-		if err := rows.Scan(&row.Name, &netCents, &won, &lost, &pushed, &open, &handleCents); err != nil {
+		if err := rows.Scan(&row.UserID, &row.Name, &netCents, &won, &lost, &pushed, &open, &handleCents); err != nil {
 			return nil, fmt.Errorf("scan player result: %w", err)
 		}
 		for target, value := range map[*int]int64{
@@ -340,7 +342,7 @@ GROUP BY m.id, m.title, m.state, m.closes_at, s.id, s.display_terms
 ORDER BY m.closes_at, m.id, s.id`
 
 const openWagersSQL = `
-SELECT w.placed_at, u.display_name, m.title, w.accepted_terms,
+SELECT w.placed_at, u.id::text, u.display_name, m.title, w.accepted_terms,
        w.accepted_american_odds, w.stake_cents, w.potential_profit_cents, w.currency::text
 FROM wagers w
 JOIN users u ON u.id = w.user_id
@@ -375,7 +377,7 @@ record AS (
                         WHERE later.supersedes_wager_settlement_id = ws.id)
     GROUP BY w.user_id
 )
-SELECT u.display_name,
+SELECT u.id::text, u.display_name,
        coalesce(b.net_cents, 0)::bigint,
        coalesce(r.won, 0)::bigint, coalesce(r.lost, 0)::bigint, coalesce(r.pushed, 0)::bigint,
        coalesce(r.open_wagers, 0)::bigint, coalesce(r.handle_cents, 0)::bigint
@@ -388,7 +390,7 @@ ORDER BY coalesce(b.net_cents, 0) DESC, u.display_name`
 // outstandingSQL lists members who are not square with the book. A negative
 // balance is money the member owes.
 const outstandingSQL = `
-SELECT u.display_name, b.balance_cents::bigint
+SELECT u.id::text, u.display_name, b.balance_cents::bigint
 FROM users u
 JOIN ledger_account_balances b ON b.owner_user_id = u.id
     AND b.account_type = 'user_cash' AND b.currency::text = $1
