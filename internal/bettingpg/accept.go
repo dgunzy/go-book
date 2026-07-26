@@ -77,6 +77,22 @@ func (s Store) AcceptWager(ctx context.Context, wagerID, actorUserID string) (be
 		return wager, nil
 	}
 
+	// A market that has already been graded or voided will never grade this
+	// wager, so accepting one would take a member's stake into escrow with no
+	// path back out. The market row is read without a lock on purpose: settle
+	// locks the market first and the wagers second, so taking the market lock
+	// here would invert that order. Holding this wager's row lock is enough —
+	// an in-flight settlement is blocked on it and will grade this wager once
+	// we commit, and a settlement that already committed is visible here.
+	marketState, err := marketStateForWager(ctx, tx, string(wager.MarketID))
+	if err != nil {
+		return betting.Wager{}, err
+	}
+	switch marketState {
+	case betting.MarketSettled, betting.MarketVoided, betting.MarketCancelled:
+		return betting.Wager{}, fmt.Errorf("%w: market is already %s", ErrMarketDecided, marketState)
+	}
+
 	userAccountID, err := ensureUserAccount(ctx, tx, string(wager.UserID), wager.FundingAccountType, wager.Stake.Currency)
 	if err != nil {
 		return betting.Wager{}, err

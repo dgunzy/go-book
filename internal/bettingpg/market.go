@@ -32,7 +32,16 @@ func (s Store) CloseMarket(ctx context.Context, marketID, actor string) error {
 	if !market.State.CanTransitionTo(betting.MarketClosed) {
 		return fmt.Errorf("%w: market %s state %s cannot close", ErrMarketNotSettleable, marketID, market.State)
 	}
+	if err := closeOpenMarketTx(ctx, tx, marketID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
 
+// closeOpenMarketTx moves an open market to closed inside a caller's
+// transaction and publishes MarketClosed. The caller must already hold the
+// market row lock and have established that the market is open.
+func closeOpenMarketTx(ctx context.Context, tx pgx.Tx, marketID string) error {
 	tag, err := tx.Exec(ctx, `UPDATE markets SET state = 'closed', updated_at = now() WHERE id = $1::uuid AND state = 'open'`, marketID)
 	if err != nil {
 		return fmt.Errorf("close market %s: %w", marketID, err)
@@ -58,10 +67,7 @@ func (s Store) CloseMarket(ctx context.Context, marketID, actor string) error {
 		Payload:          payload,
 		OccurredAt:       time.Now().UTC(),
 	}
-	if err := eventspg.Publish(ctx, tx, envelope, maxOutboxAttempts); err != nil {
-		return err
-	}
-	return tx.Commit(ctx)
+	return eventspg.Publish(ctx, tx, envelope, maxOutboxAttempts)
 }
 
 // SettleMarketRequest grades a closed or settlement-pending market. Outcome
@@ -130,6 +136,16 @@ func (s Store) settle(ctx context.Context, marketID, settlementType string, outc
 	market, err := loadMarketForUpdate(ctx, tx, marketID)
 	if err != nil {
 		return SettleReport{}, err
+	}
+	// Grading a market that is still open closes it first, in this same
+	// transaction. Match markets have always worked this way (see
+	// SettleMatchMarkets); requiring a separate Close click before a manual
+	// grade was an asymmetry that just stranded finished markets in open.
+	if settlementType == "graded" && market.State == betting.MarketOpen {
+		if err := closeOpenMarketTx(ctx, tx, marketID); err != nil {
+			return SettleReport{}, err
+		}
+		market.State = betting.MarketClosed
 	}
 	if err := validateSettleableState(market.State, settlementType); err != nil {
 		return SettleReport{}, err

@@ -82,6 +82,16 @@ func loadMarketForUpdate(ctx context.Context, tx pgx.Tx, marketID string) (betti
 		FROM markets WHERE id = $1::uuid FOR UPDATE`, marketID), marketID)
 }
 
+// marketStateForWager reads a market's state without locking the row. See
+// AcceptWager for why the lock is deliberately not taken here.
+func marketStateForWager(ctx context.Context, tx pgx.Tx, marketID string) (betting.MarketState, error) {
+	var state string
+	if err := tx.QueryRow(ctx, `SELECT state FROM markets WHERE id = $1::uuid`, marketID).Scan(&state); err != nil {
+		return "", fmt.Errorf("load market %s state: %w", marketID, err)
+	}
+	return betting.MarketState(state), nil
+}
+
 func scanMarket(row pgx.Row, marketID string) (betting.Market, error) {
 	var marketType, matchID, title, state, currency string
 	var opensAt sql.NullTime

@@ -1040,8 +1040,10 @@ func storeErrorStatus(err error) (int, string) {
 		return http.StatusNotFound, "The requested record was not found."
 	case errors.Is(err, bettingpg.ErrInsufficientFunds):
 		return http.StatusConflict, "The member's funding account does not cover this stake."
+	case errors.Is(err, bettingpg.ErrMarketDecided):
+		return http.StatusConflict, "This market has already been settled or voided, so there is nothing left to grade this wager against. Void the wager to return the stake, or reopen the question with the owner."
 	case errors.Is(err, bettingpg.ErrMarketNotSettleable):
-		return http.StatusConflict, "This market is not in a state that can be settled or voided."
+		return http.StatusConflict, "This market is not in a state that can be settled or voided. Only a draft market cannot be graded; a market already settled or voided is final."
 	case errors.Is(err, bettingpg.ErrMarketNotOpenable):
 		return http.StatusConflict, "This market cannot be opened from its current state."
 	case errors.Is(err, bettingpg.ErrMatchMarketExists):

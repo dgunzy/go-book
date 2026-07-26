@@ -9,6 +9,10 @@ var (
 	// ErrMarketNotSettleable is returned when SettleMarket or VoidMarket is
 	// asked to grade a market outside its allowed source states.
 	ErrMarketNotSettleable = errors.New("bettingpg: market is not in a settleable state")
+	// ErrMarketDecided is returned when a wager is accepted on a market that
+	// has already been graded or voided, which would put the stake into
+	// escrow with nothing left to grade it.
+	ErrMarketDecided = errors.New("bettingpg: market has already been settled or voided")
 	// ErrMarketNotOpenable is returned when OpenMarket is asked to open a
 	// market that is not in draft state.
 	ErrMarketNotOpenable = errors.New("bettingpg: market cannot be opened from its current state")
