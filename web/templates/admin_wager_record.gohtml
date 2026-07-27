@@ -56,6 +56,14 @@
               <input id="void-reason-{{.ID}}" name="reason" maxlength="500" placeholder="Reason" required>
               <button type="submit" class="betting-danger-button">Void</button>
             </form>
+            <form method="post" action="/admin/wagers/{{.ID}}/reduce" class="betting-inline-form" hx-post="/admin/wagers/{{.ID}}/reduce" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <label class="visually-hidden" for="reduce-stake-{{.ID}}">New stake in dollars</label>
+              <input id="reduce-stake-{{.ID}}" name="stake" inputmode="decimal" placeholder="Cut to $" required>
+              <label class="visually-hidden" for="reduce-reason-{{.ID}}">Why this wager is being reduced</label>
+              <input id="reduce-reason-{{.ID}}" name="reason" maxlength="500" placeholder="Reason" required>
+              <button type="submit">Reduce</button>
+            </form>
             {{end}}
           </td>
         </tr>

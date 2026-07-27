@@ -159,3 +159,47 @@ func (h *Handler) adminVoidWager(w http.ResponseWriter, r *http.Request) {
 	h.completePost(w, r, redirectAdminWagerRecord, "Wager voided.",
 		fmt.Sprintf("%s went back to the member. Every other wager on the market stands.", formatMoney(voided.Stake)))
 }
+
+// adminReduceWager cuts one accepted wager's stake, keeping the price the
+// member was filled at, and hands the difference back. Admin only, and
+// available after a market closes: the request usually arrives once betting
+// has stopped.
+func (h *Handler) adminReduceWager(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	wagerID := r.PathValue("id")
+	if !isUUID(wagerID) {
+		h.failPost(w, r, session, http.StatusNotFound, "The requested wager was not found.", redirectAdminWagerRecord)
+		return
+	}
+	reason := strings.TrimSpace(r.PostForm.Get("reason"))
+	if reason == "" || len(reason) > maxReasonLen {
+		h.failPost(w, r, session, http.StatusBadRequest,
+			"Say why this wager is being reduced (up to 500 characters) — the member sees it on their ledger.", redirectAdminWagerRecord)
+		return
+	}
+	newStakeCents, err := parseStakeCents(r.PostForm.Get("stake"))
+	if err != nil {
+		h.failPost(w, r, session, http.StatusBadRequest,
+			"Enter the stake this wager should come down to, in dollars.", redirectAdminWagerRecord)
+		return
+	}
+
+	reduced, refund, err := h.deps.Wagers.ReduceWager(r.Context(), wagerID, newStakeCents, session.UserID, reason)
+	if err != nil {
+		status, text := storeErrorStatus(err)
+		if errors.Is(err, betting.ErrInvalidTransition) {
+			text = "Only an accepted wager can be reduced, and only to a stake below what it is riding now. Void it instead to remove it entirely."
+		}
+		h.failPost(w, r, session, status, text, redirectAdminWagerRecord)
+		return
+	}
+	h.completePost(w, r, redirectAdminWagerRecord, "Wager reduced.",
+		fmt.Sprintf("%s went back to the member. The wager rides %s at the same price, to win %s.",
+			formatMoney(refund), formatMoney(reduced.Stake), formatMoney(reduced.PotentialProfit)))
+}

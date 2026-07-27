@@ -203,10 +203,35 @@ func verifyAcceptance(ctx context.Context, tx pgx.Tx, wager betting.Wager) error
 	if err != nil {
 		return fmt.Errorf("verify wager acceptance transaction: %w", err)
 	}
-	if count != 2 || -userAmount != wager.Stake.Cents || escrowAmount != wager.Stake.Cents {
+	// A reduced wager's stake is deliberately smaller than what acceptance
+	// moved: the difference went back to the member as a partial refund. The
+	// acceptance transaction itself is never rewritten, so the check is that
+	// escrow still holds acceptance less every reduction since.
+	refunded, err := reducedCents(ctx, tx, wager)
+	if err != nil {
+		return err
+	}
+	held := wager.Stake.Cents + refunded
+	if count != 2 || -userAmount != held || escrowAmount != held {
 		return fmt.Errorf("%w: accepted wager %s acceptance transaction does not match its stake", ErrIdempotencyConflict, wager.ID)
 	}
 	return nil
+}
+
+// reducedCents totals what has been handed back to the member by stake
+// reductions on this wager.
+func reducedCents(ctx context.Context, tx pgx.Tx, wager betting.Wager) (int64, error) {
+	var total int64
+	err := tx.QueryRow(ctx, `
+		SELECT coalesce(sum(p.amount_cents) FILTER (WHERE p.amount_cents > 0), 0)
+		FROM ledger_transactions t
+		JOIN ledger_postings p ON p.transaction_id = t.id
+		WHERE t.currency = $1 AND t.idempotency_key LIKE $2`,
+		string(wager.Stake.Currency), fmt.Sprintf("wager:%s:reduce:%%", wager.ID)).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("total wager reductions: %w", err)
+	}
+	return total, nil
 }
 
 // RejectWager moves a pending wager to rejected. No funds ever moved, so no

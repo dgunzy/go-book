@@ -190,6 +190,8 @@ type fakeWagers struct {
 	recordLimit   int
 	voidErr       error
 	voidCalls     []struct{ id, actor, reason string }
+	reduceErr     error
+	reduceCalls   []reduceCall
 }
 
 func (f *fakeWagers) PlaceWager(_ context.Context, req bettingpg.PlaceWagerRequest) (betting.Wager, error) {
@@ -231,6 +233,24 @@ func (f *fakeWagers) CancelWager(_ context.Context, wagerID, userID string) (bet
 func (f *fakeWagers) ListWagersByState(context.Context, betting.WagerState) ([]bettingpg.AdminWagerRow, error) {
 	return f.pending, nil
 }
+
+type reduceCall struct {
+	id, actor, reason string
+	stakeCents        int64
+}
+
+func (f *fakeWagers) ReduceWager(_ context.Context, wagerID string, newStakeCents int64, actorUserID, reason string) (betting.Wager, ledger.Money, error) {
+	f.reduceCalls = append(f.reduceCalls, reduceCall{wagerID, actorUserID, reason, newStakeCents})
+	if f.reduceErr != nil {
+		return betting.Wager{}, ledger.Money{}, f.reduceErr
+	}
+	return betting.Wager{
+		ID: betting.ID(wagerID), State: betting.WagerAccepted,
+		Stake:           ledger.Money{Cents: newStakeCents, Currency: ledger.CAD},
+		PotentialProfit: ledger.Money{Cents: newStakeCents / 2, Currency: ledger.CAD},
+	}, ledger.Money{Cents: 100_000, Currency: ledger.CAD}, nil
+}
+
 func (f *fakeWagers) VoidWager(_ context.Context, wagerID, actorUserID, reason string) (betting.Wager, error) {
 	f.voidCalls = append(f.voidCalls, struct{ id, actor, reason string }{wagerID, actorUserID, reason})
 	if f.voidErr != nil {
@@ -2345,5 +2365,76 @@ func TestAdminRegradeRejectsNonAdmin(t *testing.T) {
 	}
 	if len(markets.regradeCalls) != 0 {
 		t.Fatalf("regrade calls = %d, want 0", len(markets.regradeCalls))
+	}
+}
+
+func reducePath() string { return "/admin/wagers/" + testWagerIDForReduce + "/reduce" }
+
+const testWagerIDForReduce = "66666666-6666-6666-6666-666666666666"
+
+func TestAdminReduceWagerPassesStakeActorAndReason(t *testing.T) {
+	wagers := &fakeWagers{}
+	handler := newTestHandler(t, adminSession(), &fakeMarkets{}, wagers)
+
+	body := url.Values{"csrf_token": {testCSRF}, "stake": {"2000"}, "reason": {"member asked to come down"}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, reducePath(), strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 (body %q)", w.Code, w.Body.String())
+	}
+	if len(wagers.reduceCalls) != 1 {
+		t.Fatalf("reduce calls = %d, want 1", len(wagers.reduceCalls))
+	}
+	call := wagers.reduceCalls[0]
+	if call.stakeCents != 200_000 {
+		t.Errorf("stake = %d cents, want 200000", call.stakeCents)
+	}
+	if call.actor != testUserID {
+		t.Errorf("actor = %q, want the session user %q, never a form value", call.actor, testUserID)
+	}
+	if call.reason != "member asked to come down" {
+		t.Errorf("reason = %q", call.reason)
+	}
+}
+
+// The member sees the reason on their ledger, so it cannot be optional.
+func TestAdminReduceWagerRequiresStakeAndReason(t *testing.T) {
+	for _, form := range []url.Values{
+		{"csrf_token": {testCSRF}, "stake": {"2000"}},                 // no reason
+		{"csrf_token": {testCSRF}, "reason": {"why"}},                 // no stake
+		{"csrf_token": {testCSRF}, "stake": {"abc"}, "reason": {"w"}}, // unparseable
+	} {
+		wagers := &fakeWagers{}
+		handler := newTestHandler(t, adminSession(), &fakeMarkets{}, wagers)
+		r := httptest.NewRequest(http.MethodPost, reducePath(), strings.NewReader(form.Encode()))
+		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("status for %v = %d, want 400", form, w.Code)
+		}
+		if len(wagers.reduceCalls) != 0 {
+			t.Errorf("ReduceWager called for %v", form)
+		}
+	}
+}
+
+// Reducing another member's stake is an admin operation, full stop.
+func TestAdminReduceWagerRejectsNonAdmin(t *testing.T) {
+	wagers := &fakeWagers{}
+	handler := newTestHandler(t, memberSession(), &fakeMarkets{}, wagers)
+
+	body := url.Values{"csrf_token": {testCSRF}, "stake": {"2000"}, "reason": {"let me"}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, reducePath(), strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if len(wagers.reduceCalls) != 0 {
+		t.Fatalf("a member reduced a wager: %+v", wagers.reduceCalls)
 	}
 }
