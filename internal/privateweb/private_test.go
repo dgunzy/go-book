@@ -406,9 +406,11 @@ func TestAdminDashboardRendersTheBookPulse(t *testing.T) {
 		"Dan Guns",         // player standings
 		"CA$400.00",        // leading player's net
 		"6&ndash;2",        // record
-		"width:100%",       // the leader's bar fills the track
-		"width:25%",        // the trailing player's bar is scaled against it
-		"pulse-bar is-ahead", "pulse-bar is-behind",
+		// Bar lengths are SVG geometry, not inline styles: see
+		// TestAdminPagesEmitNoInlineStyles for why.
+		`width="100"`, // the leader's bar fills its half of the track
+		`width="25"`,  // the trailing player's bar is scaled against it
+		"pulse-svg-bar is-ahead", "pulse-svg-bar is-behind",
 		"Longest bar = CA$400.00",
 	} {
 		if !strings.Contains(body, expected) {
@@ -561,5 +563,78 @@ func TestAdminDashboardRendersEveryLiveBetWithAFilter(t *testing.T) {
 	// Nothing may be hidden server-side; the filter only hides in the browser.
 	if strings.Contains(body, "<tr hidden") {
 		t.Error("a row is hidden in the rendered HTML")
+	}
+}
+
+// The standings bars were once inline style="width:N%" attributes. This page
+// is served with style-src 'self', so the browser dropped every one of them
+// and each bar collapsed to a two-pixel sliver in production while every test
+// passed. Geometry must travel as SVG attributes, and no template on this
+// handler may reintroduce an inline style.
+func TestAdminPagesEmitNoInlineStyles(t *testing.T) {
+	deps, _ := testDependencies(Session{UserID: "test-owner", DisplayName: "Test Owner", Role: RoleOwner, Active: true})
+	handler := newHandler(t, deps)
+
+	for _, path := range []string{"/admin", "/dashboard", "/ledger", "/wagers"} {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != http.StatusOK {
+			continue
+		}
+		if strings.Contains(w.Body.String(), "style=\"") {
+			t.Errorf("%s emits an inline style attribute, which style-src 'self' discards", path)
+		}
+	}
+}
+
+func TestStandingsBarsCarryGeometryAsSVGAttributes(t *testing.T) {
+	deps, _ := testDependencies(Session{UserID: "test-owner", DisplayName: "Test Owner", Role: RoleOwner, Active: true})
+	handler := newHandler(t, deps)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/admin", nil))
+
+	body := w.Body.String()
+	// Dan Guns is +$400 on a $400 scale: a full-length bar running right from
+	// the axis at 100.
+	if !strings.Contains(body, `class="pulse-svg-bar is-ahead" x="100" y="3" width="100"`) {
+		t.Errorf("leader bar geometry missing or wrong: %s", body)
+	}
+	// Bill C is -$100 on the same scale: a quarter-length bar ending at the
+	// axis, so it starts at 75.
+	if !strings.Contains(body, `class="pulse-svg-bar is-behind" x="75" y="3" width="25"`) {
+		t.Errorf("trailing bar geometry missing or wrong: %s", body)
+	}
+}
+
+func TestStandingsBarGeometry(t *testing.T) {
+	cad := func(cents int64) ledger.Money { return ledger.Money{Cents: cents, Currency: ledger.CAD} }
+
+	ahead := PlayerResult{Net: cad(40_000), BarPercent: 100}
+	if ahead.BarX() != 100 || ahead.BarWidth() != 100 {
+		t.Errorf("full winner = x %d width %d, want 100 and 100", ahead.BarX(), ahead.BarWidth())
+	}
+
+	behind := PlayerResult{Net: cad(-10_000), BarPercent: 25}
+	if behind.BarX() != 75 || behind.BarWidth() != 25 {
+		t.Errorf("quarter loser = x %d width %d, want 75 and 25", behind.BarX(), behind.BarWidth())
+	}
+
+	// A result too small to round up to one percent of the scale still has to
+	// be visible: a player down a few dollars is not the same as level.
+	tiny := PlayerResult{Net: cad(-40), BarPercent: 0}
+	if tiny.BarWidth() != 1 || tiny.BarX() != 99 {
+		t.Errorf("tiny loser = x %d width %d, want 99 and 1", tiny.BarX(), tiny.BarWidth())
+	}
+
+	// Exactly level draws nothing at all, so the axis stays clean.
+	level := PlayerResult{Net: cad(0), BarPercent: 0}
+	if level.BarWidth() != 0 {
+		t.Errorf("level player bar width = %d, want 0", level.BarWidth())
+	}
+
+	// Nothing may overhang its half of the track.
+	over := PlayerResult{Net: cad(90_000), BarPercent: 140}
+	if over.BarWidth() != 100 {
+		t.Errorf("over-scale bar width = %d, want it clamped to 100", over.BarWidth())
 	}
 }

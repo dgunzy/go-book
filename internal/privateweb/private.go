@@ -236,6 +236,37 @@ type PlayerResult struct {
 // Ahead reports whether this player is up on the book.
 func (p PlayerResult) Ahead() bool { return p.Net.Cents > 0 }
 
+// The standings bars are drawn as SVG rectangles on a 0-200 unit track with
+// zero at 100, because the page's Content-Security-Policy sets style-src
+// 'self': an inline style="width:..." attribute is silently dropped by the
+// browser, which is exactly how these bars came to render as slivers. SVG
+// geometry lives in attributes, not CSS, so it survives.
+const (
+	// BarTrackUnits is the full width of the plot in SVG user units.
+	BarTrackUnits = 200
+	// BarZeroUnit is where a result of exactly zero sits.
+	BarZeroUnit = BarTrackUnits / 2
+)
+
+// BarWidth is the length of this player's bar in SVG user units. A non-zero
+// result always draws at least one unit so a small win or loss is still
+// visible rather than vanishing into the axis.
+func (p PlayerResult) BarWidth() int {
+	if p.Net.Cents == 0 {
+		return 0
+	}
+	return min(max(p.BarPercent, 1), BarZeroUnit)
+}
+
+// BarX is where this player's bar starts. Players ahead of the book run right
+// from the axis; players behind it end at the axis and run left.
+func (p PlayerResult) BarX() int {
+	if p.Ahead() {
+		return BarZeroUnit
+	}
+	return BarZeroUnit - p.BarWidth()
+}
+
 type AdminReconciliationSummary struct {
 	AsOf                   time.Time
 	LedgerBalanced         bool

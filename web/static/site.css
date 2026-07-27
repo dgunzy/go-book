@@ -825,14 +825,17 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .pulse-swatch.is-behind { background: #b03a2e; }
 .pulse-key-scale { margin-left: auto; }
 .pulse-standings { min-width: 760px; }
-.pulse-standings .pulse-plot { padding-block: .55rem; width: 42%; }
-.pulse-track { background: #f3f5f2; display: grid; grid-template-columns: 1fr 1fr; position: relative; }
-.pulse-track::before { background: #8d968f; bottom: -.2rem; content: ""; left: 50%; position: absolute; top: -.2rem; transform: translateX(-1px); width: 2px; }
-.pulse-half { display: flex; height: 1.2rem; }
-.pulse-half.is-left { justify-content: flex-end; }
-.pulse-bar { border-radius: 3px; height: 100%; min-width: 2px; }
-.pulse-bar.is-ahead { background: #0f6f96; border-bottom-left-radius: 0; border-top-left-radius: 0; }
-.pulse-bar.is-behind { background: #b03a2e; border-bottom-right-radius: 0; border-top-right-radius: 0; }
+.pulse-standings .pulse-plot { padding-block: .5rem; width: 38%; }
+/* The bars are SVG because this page runs under style-src 'self': an inline
+   style attribute never reaches the browser, so the width has to travel as
+   SVG geometry. Colour still comes from here, which CSP allows. */
+.pulse-plot-svg { display: block; height: 1.4rem; width: 100%; }
+.pulse-svg-track { fill: #eef1ee; }
+.pulse-svg-zero { fill: #9aa39c; }
+.pulse-svg-bar.is-ahead { fill: #0f6f96; }
+.pulse-svg-bar.is-behind { fill: #b03a2e; }
+.pulse-standings tbody tr:hover .pulse-svg-bar.is-ahead { fill: #0c5b7c; }
+.pulse-standings tbody tr:hover .pulse-svg-bar.is-behind { fill: #93301f; }
 .pulse-standings tbody td small { color: #6c7770; }
 .private-main section + .reconciliation-state { margin-top: 1.6rem; }
 

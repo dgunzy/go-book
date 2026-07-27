@@ -106,10 +106,16 @@
             <th scope="row">{{if .UserID}}<a class="betting-primary-link" href="/admin/members/{{.UserID}}/book">{{.Name}}</a>{{else}}{{.Name}}{{end}}</th>
             <td class="private-money{{if .Ahead}} is-ahead-text{{else if lt .Net.Cents 0}} is-behind-text{{end}}" data-label="Net">{{money .Net}}</td>
             <td class="pulse-plot" data-label="Ahead / behind">
-              <div class="pulse-track" title="{{.Name}}: {{money .Net}}">
-                <div class="pulse-half is-left">{{if lt .Net.Cents 0}}<div class="pulse-bar is-behind" style="width:{{.BarPercent}}%"></div>{{end}}</div>
-                <div class="pulse-half is-right">{{if .Ahead}}<div class="pulse-bar is-ahead" style="width:{{.BarPercent}}%"></div>{{end}}</div>
-              </div>
+              {{/* Bar geometry is SVG attributes, never an inline style: the
+                   page's Content-Security-Policy sets style-src 'self', so a
+                   style attribute is dropped by the browser and the bar
+                   collapses to nothing. */}}
+              <svg class="pulse-plot-svg" viewBox="0 0 200 22" preserveAspectRatio="none" role="img"
+                   aria-label="{{.Name}}: {{money .Net}} {{if .Ahead}}ahead of{{else if lt .Net.Cents 0}}behind{{else}}level with{{end}} the book">
+                <rect class="pulse-svg-track" x="0" y="3" width="200" height="16"></rect>
+                {{if .BarWidth}}<rect class="pulse-svg-bar {{if .Ahead}}is-ahead{{else}}is-behind{{end}}" x="{{.BarX}}" y="3" width="{{.BarWidth}}" height="16"></rect>{{end}}
+                <rect class="pulse-svg-zero" x="99.5" y="0" width="1" height="22"></rect>
+              </svg>
             </td>
             <td data-label="Record">{{.Won}}&ndash;{{.Lost}}{{if .Pushed}} <small>({{.Pushed}} push)</small>{{end}}</td>
             <td data-label="Live">{{.Open}}</td>
