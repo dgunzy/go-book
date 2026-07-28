@@ -2,18 +2,17 @@
 --
 -- A parlay cannot be a row in wagers. A wager belongs to exactly one market
 -- and is graded when that market settles; a parlay spans markets and resolves
--- only once its last leg is in. It also cannot carry an American price: two
--- short favourites combine to less than even money, which American odds
--- cannot express, so the price is decimal odds in millionths.
+-- only once its last leg is in. It does carry an ordinary American price: the
+-- combined odds are rounded to a posted line the way a book posts one, and
+-- legs that combine to shorter than even money are refused rather than
+-- written at a price the notation cannot express.
 CREATE TABLE parlays (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     funding_account_type text NOT NULL CHECK (funding_account_type IN ('user_cash', 'user_free_play')),
     stake_cents bigint NOT NULL CHECK (stake_cents > 0),
     currency char(3) NOT NULL CHECK (currency ~ '^[A-Z]{3}$'),
-    -- Decimal odds x 1e6. Always strictly greater than 1.0 so a winning
-    -- parlay pays something over the stake.
-    accepted_price_micros bigint NOT NULL CHECK (accepted_price_micros > 1000000),
+    accepted_american_odds integer NOT NULL CHECK (accepted_american_odds >= 100),
     potential_profit_cents bigint NOT NULL CHECK (potential_profit_cents > 0),
     state text NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'accepted', 'rejected', 'settled', 'voided')),
     idempotency_key text NOT NULL CHECK (length(btrim(idempotency_key)) BETWEEN 1 AND 200),
@@ -67,7 +66,7 @@ CREATE TABLE parlay_settlements (
     result text NOT NULL CHECK (result IN ('win', 'loss', 'push', 'void')),
     -- The price actually paid, which is the placed price unless legs pushed
     -- out and the parlay repriced on the rest.
-    settled_price_micros bigint NOT NULL CHECK (settled_price_micros >= 1000000),
+    settled_american_odds integer NOT NULL CHECK (settled_american_odds <= -100 OR settled_american_odds >= 100),
     stake_cents bigint NOT NULL CHECK (stake_cents > 0),
     profit_cents bigint NOT NULL CHECK (profit_cents >= 0),
     returned_cents bigint NOT NULL CHECK (returned_cents >= 0),

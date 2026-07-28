@@ -27,6 +27,7 @@ var (
 	ErrParlayTooManyLegs       = errors.New("a parlay has too many legs")
 	ErrParlayMarketNotEligible = errors.New("only match markets can be parlayed")
 	ErrParlayDuplicateMarket   = errors.New("a parlay cannot have two legs from the same match")
+	ErrParlayTooShort          = errors.New("these legs combine to shorter than even money, which the book does not write as a parlay")
 	ErrIncompleteOutcome       = errors.New("settlement outcome does not cover every selection exactly once")
 	ErrWagerMarketMismatch     = errors.New("wager does not belong to the market being settled")
 )

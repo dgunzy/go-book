@@ -27,9 +27,9 @@ type Parlay struct {
 	UserID             ID
 	FundingAccountType FundingAccountType
 	Stake              ledger.Money
-	// Price is the combined decimal price the parlay was struck at, juice
-	// included.
-	Price           ParlayPrice
+	// AcceptedOdds is the combined American price the parlay was struck at,
+	// juice included. It is a posted line like any other on the book.
+	AcceptedOdds    ledger.AmericanOdds
 	PotentialProfit ledger.Money
 	Legs            []ParlayLeg
 	State           WagerState
@@ -157,7 +157,7 @@ func PlaceParlay(command PlaceParlayCommand) (Parlay, error) {
 		legOdds = append(legOdds, selection.OfferedAmericanOdds)
 	}
 
-	price, err := ParlayPriceFor(legOdds, command.JuiceBasisPoints)
+	price, err := ParlayOddsFor(legOdds, command.JuiceBasisPoints)
 	if err != nil {
 		return Parlay{}, err
 	}
@@ -178,7 +178,7 @@ func PlaceParlay(command PlaceParlayCommand) (Parlay, error) {
 		UserID:             command.UserID,
 		FundingAccountType: command.FundingAccountType,
 		Stake:              command.Stake,
-		Price:              price,
+		AcceptedOdds:       price,
 		PotentialProfit:    profit,
 		Legs:               legs,
 		State:              WagerPending,
@@ -191,10 +191,10 @@ func PlaceParlay(command PlaceParlayCommand) (Parlay, error) {
 // ParlayOutcome is how a parlay graded once every leg is in.
 type ParlayOutcome struct {
 	Result SettlementResult
-	// Price is what the parlay actually pays. It is the placed price unless
+	// Odds is what the parlay actually pays. It is the placed price unless
 	// legs pushed or voided out, in which case the parlay reprices on the
 	// legs that are left.
-	Price   ParlayPrice
+	Odds    ledger.AmericanOdds
 	Stake   ledger.Money
 	Profit  ledger.Money
 	Returns ledger.Money
@@ -221,7 +221,7 @@ func GradeParlay(parlay Parlay, juiceBasisPoints int64) (ParlayOutcome, error) {
 		case ResultLoss:
 			// One dead leg kills the whole bet; nothing else matters.
 			return ParlayOutcome{
-				Result: ResultLoss, Price: parlay.Price, Stake: parlay.Stake,
+				Result: ResultLoss, Odds: parlay.AcceptedOdds, Stake: parlay.Stake,
 				Profit:  ledger.Money{Currency: parlay.Stake.Currency},
 				Returns: ledger.Money{Currency: parlay.Stake.Currency},
 			}, nil
@@ -235,7 +235,7 @@ func GradeParlay(parlay Parlay, juiceBasisPoints int64) (ParlayOutcome, error) {
 	// Everything pushed or voided: the bet never really happened.
 	if len(surviving) == 0 {
 		return ParlayOutcome{
-			Result: ResultPush, Price: ParlayPrice(decimalScale), Stake: parlay.Stake,
+			Result: ResultPush, Odds: parlay.AcceptedOdds, Stake: parlay.Stake,
 			Profit:  ledger.Money{Currency: parlay.Stake.Currency},
 			Returns: parlay.Stake,
 		}, nil
@@ -253,18 +253,14 @@ func GradeParlay(parlay Parlay, juiceBasisPoints int64) (ParlayOutcome, error) {
 	if err != nil {
 		return ParlayOutcome{}, err
 	}
-	return ParlayOutcome{Result: ResultWin, Price: price, Stake: parlay.Stake, Profit: profit, Returns: returns}, nil
+	return ParlayOutcome{Result: ResultWin, Odds: price, Stake: parlay.Stake, Profit: profit, Returns: returns}, nil
 }
 
 // survivingPrice prices whatever is left of a parlay after pushes drop out.
 // One surviving leg is no longer a parlay and carries no parlay juice.
-func survivingPrice(surviving []ledger.AmericanOdds, juiceBasisPoints int64) (ParlayPrice, error) {
+func survivingPrice(surviving []ledger.AmericanOdds, juiceBasisPoints int64) (ledger.AmericanOdds, error) {
 	if len(surviving) == 1 {
-		profit, err := surviving[0].Profit(ledger.Money{Cents: decimalScale, Currency: ledger.CAD})
-		if err != nil {
-			return 0, err
-		}
-		return ParlayPrice(decimalScale + profit.Cents), nil
+		return surviving[0], nil
 	}
-	return ParlayPriceFor(surviving, juiceBasisPoints)
+	return ParlayOddsFor(surviving, juiceBasisPoints)
 }
