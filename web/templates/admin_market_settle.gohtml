@@ -61,6 +61,17 @@
     {{end}}
   </fieldset>
 
+  <fieldset>
+    <legend>Dead heat</legend>
+    <label><input type="checkbox" name="dead_heat"> These winners tied for the win</label>
+    <p class="betting-hint">
+      Tick this only when the selections marked <strong>win</strong> finished level with each other.
+      With two tied winners each winning wager rides half its stake at the price it was struck at and
+      loses the other half; with three, a third rides and two thirds are lost. Leave it unticked when
+      several selections won on their own merits — those still pay in full.
+    </p>
+  </fieldset>
+
   <label>Reason (required, recorded in the audit trail)
     <textarea name="reason" rows="3" maxlength="500" required></textarea>
   </label>

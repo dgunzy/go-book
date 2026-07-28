@@ -864,12 +864,34 @@ func (h *Handler) adminSettleMarket(w http.ResponseWriter, r *http.Request) {
 			}
 			outcome[selection.ID] = result
 		}
+		// A dead heat is declared, never inferred: a market can grade several
+		// winners with no tie between them, and those still pay in full.
+		deadHeat := r.PostForm.Get("dead_heat") == "on"
+		winners := 0
+		for _, result := range outcome {
+			if result == betting.ResultWin {
+				winners++
+			}
+		}
+		if deadHeat && winners < 2 {
+			h.failPost(w, r, session, http.StatusBadRequest,
+				"A dead heat needs at least two selections marked win. Mark every tied selection as a win, or untick dead heat.",
+				redirectAdminMarkets)
+			return
+		}
 		_, err := h.deps.Markets.SettleMarket(r.Context(), bettingpg.SettleMarketRequest{
 			MarketID: market.ID, Outcome: outcome, ActorUserID: session.UserID, Reason: reason,
+			DeadHeat: deadHeat,
 		})
 		if err != nil {
 			status, text := storeErrorStatus(err)
 			h.failPost(w, r, session, status, text, redirectAdminMarkets)
+			return
+		}
+		if deadHeat {
+			h.completePost(w, r, redirectAdminMarkets, "Market settled as a dead heat.",
+				fmt.Sprintf("%d selections tied, so each winning wager rode 1/%d of its stake at its accepted price and lost the rest.",
+					winners, winners))
 			return
 		}
 		h.completePost(w, r, redirectAdminMarkets, "Market settled.", "Wagers were graded and paid from escrow.")

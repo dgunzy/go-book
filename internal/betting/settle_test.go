@@ -321,7 +321,7 @@ func TestSettleWagerOddsBoundariesAndRounding(t *testing.T) {
 			t.Parallel()
 			wager := acceptedWager("10000000-0000-4000-8000-0000000000aa", selectionWinID, test.stakeCents, test.odds)
 			refs := SettlementAccountRefs{UserFundingAccountID: "user-cash", EscrowAccountID: "escrow", HouseClearingAccountID: "house"}
-			settlement, updated, envelope, err := settleWager(wager, ResultWin, refs, settlementRowID, "10000000-0000-4000-8000-0000000000bb", 1, settleActorID, time.Now().UTC(), "10000000-0000-4000-8000-0000000000cc")
+			settlement, updated, envelope, err := settleWager(wager, ResultWin, refs, settlementRowID, "10000000-0000-4000-8000-0000000000bb", 1, settleActorID, time.Now().UTC(), "10000000-0000-4000-8000-0000000000cc", 1)
 			if err != nil {
 				t.Fatalf("settleWager() error = %v", err)
 			}
@@ -352,7 +352,7 @@ func TestSettleWagerRejectsOverflowingPayout(t *testing.T) {
 		IdempotencyKey: "place:overflow", PlacedAt: time.Now().UTC(),
 	}
 	refs := SettlementAccountRefs{UserFundingAccountID: "user-cash", EscrowAccountID: "escrow", HouseClearingAccountID: "house"}
-	_, _, _, err := settleWager(wager, ResultWin, refs, settlementRowID, "10000000-0000-4000-8000-0000000000ee", 1, settleActorID, time.Now().UTC(), "10000000-0000-4000-8000-0000000000ff")
+	_, _, _, err := settleWager(wager, ResultWin, refs, settlementRowID, "10000000-0000-4000-8000-0000000000ee", 1, settleActorID, time.Now().UTC(), "10000000-0000-4000-8000-0000000000ff", 1)
 	if !errors.Is(err, ledger.ErrAmountOverflow) {
 		t.Fatalf("overflowing settlement error = %v, want ErrAmountOverflow", err)
 	}
@@ -434,7 +434,7 @@ func TestSettleWagerZeroProfitWinReturnsStakeOnly(t *testing.T) {
 	wager := acceptedWager(wagerWinID, selectionWinID, 4, -1000)
 	refs := SettlementAccountRefs{UserFundingAccountID: "user-cash", EscrowAccountID: "escrow", HouseClearingAccountID: "house"}
 	at := time.Date(2027, time.May, 13, 9, 0, 0, 0, time.UTC)
-	settlement, settled, _, err := settleWager(wager, ResultWin, refs, settlementRowID, "10000000-0000-4000-8000-0000000000f1", 1, settleActorID, at, "10000000-0000-4000-8000-0000000000e1")
+	settlement, settled, _, err := settleWager(wager, ResultWin, refs, settlementRowID, "10000000-0000-4000-8000-0000000000f1", 1, settleActorID, at, "10000000-0000-4000-8000-0000000000e1", 1)
 	if err != nil {
 		t.Fatalf("settleWager() error = %v", err)
 	}

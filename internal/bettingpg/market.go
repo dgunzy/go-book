@@ -78,6 +78,19 @@ type SettleMarketRequest struct {
 	ActorUserID      string
 	Reason           string
 	VerifiedResultID string
+	// DeadHeat declares that the selections graded as winners tied for the win
+	// rather than each winning outright, so each winning wager rides only
+	// stake/N. It must be asked for: a market can legitimately have several
+	// winners with no tie between them.
+	DeadHeat bool
+}
+
+// deadHeatSpec carries a declared tie down the settlement chain. A zero
+// divisor means "count the winning selections"; a regrade supplies the divisor
+// the market already recorded instead.
+type deadHeatSpec struct {
+	declared bool
+	divisor  int
 }
 
 // VoidMarketRequest refunds every accepted wager on a market and moves it to
@@ -116,21 +129,23 @@ type SettleReport struct {
 // outcome rows are then verified to match the requested outcome and the
 // stored report is returned rather than re-grading.
 func (s Store) SettleMarket(ctx context.Context, req SettleMarketRequest) (SettleReport, error) {
-	return s.settle(ctx, req.MarketID, "graded", req.Outcome, req.ActorUserID, req.Reason, req.VerifiedResultID)
+	return s.settle(ctx, req.MarketID, "graded", req.Outcome, req.ActorUserID, req.Reason, req.VerifiedResultID,
+		deadHeatSpec{declared: req.DeadHeat})
 }
 
 // VoidMarket refunds every accepted wager and moves an open, closed, or
 // settlement-pending market to voided. It shares SettleMarket's persistence
 // and idempotency path with settlement_type "voided" and a nil outcome.
 func (s Store) VoidMarket(ctx context.Context, req VoidMarketRequest) (SettleReport, error) {
-	return s.settle(ctx, req.MarketID, "voided", nil, req.ActorUserID, req.Reason, "")
+	// A void refunds every stake in full, so no tie can apply to it.
+	return s.settle(ctx, req.MarketID, "voided", nil, req.ActorUserID, req.Reason, "", deadHeatSpec{})
 }
 
-func (s Store) settle(ctx context.Context, marketID, settlementType string, outcome map[string]betting.SettlementResult, actorUserID, reason, verifiedResultID string) (SettleReport, error) {
-	return s.settleWith(ctx, marketID, settlementType, outcome, actorUserID, reason, verifiedResultID, false)
+func (s Store) settle(ctx context.Context, marketID, settlementType string, outcome map[string]betting.SettlementResult, actorUserID, reason, verifiedResultID string, deadHeat deadHeatSpec) (SettleReport, error) {
+	return s.settleWith(ctx, marketID, settlementType, outcome, actorUserID, reason, verifiedResultID, false, deadHeat)
 }
 
-func (s Store) settleWith(ctx context.Context, marketID, settlementType string, outcome map[string]betting.SettlementResult, actorUserID, reason, verifiedResultID string, regrade bool) (SettleReport, error) {
+func (s Store) settleWith(ctx context.Context, marketID, settlementType string, outcome map[string]betting.SettlementResult, actorUserID, reason, verifiedResultID string, regrade bool, deadHeat deadHeatSpec) (SettleReport, error) {
 	tx, err := s.begin(ctx)
 	if err != nil {
 		return SettleReport{}, err
@@ -265,6 +280,8 @@ func (s Store) settleWith(ctx context.Context, marketID, settlementType string, 
 			OccurredAt:         now,
 			MarketEventID:      marketEventID,
 			Regrade:            regrade,
+			DeadHeat:           deadHeat.declared,
+			DeadHeatDivisor:    deadHeat.divisor,
 		})
 	} else {
 		result, err = betting.VoidMarket(betting.VoidMarketCommand{
@@ -287,9 +304,15 @@ func (s Store) settleWith(ctx context.Context, marketID, settlementType string, 
 
 	if settlementType == "graded" {
 		for id, r := range outcome {
+			// Only a winning selection carries the divisor; it is what a
+			// regrade reads back to pay a stranded wager the same way.
+			selectionDivisor := 1
+			if r == betting.ResultWin {
+				selectionDivisor = result.DeadHeatDivisor
+			}
 			if _, err := tx.Exec(ctx, `
-				INSERT INTO market_settlement_outcomes (market_settlement_id, market_id, selection_id, outcome)
-				VALUES ($1::uuid, $2::uuid, $3::uuid, $4)`, insertedID, marketID, id, string(r)); err != nil {
+				INSERT INTO market_settlement_outcomes (market_settlement_id, market_id, selection_id, outcome, dead_heat_divisor)
+				VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)`, insertedID, marketID, id, string(r), selectionDivisor); err != nil {
 				return SettleReport{}, fmt.Errorf("insert market settlement outcome: %w", err)
 			}
 		}
@@ -302,10 +325,10 @@ func (s Store) settleWith(ctx context.Context, marketID, settlementType string, 
 			return SettleReport{}, err
 		}
 		if _, err := tx.Exec(ctx, `
-			INSERT INTO wager_settlements (id, wager_id, market_settlement_id, result, stake_cents, profit_cents, returned_cents, ledger_transaction_id)
-			VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::uuid)`,
+			INSERT INTO wager_settlements (id, wager_id, market_settlement_id, result, stake_cents, profit_cents, returned_cents, ledger_transaction_id, dead_heat_divisor)
+			VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::uuid, $9)`,
 			settlement.ID, settlement.WagerID, insertedID, string(settlement.Result),
-			settlement.Stake.Cents, settlement.Profit.Cents, settlement.Returned.Cents, transactionID); err != nil {
+			settlement.Stake.Cents, settlement.Profit.Cents, settlement.Returned.Cents, transactionID, settlement.DeadHeatDivisor); err != nil {
 			return SettleReport{}, fmt.Errorf("insert wager settlement: %w", err)
 		}
 

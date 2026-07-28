@@ -64,6 +64,9 @@ var selectionStakeLimitSQL string
 //go:embed 000016_parlays.up.sql
 var parlaysSQL string
 
+//go:embed 000017_dead_heat.up.sql
+var deadHeatSQL string
+
 // All returns migrations in application order.
 func All() []Definition {
 	return []Definition{
@@ -83,6 +86,7 @@ func All() []Definition {
 		newDefinition(14, "market_stake_limit", marketStakeLimitSQL),
 		newDefinition(15, "selection_stake_limit", selectionStakeLimitSQL),
 		newDefinition(16, "parlays", parlaysSQL),
+		newDefinition(17, "dead_heat", deadHeatSQL),
 	}
 }
 

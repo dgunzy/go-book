@@ -53,8 +53,8 @@ func (r SettlementAccountRefs) validate(result SettlementResult) error {
 // WagerSettlement is the settlement outcome recorded for one accepted
 // wager, mirroring the wager_settlements table. Returned/Profit satisfy the
 // same equations as the returned_cents CHECK constraint: win returns
-// stake+profit, loss returns nothing, push/void return the stake with zero
-// profit.
+// stake/DeadHeatDivisor+profit, loss returns nothing, push/void return the
+// stake with zero profit.
 type WagerSettlement struct {
 	ID                 ID
 	WagerID            ID
@@ -63,7 +63,27 @@ type WagerSettlement struct {
 	Stake              ledger.Money
 	Profit             ledger.Money
 	Returned           ledger.Money
-	Transaction        ledger.Transaction
+	// DeadHeatDivisor is how many selections tied for this win. It is 1 for
+	// every ordinary settlement, and only ever above 1 on a win.
+	DeadHeatDivisor int
+	Transaction     ledger.Transaction
+}
+
+// deadHeatSplit divides a stake between the part that won and the part that
+// did not. With N tied winners only stake/N rides at the accepted odds; the
+// remainder loses to the house.
+//
+// The division truncates, so the odd cent that will not divide stays with the
+// house rather than being invented for one winner and not another. At divisor
+// 1 this returns the whole stake and nothing lost, which is what makes every
+// ordinary settlement pass through the dead-heat path unchanged.
+func deadHeatSplit(stake ledger.Money, divisor int) (winning, lost ledger.Money) {
+	if divisor < 1 {
+		divisor = 1
+	}
+	winningCents := stake.Cents / int64(divisor)
+	return ledger.Money{Cents: winningCents, Currency: stake.Currency},
+		ledger.Money{Cents: stake.Cents - winningCents, Currency: stake.Currency}
 }
 
 // SettleMarketCommand is the pure input to grade a market. The caller loads
@@ -92,6 +112,20 @@ type SettleMarketCommand struct {
 	// are graded, so an already-paid wager can never be paid twice; the
 	// caller supplies the market's own recorded outcome, never a new one.
 	Regrade bool
+	// DeadHeat declares that the winning selections tied rather than each
+	// winning outright, so each winning wager rides only stake/N. It is opt-in
+	// because a market may legitimately grade several selections as winners
+	// without any tie — a prop where more than one thing happened pays each of
+	// them in full — and the book cannot tell the two apart from the outcome
+	// alone.
+	//
+	// On a regrade the caller passes back the divisor the market already
+	// recorded, so stranded wagers are paid the same way as the first pass.
+	DeadHeat bool
+	// DeadHeatDivisor overrides the divisor derived from the winner count. It
+	// is how a regrade replays a recorded dead heat whose winning selections
+	// are being graded one at a time. Zero means "derive it".
+	DeadHeatDivisor int
 }
 
 // SettleMarketResult bundles everything the caller must persist atomically:
@@ -104,6 +138,10 @@ type SettleMarketResult struct {
 	Settlements []WagerSettlement
 	MarketEvent events.Envelope
 	WagerEvents []events.Envelope
+	// DeadHeatDivisor is the divisor applied to winning selections, 1 when the
+	// market was not a dead heat. The caller records it against the winning
+	// selections so a later regrade can replay it.
+	DeadHeatDivisor int
 }
 
 // SettleMarket grades every accepted wager on a closed or settlement-pending
@@ -142,8 +180,13 @@ func SettleMarket(command SettleMarketCommand) (SettleMarketResult, error) {
 		return SettleMarketResult{}, err
 	}
 
+	divisor, err := deadHeatDivisor(command)
+	if err != nil {
+		return SettleMarketResult{}, err
+	}
+
 	at := command.OccurredAt.UTC()
-	result := SettleMarketResult{Market: command.Market}
+	result := SettleMarketResult{Market: command.Market, DeadHeatDivisor: divisor}
 	result.Market.State = MarketSettled
 
 	acceptedWagers, err := splitAcceptedWagers(command.Market.ID, command.Wagers, &result)
@@ -168,7 +211,7 @@ func SettleMarket(command SettleMarketCommand) (SettleMarketResult, error) {
 			return SettleMarketResult{}, fmt.Errorf("%w: missing settlement or event ID for wager %s", ErrInvalid, wager.ID)
 		}
 
-		settlement, updatedWager, envelope, err := settleWager(wager, outcome, refs, command.SettlementID, settlementID, command.Version, command.Actor, at, eventID)
+		settlement, updatedWager, envelope, err := settleWager(wager, outcome, refs, command.SettlementID, settlementID, command.Version, command.Actor, at, eventID, divisor)
 		if err != nil {
 			return SettleMarketResult{}, err
 		}
@@ -195,6 +238,38 @@ func SettleMarket(command SettleMarketCommand) (SettleMarketResult, error) {
 	}
 	result.MarketEvent = envelope
 	return result, nil
+}
+
+// deadHeatDivisor resolves how many ways a winning stake is split. A market
+// that is not a dead heat splits one way, which is no split at all.
+//
+// Deriving the divisor from the winner count is what keeps the admin's job
+// honest: the tie is declared once, and the arithmetic follows from the
+// results already being entered rather than from a second number that could
+// disagree with them.
+func deadHeatDivisor(command SettleMarketCommand) (int, error) {
+	if !command.DeadHeat {
+		if command.DeadHeatDivisor > 1 {
+			return 0, invalidf("a dead-heat divisor was supplied without declaring a dead heat")
+		}
+		return 1, nil
+	}
+	if command.DeadHeatDivisor > 0 {
+		if command.DeadHeatDivisor < 2 {
+			return 0, invalidf("a dead heat needs at least two tied winners")
+		}
+		return command.DeadHeatDivisor, nil
+	}
+	winners := 0
+	for _, outcome := range command.Outcome {
+		if outcome == ResultWin {
+			winners++
+		}
+	}
+	if winners < 2 {
+		return 0, invalidf("a dead heat needs at least two winning selections, found %d", winners)
+	}
+	return winners, nil
 }
 
 // VoidMarketCommand is the pure input to void a market and refund every
@@ -261,7 +336,8 @@ func VoidMarket(command VoidMarketCommand) (SettleMarketResult, error) {
 			return SettleMarketResult{}, fmt.Errorf("%w: missing settlement or event ID for wager %s", ErrInvalid, wager.ID)
 		}
 
-		settlement, updatedWager, envelope, err := settleWager(wager, ResultVoid, refs, command.SettlementID, settlementID, command.Version, command.Actor, at, eventID)
+		// A void refunds the whole stake, so no dead heat can apply to it.
+		settlement, updatedWager, envelope, err := settleWager(wager, ResultVoid, refs, command.SettlementID, settlementID, command.Version, command.Actor, at, eventID, 1)
 		if err != nil {
 			return SettleMarketResult{}, err
 		}
@@ -325,9 +401,17 @@ func resultIndex(r SettlementResult) int {
 // "wager:{wagerID}:settlement:v{version}" is a pure function of its inputs,
 // so the same (wager, version) pair always produces the same key and
 // amounts and duplicate delivery cannot double-pay.
-func settleWager(wager Wager, result SettlementResult, refs SettlementAccountRefs, marketSettlementID, wagerSettlementID ID, version int, actor ID, at time.Time, eventID ID) (WagerSettlement, Wager, events.Envelope, error) {
+func settleWager(wager Wager, result SettlementResult, refs SettlementAccountRefs, marketSettlementID, wagerSettlementID ID, version int, actor ID, at time.Time, eventID ID, deadHeatDivisor int) (WagerSettlement, Wager, events.Envelope, error) {
 	if err := refs.validate(result); err != nil {
 		return WagerSettlement{}, Wager{}, events.Envelope{}, err
+	}
+	if deadHeatDivisor < 1 {
+		deadHeatDivisor = 1
+	}
+	// A dead heat only ever divides a win. A loss was already losing the whole
+	// stake, and a push or void hands the whole stake back either way.
+	if result != ResultWin {
+		deadHeatDivisor = 1
 	}
 
 	nextState := WagerSettled
@@ -352,33 +436,36 @@ func settleWager(wager Wager, result SettlementResult, refs SettlementAccountRef
 	switch result {
 	case ResultWin:
 		txnType = ledger.TransactionWagerWin
-		profit, err = wager.AcceptedOdds.Profit(wager.Stake)
+		// Outside a dead heat this is the whole stake and nothing lost, so the
+		// ordinary win is the divisor-1 case of the same arithmetic.
+		winningStake, lostStake := deadHeatSplit(wager.Stake, deadHeatDivisor)
+		// A stake smaller than the number of tied winners leaves nothing
+		// riding. Profit refuses a zero stake, and rightly so, but here it is
+		// an arithmetic fact rather than a bad wager: nothing rode, so nothing
+		// was won, and the whole stake sits in lostStake.
+		if winningStake.Cents == 0 {
+			profit = ledger.Money{Cents: 0, Currency: currency}
+		} else if profit, err = wager.AcceptedOdds.Profit(winningStake); err != nil {
+			return WagerSettlement{}, Wager{}, events.Envelope{}, err
+		}
+		returned, err = winningStake.Add(profit)
 		if err != nil {
 			return WagerSettlement{}, Wager{}, events.Envelope{}, err
 		}
-		returned, err = wager.Stake.Add(profit)
-		if err != nil {
-			return WagerSettlement{}, Wager{}, events.Envelope{}, err
+		// The house pays the profit out and takes the dead-heat remainder in,
+		// netted into one posting. A legacy or minimal stake can round to zero
+		// profit at heavy negative odds, and a dead heat can round a tiny
+		// stake down to nothing riding at all; a zero posting is illegal, so
+		// each leg is only posted when it actually moves money. The escrow
+		// release is always non-zero, and returned and the house net cannot
+		// both be zero, so this always balances across at least two postings.
+		houseAmount := ledger.Money{Cents: lostStake.Cents - profit.Cents, Currency: currency}
+		postings = []ledger.Posting{{AccountID: refs.EscrowAccountID, Amount: negatedStake}}
+		if houseAmount.Cents != 0 {
+			postings = append(postings, ledger.Posting{AccountID: refs.HouseClearingAccountID, Amount: houseAmount})
 		}
-		if profit.Cents == 0 {
-			// A legacy or minimal stake can round to zero profit at heavy
-			// negative odds. A zero posting is illegal, so the win degrades to
-			// a stake-only return; returned = stake + 0 still satisfies the
-			// wager_settlements win equation.
-			postings = []ledger.Posting{
-				{AccountID: refs.EscrowAccountID, Amount: negatedStake},
-				{AccountID: refs.UserFundingAccountID, Amount: returned},
-			}
-			break
-		}
-		negatedProfit, err := profit.Negate()
-		if err != nil {
-			return WagerSettlement{}, Wager{}, events.Envelope{}, err
-		}
-		postings = []ledger.Posting{
-			{AccountID: refs.EscrowAccountID, Amount: negatedStake},
-			{AccountID: refs.HouseClearingAccountID, Amount: negatedProfit},
-			{AccountID: refs.UserFundingAccountID, Amount: returned},
+		if returned.Cents != 0 {
+			postings = append(postings, ledger.Posting{AccountID: refs.UserFundingAccountID, Amount: returned})
 		}
 	case ResultLoss:
 		txnType = ledger.TransactionWagerLoss
@@ -424,6 +511,7 @@ func settleWager(wager Wager, result SettlementResult, refs SettlementAccountRef
 		Stake:              wager.Stake,
 		Profit:             profit,
 		Returned:           returned,
+		DeadHeatDivisor:    deadHeatDivisor,
 		Transaction:        txn,
 	}
 
