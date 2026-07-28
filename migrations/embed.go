@@ -61,6 +61,9 @@ var marketStakeLimitSQL string
 //go:embed 000015_selection_stake_limit.up.sql
 var selectionStakeLimitSQL string
 
+//go:embed 000016_parlays.up.sql
+var parlaysSQL string
+
 // All returns migrations in application order.
 func All() []Definition {
 	return []Definition{
@@ -79,6 +82,7 @@ func All() []Definition {
 		newDefinition(13, "wager_placed_by", wagerPlacedBySQL),
 		newDefinition(14, "market_stake_limit", marketStakeLimitSQL),
 		newDefinition(15, "selection_stake_limit", selectionStakeLimitSQL),
+		newDefinition(16, "parlays", parlaysSQL),
 	}
 }
 

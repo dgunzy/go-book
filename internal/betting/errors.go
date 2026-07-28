@@ -14,14 +14,21 @@ var (
 	ErrAlreadyExists       = errors.New("betting record already exists")
 	ErrIdempotencyConflict = errors.New("idempotency key was reused for a different command")
 
-	ErrMarketNotOpen       = errors.New("market is not open for wagers")
-	ErrSelectionInactive   = errors.New("selection is not active")
-	ErrSelectionMismatch   = errors.New("selection does not belong to the market")
-	ErrUserRestricted      = errors.New("user is restricted from this market")
-	ErrStakeAboveLimit     = errors.New("stake would exceed this market's limit for one member")
-	ErrPayoutAboveLimit    = errors.New("wager would win more than the book's maximum payout")
-	ErrIncompleteOutcome   = errors.New("settlement outcome does not cover every selection exactly once")
-	ErrWagerMarketMismatch = errors.New("wager does not belong to the market being settled")
+	ErrMarketNotOpen     = errors.New("market is not open for wagers")
+	ErrSelectionInactive = errors.New("selection is not active")
+	ErrSelectionMismatch = errors.New("selection does not belong to the market")
+	ErrUserRestricted    = errors.New("user is restricted from this market")
+	ErrStakeAboveLimit   = errors.New("stake would exceed this market's limit for one member")
+	ErrPayoutAboveLimit  = errors.New("wager would win more than the book's maximum payout")
+	// Parlay eligibility. Only head-to-head match markets can be combined:
+	// props and futures move together with match results and with each other,
+	// and a book that cannot see that correlation prices such a parlay wrong.
+	ErrParlayTooFewLegs        = errors.New("a parlay needs at least two legs")
+	ErrParlayTooManyLegs       = errors.New("a parlay has too many legs")
+	ErrParlayMarketNotEligible = errors.New("only match markets can be parlayed")
+	ErrParlayDuplicateMarket   = errors.New("a parlay cannot have two legs from the same match")
+	ErrIncompleteOutcome       = errors.New("settlement outcome does not cover every selection exactly once")
+	ErrWagerMarketMismatch     = errors.New("wager does not belong to the market being settled")
 )
 
 // TransitionError reports a rejected operation without losing the
