@@ -12,10 +12,18 @@ import (
 // already compounds: two -110 legs hold about 4.5% each and roughly 8.9%
 // together. On top of that, books have long shaded parlays further — the
 // classic Vegas card pays +260 on two -110 legs where straight multiplication
-// gives +264. 250 basis points per additional leg reproduces that order of
-// shading and keeps growing with the number of legs, which is where a book's
-// real risk on a parlay is.
-const DefaultParlayJuiceBasisPoints int64 = 250
+// gives +264. 350 basis points per additional leg shades a little harder than
+// the card does, and keeps growing with the number of legs, which is where a
+// book's real risk on a parlay is: two -110 legs come back at +252 against
+// the +264 the raw multiplication gives.
+const DefaultParlayJuiceBasisPoints int64 = 350
+
+// ParlaysMoveLines records a deliberate decision: they do not. A parlay's
+// liability does not belong to any one selection — it is contingent on every
+// other leg landing — so feeding a leg into the exposure-based pricing engine
+// would move a line by an amount the engine cannot attribute or unwind. No
+// parlay path calls RepriceMarketAfterWager, and none should.
+const ParlaysMoveLines = false
 
 // MinParlayLegs and MaxParlayLegs bound a parlay. Two is the minimum for the
 // bet to mean anything; the ceiling keeps the compounded price, and so the
