@@ -158,6 +158,12 @@
   <p>When authoritative material is available, enter the teams, rosters, players, matches, and verified results through <a href="/admin/matches">Matches</a>; those confirmed records will populate the placeholder's match and statistics section automatically. Prepare the tournament write-up and selected photographs separately. The placeholder has reserved sections for all three.</p>
 </section>
 
+<section class="help-section" aria-labelledby="help-photos">
+  <h2 id="help-photos">Cup photo pages</h2>
+  <p>Each year page under <a href="/history">History</a> shows a short selection of photographs. When a year has a full gallery, the selection ends with a <strong>See all photos</strong> link to its own page — for example the <a href="/history/2026/photos">2026 photos</a>. Nothing on either page requires a login.</p>
+  <p>Galleries are stored as editorial content, not as match data: adding or reordering photographs never changes a result, a statistic, or a wager. Photographs are served from CloudFront, with a grid-sized copy used in the gallery and the larger image opening when a photo is clicked.</p>
+</section>
+
 <section class="help-section" aria-labelledby="help-test-mode">
   <h2 id="help-test-mode">Testing without touching the live ledger</h2>
   <p>The production process always uses the real database. Do not switch that process to test mode: sessions, identities, wagers, settlements, and the outbox worker all use the selected database together.</p>

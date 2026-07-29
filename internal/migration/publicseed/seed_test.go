@@ -19,11 +19,19 @@ func TestLoadSeedData(t *testing.T) {
 	if got, want := len(data.snapshot.Players), 23; got != want {
 		t.Fatalf("players = %d, want %d", got, want)
 	}
-	if got, want := len(data.snapshot.Events), 7; got != want {
+	if got, want := len(data.snapshot.Events), 8; got != want {
 		t.Fatalf("events = %d, want %d", got, want)
 	}
+	// The importer covers 2019-2024 only: the 2025 placeholder has no source
+	// material and 2026 onward is authored on the public site and entered into
+	// the competition model through the admin workflow.
 	if got, want := countImportableEvents(data.snapshot), 6; got != want {
 		t.Fatalf("importable events = %d, want %d", got, want)
+	}
+	for _, event := range data.snapshot.Events {
+		if event.Year > 2024 && event.LegacyImportable() {
+			t.Fatalf("post-cutoff event %d is inside the legacy import", event.Year)
+		}
 	}
 	if got, want := len(data.media), 22; got != want {
 		t.Fatalf("media = %d, want %d", got, want)

@@ -1,0 +1,41 @@
+{{define "content"}}
+{{$event := .Event}}
+<article class="gallery-page">
+  <header class="page-header section-shell">
+    <a class="back-link dark" href="/history/{{$event.Year}}"><span aria-hidden="true">&larr;</span> {{$event.Year}} Cabot Cup</a>
+    <p class="eyebrow dark">{{$event.Venue}}</p>
+    <h1>{{$event.Year}} photos</h1>
+    <p>All {{$event.GalleryCount}} photographs from the {{$event.Year}} cup, in the order they were played.</p>
+  </header>
+
+  {{range $event.Gallery}}
+  <section class="section-shell gallery-group" aria-label="{{.Label}} at {{.Venue}}">
+    <div class="gallery-group-heading">
+      <div>
+        <p class="eyebrow dark">{{.Label}}</p>
+        <h2>{{.Venue}}</h2>
+      </div>
+      <p>{{.Note}}</p>
+    </div>
+    <div class="gallery-grid">
+      {{range .Photos}}
+      <figure>
+        <a href="{{.URL}}">
+          <img src="{{.GridURL}}" alt="{{.Alt}}" loading="lazy">
+        </a>
+        <figcaption>{{.Caption}}</figcaption>
+      </figure>
+      {{end}}
+    </div>
+  </section>
+  {{end}}
+
+  <nav class="section-shell year-nav" aria-label="Other cup years">
+    <strong>More from the archive</strong>
+    <div>
+      <a href="/history/{{$event.Year}}">{{$event.Year}} story</a>
+      {{range .Events}}{{if ne .Year $event.Year}}<a href="/history/{{.Year}}">{{.Year}}</a>{{end}}{{end}}
+    </div>
+  </nav>
+</article>
+{{end}}

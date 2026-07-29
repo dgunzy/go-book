@@ -31,11 +31,29 @@
       <p>{{$event.Summary}}</p>
       {{if $event.Placeholder}}
       <p class="snapshot-note"><strong>Source status.</strong> No match results have been inferred from betting records or aggregate player statistics. Teams, scores, and individual matches will remain blank until verified source material is provided.</p>
+      {{else if $event.Rounds}}
+      <p class="snapshot-note"><strong>Archive note.</strong> Session points below are the recorded running result for the week. Individual match records are not published on this page.</p>
       {{else}}
       <p class="snapshot-note"><strong>Archive note.</strong> This narrative and its result were migrated from the former public site. It is historical editorial content, not a newly verified match record.</p>
       {{end}}
     </div>
   </section>
+
+  {{if $event.Rounds}}
+  <section class="section-shell round-band" aria-label="{{$event.Year}} session results">
+    <ol class="round-list">
+      {{range $event.Rounds}}
+      <li>
+        <p class="eyebrow dark">{{.Day}}</p>
+        <h3>{{.Venue}}</h3>
+        <p class="round-format">{{.Format}}</p>
+        <p class="round-result">{{.Result}}</p>
+        <strong>{{.Points}}</strong>
+      </li>
+      {{end}}
+    </ol>
+  </section>
+  {{end}}
 
   {{if $event.Placeholder}}
   <section class="section-shell archive-placeholders" aria-label="2025 archive content still to be added">
@@ -61,13 +79,19 @@
   {{else}}
   <section class="photo-band" aria-label="{{$event.Year}} photo gallery">
     <div class="section-shell photo-grid">
-      {{range $event.Photos}}
+      {{range $event.GridPhotos}}
       <figure>
         <img src="{{.URL}}" alt="{{.Alt}}" loading="lazy">
         <figcaption>{{.Caption}}</figcaption>
       </figure>
       {{end}}
     </div>
+    {{if $event.HasGallery}}
+    <div class="section-shell gallery-cta">
+      <p>A selection from the week. The full set is on its own page.</p>
+      <a class="primary-link" href="/history/{{$event.Year}}/photos">See all {{$event.GalleryCount}} photos <span aria-hidden="true">&rarr;</span></a>
+    </div>
+    {{end}}
   </section>
   {{end}}
 

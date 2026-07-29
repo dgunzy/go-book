@@ -1,8 +1,8 @@
 {{define "content"}}
 <header class="page-header section-shell">
-  <p class="eyebrow dark">2019&ndash;2025</p>
+  <p class="eyebrow dark">2019&ndash;2026</p>
   <h1>Cup history</h1>
-  <p>Seven competitions and a growing collection of stories from the team era. The 2025 archive is ready for its source material.</p>
+  <p>Eight competitions and a growing collection of stories from the team era. The 2025 archive is still ready for its source material.</p>
 </header>
 
 <section class="section-shell timeline" aria-label="Cabot Cup events">
@@ -14,7 +14,7 @@
     </a>
     {{else}}
     <a class="event-image" href="/history/{{.Year}}" tabindex="-1" aria-hidden="true">
-      <img src="{{(index .Photos 0).URL}}" alt="" loading="lazy">
+      <img src="{{(index .Photos 0).GridURL}}" alt="" loading="lazy">
     </a>
     {{end}}
     <div class="event-year">{{.Year}}</div>

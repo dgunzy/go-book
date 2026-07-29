@@ -161,9 +161,10 @@ func Apply(ctx context.Context, db DB) (Report, error) {
 
 	for _, event := range data.snapshot.Events {
 		// A public archive placeholder is intentionally not promoted into the
-		// competition model. Historical matches and results will be entered only
-		// when authoritative source records are available.
-		if event.Placeholder {
+		// competition model, and neither is a year after the legacy cutoff.
+		// Historical matches and results will be entered only when authoritative
+		// source records are available.
+		if !event.LegacyImportable() {
 			continue
 		}
 		slug := fmt.Sprintf("cabot-cup-%d", event.Year)
@@ -256,7 +257,7 @@ func Apply(ctx context.Context, db DB) (Report, error) {
 func countImportableEvents(snapshot legacy.Snapshot) int {
 	count := 0
 	for _, event := range snapshot.Events {
-		if !event.Placeholder {
+		if event.LegacyImportable() {
 			count++
 		}
 	}
@@ -356,10 +357,15 @@ func legacyNarrative(event legacy.Event) string {
 	return fmt.Sprintf("Legacy final: %s defeated %s; %s\n\n%s", event.Winner, event.RunnerUp, event.Score, event.Summary)
 }
 
+// countEventPhotos reports the photographs carried by importable events. They
+// are deliberately not promoted into media_assets, so the count is recorded as
+// skipped. Photographs on later years belong to the public site alone.
 func countEventPhotos(snapshot legacy.Snapshot) int {
 	count := 0
 	for _, event := range snapshot.Events {
-		count += len(event.Photos)
+		if event.LegacyImportable() {
+			count += len(event.Photos)
+		}
 	}
 	return count
 }

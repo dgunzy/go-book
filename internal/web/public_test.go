@@ -41,6 +41,8 @@ func TestPublicPages(t *testing.T) {
 		{path: "/history", want: []string{"<h1>Cup history</h1>", "2019 Cabot Cup", "2024 Cabot Cup", "2025 Cabot Cup", "Results not yet entered"}},
 		{path: "/history/2022", want: []string{"<h1>2022 Cabot Cup</h1>", "Turtles", "Fox Harb&#39;r Resort", "historical editorial content"}},
 		{path: "/history/2025", want: []string{"<h1>2025 Cabot Cup</h1>", "Archive in progress", "No match results have been inferred", "Match results &amp; statistics", "Awaiting verified scorecards"}},
+		{path: "/history/2026", want: []string{"<h1>2026 Cabot Cup</h1>", "Bears", "Flamingos", "26 - 10", "The Links at Crowbush Cove", "Dundarave Golf Course", "Brudenell River Golf Course", "/history/2026/photos", "See all 38 photos"}},
+		{path: "/history/2026/photos", want: []string{"<h1>2026 photos</h1>", "All 38 photographs", "/2026/thumb/20260728-Z52_1275.jpg", "The Cabot Cup", "Brudenell River Golf Course"}},
 		{path: "/players", want: []string{"<h1>Players</h1>", "Portrait of Alex", "Portrait of Wally", "aggregate Cabot Cup records"}},
 		{path: "/stats", want: []string{"<h1>Statistics</h1>", "Player-match entries", "Wally &middot; 100%", ">1</td>"}},
 	}
@@ -151,6 +153,9 @@ func TestNotFoundAndMethodHandling(t *testing.T) {
 		status int
 	}{
 		{method: http.MethodGet, path: "/history/2018", status: http.StatusNotFound},
+		{method: http.MethodGet, path: "/history/2025/photos", status: http.StatusNotFound},
+		{method: http.MethodGet, path: "/history/2018/photos", status: http.StatusNotFound},
+		{method: http.MethodGet, path: "/history/nineteen/photos", status: http.StatusNotFound},
 		{method: http.MethodGet, path: "/missing", status: http.StatusNotFound},
 		{method: http.MethodPost, path: "/players", status: http.StatusMethodNotAllowed},
 	} {

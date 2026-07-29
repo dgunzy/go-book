@@ -94,6 +94,7 @@ func (h *Handler) routes() {
 
 	h.mux.Handle("GET /assets/players/", cacheAssets(http.StripPrefix("/assets/players/", http.FileServer(http.FS(playerFS)))))
 	h.mux.Handle("GET /assets/", cacheAssets(http.StripPrefix("/assets/", http.FileServer(http.FS(staticFS)))))
+	h.mux.HandleFunc("GET /history/{year}/photos", h.historyPhotos)
 	h.mux.HandleFunc("GET /history/{year}", h.historyDetail)
 	h.mux.HandleFunc("GET /history", h.history)
 	h.mux.HandleFunc("GET /players", h.players)
@@ -153,6 +154,32 @@ func (h *Handler) historyDetail(w http.ResponseWriter, r *http.Request) {
 		data.VerifiedSeason = verifiedSeason
 		data.VerifiedSeasons = verified.Seasons
 		h.render(w, "verified_event", data)
+		return
+	}
+	h.notFound(w)
+}
+
+func (h *Handler) historyPhotos(w http.ResponseWriter, r *http.Request) {
+	year, err := strconv.Atoi(r.PathValue("year"))
+	if err != nil {
+		h.notFound(w)
+		return
+	}
+	for i := range h.snapshot.Events {
+		if h.snapshot.Events[i].Year != year {
+			continue
+		}
+		if !h.snapshot.Events[i].HasGallery() {
+			h.notFound(w)
+			return
+		}
+		data := h.baseData(
+			fmt.Sprintf("%d photos", year),
+			fmt.Sprintf("Every photograph from the %d Cabot Cup.", year),
+			"history",
+		)
+		data.Event = &h.snapshot.Events[i]
+		h.render(w, "photos", data)
 		return
 	}
 	h.notFound(w)
@@ -264,7 +291,7 @@ func cacheAssets(next http.Handler) http.Handler {
 }
 
 func parseTemplates() (map[string]*template.Template, error) {
-	pages := []string{"home", "history", "event", "verified_event", "players", "stats", "not_found"}
+	pages := []string{"home", "history", "event", "photos", "verified_event", "players", "stats", "not_found"}
 	result := make(map[string]*template.Template, len(pages))
 	functions := template.FuncMap{
 		"add1": func(value int) int { return value + 1 },

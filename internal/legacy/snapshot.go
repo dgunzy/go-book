@@ -14,6 +14,11 @@ import (
 const (
 	SnapshotLabel = "Legacy snapshot through 2024"
 	SourceNote    = "These totals were imported from the former Cabot Cup site. The source contains aggregate player records, not verified match-by-match results."
+
+	// CutoffYear is the last year covered by the retired site's export. Events
+	// after it are editorial pages authored here; their competition records are
+	// entered through the admin match workflow, not backfilled by the importer.
+	CutoffYear = 2024
 )
 
 // Player contains aggregate public competition statistics from the legacy site.
@@ -56,8 +61,37 @@ func (p Player) WinningPercentage() int {
 
 type Photo struct {
 	URL     string
+	Thumb   string
 	Alt     string
 	Caption string
+}
+
+// GridURL prefers the smaller derivative for gallery grids and falls back to the
+// display image for older years that were imported without a thumbnail.
+func (p Photo) GridURL() string {
+	if p.Thumb != "" {
+		return p.Thumb
+	}
+	return p.URL
+}
+
+// PhotoGroup is one titled run of photographs within an event gallery, normally
+// a single day of play at a single course.
+type PhotoGroup struct {
+	Label  string
+	Venue  string
+	Note   string
+	Photos []Photo
+}
+
+// Round records how one day of play was scored. It is optional; years imported
+// from the former site carry their result only in Score and Summary.
+type Round struct {
+	Day    string
+	Venue  string
+	Format string
+	Result string
+	Points string
 }
 
 type Event struct {
@@ -68,8 +102,38 @@ type Event struct {
 	Venue       string
 	Summary     string
 	Photos      []Photo
+	Rounds      []Round
+	Gallery     []PhotoGroup
 	Placeholder bool
 }
+
+// GalleryCount reports how many photographs the full gallery holds.
+func (e Event) GalleryCount() int {
+	total := 0
+	for _, group := range e.Gallery {
+		total += len(group.Photos)
+	}
+	return total
+}
+
+// HasGallery reports whether the event has a dedicated photo page worth linking.
+func (e Event) HasGallery() bool { return e.GalleryCount() > 0 }
+
+// GridPhotos returns the featured photographs to show below the hero. An event
+// with its own gallery page drops the first entry, which the hero already fills
+// at full width; imported years keep every photograph on the year page.
+func (e Event) GridPhotos() []Photo {
+	if e.HasGallery() && len(e.Photos) > 1 {
+		return e.Photos[1:]
+	}
+	return e.Photos
+}
+
+// LegacyImportable reports whether the event came from the retired site's export
+// and may therefore be reconciled into PostgreSQL by the legacy importer. A
+// placeholder has no source material, and a post-cutoff year is outside the
+// import's scope.
+func (e Event) LegacyImportable() bool { return !e.Placeholder && e.Year <= CutoffYear }
 
 type Snapshot struct {
 	Label   string
@@ -208,6 +272,108 @@ func legacyEvents() []Event {
 		{
 			Year: 2025, Venue: "Details to be added", Placeholder: true,
 			Summary: "This page is reserved for the 2025 Cabot Cup write-up, photographs, and verified match statistics. No winner, score, teams, or individual match results have been entered yet.",
+		},
+		event2026(),
+	}
+}
+
+// media2026 is the CloudFront prefix holding the 2026 gallery. Display images sit
+// at the prefix root and their grid derivatives under thumb/.
+const media2026 = "https://d18fc2989jrcic.cloudfront.net/2026/"
+
+func photo2026(file, alt, caption string) Photo {
+	return Photo{
+		URL:     media2026 + file,
+		Thumb:   media2026 + "thumb/" + file,
+		Alt:     alt,
+		Caption: caption,
+	}
+}
+
+func event2026() Event {
+	crowbush := []Photo{
+		photo2026("20260726-Z52_1094.jpg", "Players warming up on the Crowbush practice range", "Both sides share the range before the opening session"),
+		photo2026("20260726-DSC_1097.jpg", "A player finishing a swing beside a warm-up range sign", "Irons only, as instructed"),
+		photo2026("20260726-Z52_1092.jpg", "A player in a bucket hat giving a thumbs up on the range", "Ready for the opening tee shot"),
+		photo2026("20260726-Z52_1118.jpg", "A player following a tee shot across water at Crowbush", "Carrying the water on the opening day"),
+		photo2026("20260726-Z52_1136.jpg", "A player at the top of the backswing in front of a dune", "Into the dunes at Crowbush Cove"),
+		photo2026("20260726-Z52_1133.jpg", "A player watching a shot toward a hilltop flag", "Watching one settle"),
+		photo2026("20260726-Z52_1109.jpg", "A green flag standing against the sky above a links green", "Crowbush in the late afternoon"),
+		photo2026("20260726-Z52_1143.jpg", "A ball resting on a green below a grassy dune", "Safely on, below the dune"),
+	}
+	dundarave := []Photo{
+		photo2026("20260727-Z52_1158.jpg", "Four players posing with drivers on a tee", "A best-ball pairing before the off"),
+		photo2026("20260727-Z52_1163.jpg", "Four players standing behind their drivers on a tee box", "Another Saturday pairing at Dundarave"),
+		photo2026("20260727-Z52_1167.jpg", "Two Flamingos and two Bears posing together on a tee", "Bears and Flamingos, side by side"),
+		photo2026("20260727-Z52_1156.jpg", "A player smiling in sunglasses and a quarter-zip", "All smiles at the turn"),
+		photo2026("20260727-Z52_1174.jpg", "A player in a bucket hat walking off with a putter", "Walking off after holing out"),
+		photo2026("20260727-Z52_1176.jpg", "A player standing with hands on hips beside a tee marker", "Weighing up the tee shot"),
+		photo2026("20260727-Z52_1155.jpg", "A player lying flat on his back on a green", "The Dundarave heat claims another"),
+		photo2026("20260727-Z52_1148.jpg", "Players gathered on a distant tee framed by tall grass", "A group waiting on the tee"),
+		photo2026("20260727-Z52_1160.jpg", "Two carts crossing a wide fairway lined with spruce", "Crossing the fairway at Dundarave"),
+	}
+	brudenell := []Photo{
+		photo2026("20260728-Z52_1177.jpg", "Three Flamingos players putting out on a green", "Flamingos on the practice green before singles"),
+		photo2026("20260728-Z52_1184.jpg", "A Flamingos player striking a tee shot over water", "A full swing over the water at Brudenell"),
+		photo2026("20260728-Z52_1190.jpg", "A Bears player watching a tee shot fly over a pond", "The Bears answer over the same pond"),
+		photo2026("20260728-Z52_1195.jpg", "A player playing a recovery shot from beside a tree", "Singles takes a detour into the trees"),
+		photo2026("20260728-Z52_1203.jpg", "Three players around a green with a Canadian flag pin", "Working out the last few feet"),
+		photo2026("20260728-Z52_1206.jpg", "A Flamingos player and a Bears player laughing together", "Opponents for the day"),
+		photo2026("20260728-Z52_1208.jpg", "A line of Bears players watching a shot from the side of a fairway", "The Bears gallery watches the singles come in"),
+		photo2026("20260728-Z52_1275.jpg", "The Cabot Cup trophy standing on the grass", "The Cabot Cup"),
+		photo2026("20260728-Z52_1259.jpg", "The winning Bears team lined up with the Cabot Cup", "The 2026 Bears, winners of the Cabot Cup"),
+		photo2026("20260728-Z52_1266.jpg", "The Flamingos team lined up in their black and pink kit", "The Flamingos"),
+		photo2026("20260728-Z52_1274.jpg", "Both teams gathered together behind the Cabot Cup", "Bears and Flamingos together at the close"),
+		photo2026("20260728-Z52_1210.jpg", "A Bears player holding the cup and drinking from it", "First taste of the cup"),
+		photo2026("20260728-Z52_1213.jpg", "Two Bears players passing the cup between them beside a cart", "Passing it along"),
+		photo2026("20260728-Z52_1216.jpg", "A Bears player raising the cup to drink from it", "It goes round again"),
+		photo2026("20260728-Z52_1218.jpg", "A Bears player carrying the cup in front of the clubhouse", "Carrying it back to the clubhouse"),
+		photo2026("20260728-Z52_1225.jpg", "A player tipping the cup back under the clubhouse canopy", "Drinking from the Cabot Cup"),
+		photo2026("20260728-Z52_1230.jpg", "A player lifting the cup with both hands under the pavilion", "Two hands on it"),
+		photo2026("20260728-Z52_1235.jpg", "A bearded player drinking from the cup with teammates behind", "The celebration works its way down the roster"),
+		photo2026("20260728-Z52_1238.jpg", "A grinning player carrying the cup past the carts", "Not letting go of it"),
+		photo2026("20260728-Z52_1243.jpg", "Three Bears players laughing as one lifts the cup", "The Bears enjoy the closing session"),
+		photo2026("20260728-Z52_1251.jpg", "A player addressing the group holding cash and a golf ball", "Prizes and closing remarks"),
+	}
+
+	return Event{
+		Year: 2026, Winner: "Bears", RunnerUp: "Flamingos", Score: "26 - 10",
+		Venue:   "Prince Edward Island",
+		Summary: "The cup moved to Prince Edward Island for three courses in three days. The Bears swept the opening best-ball session at Crowbush to lead 8 - 0, held the Flamingos to a 2 - 2 split at Dundarave, and then took the singles at Brudenell River to finish 26 - 10 — the largest winning margin the team era has recorded.",
+		Rounds: []Round{
+			{Day: "Sunday 26 July", Venue: "The Links at Crowbush Cove", Format: "Best ball, 2 points a match", Result: "Bears sweep", Points: "Bears 8 - 0"},
+			{Day: "Monday 27 July", Venue: "Dundarave Golf Course", Format: "Best ball, 3 points a match", Result: "Session split 2 - 2", Points: "Bears 6 - 6"},
+			{Day: "Tuesday 28 July", Venue: "Brudenell River Golf Course", Format: "Singles, 2 points a match", Result: "Bears take the singles", Points: "Bears 12 - 4"},
+		},
+		// The first entry is the page hero. The second leads the featured grid at
+		// full width, where a 16:8 crop would cut a group photograph in half, so
+		// a landscape frame takes that slot.
+		Photos: []Photo{
+			brudenell[10], // both teams with the cup
+			crowbush[6],   // Crowbush in the late afternoon
+			brudenell[8],  // the winning Bears
+			brudenell[7],  // the trophy
+			brudenell[9],  // the Flamingos
+			brudenell[11], // first drink from the cup
+			dundarave[2],  // Bears and Flamingos pairing
+			dundarave[6],  // flat out on the green
+		},
+		Gallery: []PhotoGroup{
+			{
+				Label: "Day one", Venue: "The Links at Crowbush Cove",
+				Note:   "Best ball, two points a match. The Bears won all four.",
+				Photos: crowbush,
+			},
+			{
+				Label: "Day two", Venue: "Dundarave Golf Course",
+				Note:   "Best ball, three points a match. The session finished level.",
+				Photos: dundarave,
+			},
+			{
+				Label: "Day three", Venue: "Brudenell River Golf Course",
+				Note:   "Singles, two points a match, and the presentation that followed.",
+				Photos: brudenell,
+			},
 		},
 	}
 }
