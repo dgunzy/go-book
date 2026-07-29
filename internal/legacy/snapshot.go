@@ -64,6 +64,12 @@ type Photo struct {
 	Thumb   string
 	Alt     string
 	Caption string
+
+	// Original, when set, points at the full-resolution file. Those objects are
+	// stored with Content-Disposition: attachment, so following the link saves
+	// the photograph rather than opening it. The HTML download attribute cannot
+	// do this for us: it is ignored on a cross-origin href.
+	Original string
 }
 
 // GridURL prefers the smaller derivative for gallery grids and falls back to the
@@ -278,15 +284,17 @@ func legacyEvents() []Event {
 }
 
 // media2026 is the CloudFront prefix holding the 2026 gallery. Display images sit
-// at the prefix root and their grid derivatives under thumb/.
+// at the prefix root, their grid derivatives under thumb/, and the camera
+// originals under original/.
 const media2026 = "https://d18fc2989jrcic.cloudfront.net/2026/"
 
 func photo2026(file, alt, caption string) Photo {
 	return Photo{
-		URL:     media2026 + file,
-		Thumb:   media2026 + "thumb/" + file,
-		Alt:     alt,
-		Caption: caption,
+		URL:      media2026 + file,
+		Thumb:    media2026 + "thumb/" + file,
+		Original: media2026 + "original/" + file,
+		Alt:      alt,
+		Caption:  caption,
 	}
 }
 

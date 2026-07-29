@@ -6,6 +6,7 @@
     <p class="eyebrow dark">{{$event.Venue}}</p>
     <h1>{{$event.Year}} photos</h1>
     <p>All {{$event.GalleryCount}} photographs from the {{$event.Year}} cup, in the order they were played.</p>
+    <p class="gallery-note">Click a photo to open it larger. <strong>Download original</strong> saves the untouched file straight from the camera &mdash; full resolution, and 2&ndash;6&nbsp;MB each.</p>
   </header>
 
   {{range $event.Gallery}}
@@ -23,7 +24,10 @@
         <a href="{{.URL}}">
           <img src="{{.GridURL}}" alt="{{.Alt}}" loading="lazy">
         </a>
-        <figcaption>{{.Caption}}</figcaption>
+        <figcaption>
+          <span>{{.Caption}}</span>
+          {{if .Original}}<a class="download-link" href="{{.Original}}" rel="nofollow">Download original</a>{{end}}
+        </figcaption>
       </figure>
       {{end}}
     </div>

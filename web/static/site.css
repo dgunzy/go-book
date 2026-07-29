@@ -322,7 +322,12 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .gallery-grid figure { margin: 0; }
 .gallery-grid a { display: block; }
 .gallery-grid img { aspect-ratio: 4 / 3; height: auto; object-fit: cover; width: 100%; }
-.gallery-grid figcaption { color: var(--ink-soft); font-size: .88rem; padding-top: .6rem; }
+/* A column keeps every cell's download link on its own line: sharing a baseline
+   with the caption leaves the grid ragged as soon as one caption wraps. */
+.gallery-grid figcaption { align-items: flex-start; color: var(--ink-soft); display: flex; flex-direction: column; font-size: .88rem; gap: .35rem; padding-top: .6rem; }
+.page-header .gallery-note { border-left: 3px solid var(--gold); color: var(--ink-soft); font-family: inherit; font-size: .95rem; margin-top: 1.5rem; max-width: 620px; padding-left: 1rem; }
+.download-link { color: var(--green); font-size: .78rem; font-weight: 700; letter-spacing: .02em; text-decoration-thickness: 1px; text-underline-offset: 3px; white-space: nowrap; }
+.download-link:hover { color: var(--coral); }
 
 .year-nav { align-items: center; display: flex; justify-content: space-between; padding-bottom: 5rem; padding-top: 5rem; }
 .year-nav > div { display: flex; flex-wrap: wrap; gap: .5rem; }

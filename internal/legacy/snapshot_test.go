@@ -1,6 +1,9 @@
 package legacy
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLoadLegacySnapshot(t *testing.T) {
 	snapshot, err := Load()
@@ -83,6 +86,15 @@ func TestEvent2026GalleryIsCompleteAndDistinct(t *testing.T) {
 			}
 			if photo.Thumb == "" || photo.GridURL() != photo.Thumb {
 				t.Fatalf("gallery photo %q has no grid derivative", photo.URL)
+			}
+			// The originals live under their own prefix because those objects
+			// carry Content-Disposition: attachment. A link to the display copy
+			// would open in a tab instead of downloading.
+			if !strings.Contains(photo.Original, "/original/") {
+				t.Fatalf("gallery photo %q does not link the downloadable original: %q", photo.URL, photo.Original)
+			}
+			if photo.Original == photo.URL || photo.Original == photo.Thumb {
+				t.Fatalf("gallery photo %q offers a derivative as its original", photo.URL)
 			}
 			if seen[photo.URL] {
 				t.Fatalf("gallery repeats %q", photo.URL)
