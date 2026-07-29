@@ -2,14 +2,53 @@
 <header class="page-header section-shell">
   <p class="eyebrow dark">The record book</p>
   <h1>Statistics</h1>
-  <p>Verified event-derived records alongside the labelled legacy aggregate snapshot.</p>
+  <p>One career record across every cup, with the archive and the verified match record kept separately auditable beneath it.</p>
 </header>
+
+{{if .Career}}
+<section class="section-shell leaderboard combined-career" aria-labelledby="career">
+  <div class="leaderboard-heading">
+    <div>
+      <p class="eyebrow dark">Career record{{if .CareerTo}} &middot; {{.CareerFrom}}&ndash;{{.CareerTo}}{{end}}</p>
+      <h2 id="career">Every cup, one table</h2>
+    </div>
+    <p>The archive through {{.CareerFrom}}&ndash;2024 plus every verified match since, added together. A tie counts as half a win. Players under {{.QualifyingLimit}} career matches are listed but not ranked.</p>
+  </div>
+  <div class="wide-table-wrap" tabindex="0" role="region" aria-label="Career record table">
+    <table class="wide-table career-table">
+      <thead>
+        <tr>
+          <th scope="col">Rank</th><th scope="col">Player</th>
+          <th scope="col">Played</th><th scope="col">Wins</th><th scope="col">Losses</th><th scope="col">Ties</th>
+          <th scope="col">Points won</th><th scope="col">Cup record</th><th scope="col">Record from</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range $index, $player := .Career}}
+        <tr{{if not $player.Qualified}} class="career-unranked"{{end}}>
+          <td class="rank">{{if $player.Qualified}}{{add1 $index}}{{else}}&mdash;{{end}}</td>
+          <th scope="row"><a href="/players#{{$player.Slug}}">{{$player.Name}}</a></th>
+          <td>{{$player.Played}}</td><td>{{$player.Wins}}</td><td>{{$player.Losses}}</td><td>{{$player.Ties}}</td>
+          <td><strong>{{$player.PointsPercent}}%</strong></td>
+          <td>{{if $player.HasLegacy}}{{$player.CupWins}}&ndash;{{$player.CupLosses}}{{else}}&mdash;{{end}}</td>
+          <td><small>{{$player.Sources}}</small></td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <p class="table-hint">Cup record counts team wins and losses from the archive only, so it stops at 2024 until earlier cups are entered as verified matches.</p>
+</section>
+{{end}}
 
 {{if .VerifiedCareer}}
 <section class="section-shell leaderboard authoritative-career" aria-labelledby="verified-career">
   <div class="leaderboard-heading">
-    <div><p class="eyebrow dark">Authoritative record</p><h2 id="verified-career">Verified career statistics</h2></div>
-    <p>Calculated from verified match events. Singles and team-format records remain separately auditable.</p>
+    <div>
+      <p class="eyebrow dark">Authoritative record{{if .VerifiedSeasons}} &middot; {{with index .VerifiedSeasons 0}}{{.Year}}{{end}} onward{{end}}</p>
+      <h2 id="verified-career">Verified match record</h2>
+    </div>
+    <p>Built match by match from confirmed results, so it currently covers only the cups entered as verified matches. Singles and team-format records stay separately auditable.</p>
   </div>
   <div class="wide-table-wrap">
     <table class="wide-table verified-stats-table">
@@ -25,7 +64,7 @@
   <div><span>Players</span><strong>{{.TotalPlayers}}</strong></div>
   <div><span>Cup appearances</span><strong>{{.CupAppearances}}</strong></div>
   <div><span>Player-match entries</span><strong>{{.MatchEntries}}</strong></div>
-  {{with .Leader}}<div><span>Highest points won</span><strong>{{.Name}} &middot; {{.WinningPercentage}}%</strong></div>{{end}}
+  {{with .Leader}}<div><span>Archive leader &middot; {{$.QualifyingLimit}}+ matches</span><strong>{{.Name}} &middot; {{.WinningPercentage}}%</strong></div>{{end}}
 </section>
 
 <aside class="section-shell archive-note compact" aria-label="Data source note">
@@ -36,12 +75,12 @@
 <section class="section-shell leaderboard">
   <div class="leaderboard-heading">
     <div>
-      <p class="eyebrow dark">Legacy snapshot</p>
+      <p class="eyebrow dark">Legacy snapshot &middot; through 2024</p>
       <h2>Historical aggregate record</h2>
     </div>
-    <p>Ties count as half a win, matching the legacy site's calculation.</p>
+    <p>The archive exactly as it was imported, with no verified matches folded in. Ties count as half a win, matching the legacy site's calculation.</p>
   </div>
-  <div class="wide-table-wrap">
+  <div class="wide-table-wrap" tabindex="0" role="region" aria-label="Historical aggregate record table">
     <table class="wide-table">
       <thead>
         <tr><th scope="col">Rank</th><th scope="col">Player</th><th scope="col">Played</th><th scope="col">Wins</th><th scope="col">Losses</th><th scope="col">Ties</th><th scope="col">Points won</th><th scope="col">Cup record</th></tr>

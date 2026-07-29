@@ -11,10 +11,11 @@
   </div>
 
   {{if .Teams}}
-  <h3>Cup standings</h3>
+  <h3>Match record</h3>
+  <p class="verified-note">One point a win and a half for a tie, so these totals measure matches won. They are not the cup score, which weights each match by its session.</p>
   <div class="wide-table-wrap">
     <table class="wide-table verified-compact-table">
-      <thead><tr><th>Team</th><th>Played</th><th>W</th><th>L</th><th>T</th><th>Points</th></tr></thead>
+      <thead><tr><th>Team</th><th>Played</th><th>W</th><th>L</th><th>T</th><th>Match points</th></tr></thead>
       <tbody>{{range .Teams}}<tr><th scope="row">{{.TeamName}}</th><td>{{.Played}}</td><td>{{.Wins}}</td><td>{{.Losses}}</td><td>{{.Ties}}</td><td><strong>{{.Points}}</strong></td></tr>{{end}}</tbody>
     </table>
   </div>
@@ -24,13 +25,13 @@
   <div class="verified-match-grid">
     {{range .Matches}}
     <article class="verified-match-card">
-      <div class="verified-match-meta"><span>Match {{.Number}}</span><span>{{.Format}}</span></div>
+      <div class="verified-match-meta"><span>Match {{.Number}}</span><span>{{.FormatLabel}}</span></div>
       <div class="verified-match-sides">
         <div><strong>{{if .Side1Players}}{{.Side1Players}}{{else}}{{.Side1Team}}{{end}}</strong><small>{{.Side1Team}}</small></div>
         <span>vs</span>
         <div><strong>{{if .Side2Players}}{{.Side2Players}}{{else}}{{.Side2Team}}{{end}}</strong><small>{{.Side2Team}}</small></div>
       </div>
-      <p class="verified-match-result"><strong>{{.WinnerLabel}}{{if ne .Outcome "tie"}} won{{end}}</strong>{{if .Score}} <span>{{.Score}}</span>{{end}}</p>
+      <p class="verified-match-result"><strong>{{.WinnerLabel}}{{if ne .Outcome "tie"}} won{{end}}</strong>{{if .Score}} <span>{{.DisplayScore}}</span>{{end}}</p>
       <small>{{.VerificationLabel}} · {{.VerifiedAt.Format "Jan 2, 2006"}}</small>
     </article>
     {{else}}<p>No verified matches yet.</p>{{end}}

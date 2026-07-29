@@ -32,7 +32,7 @@
       {{if $event.Placeholder}}
       <p class="snapshot-note"><strong>Source status.</strong> No match results have been inferred from betting records or aggregate player statistics. Teams, scores, and individual matches will remain blank until verified source material is provided.</p>
       {{else if $event.Rounds}}
-      <p class="snapshot-note"><strong>Archive note.</strong> Session points below are the recorded running result for the week. Individual match records are not published on this page.</p>
+      <p class="snapshot-note"><strong>How the scoring works.</strong> Matches are worth cup points rather than counting one apiece, and the stakes climb every day, so the cup stays winnable to the end. Each session below shows its format, what a match was worth, and the points on the table that day. The verified match record further down counts matches instead of cup points, which is why its totals read differently from the {{$event.Score}} final.</p>
       {{else}}
       <p class="snapshot-note"><strong>Archive note.</strong> This narrative and its result were migrated from the former public site. It is historical editorial content, not a newly verified match record.</p>
       {{end}}
@@ -47,6 +47,7 @@
         <p class="eyebrow dark">{{.Day}}</p>
         <h3>{{.Venue}}</h3>
         <p class="round-format">{{.Format}}</p>
+        {{if .AtStake}}<p class="round-stake">{{.AtStake}}</p>{{end}}
         <p class="round-result">{{.Result}}</p>
         <strong>{{.Points}}</strong>
       </li>

@@ -48,7 +48,81 @@ type pageData struct {
 	VerifiedSeasons []competitionpg.PublicSeasonRow
 	VerifiedSeason  *competitionpg.PublicSeasonRow
 	VerifiedCareer  []competitionpg.PublicPlayerStatRow
+	Career          []CareerRow
+	CareerFrom      int
+	CareerTo        int
+	QualifyingLimit int
+	Debutants       []CareerRow
 }
+
+// CareerRow is one player's whole record: the legacy aggregate through the
+// import cutoff plus every verified match since, added together. The two halves
+// cover disjoint years, which is what makes the sum meaningful rather than a
+// double count — buildCareer refuses to combine them if that ever stops holding.
+type CareerRow struct {
+	Name   string
+	Slug   string
+	Played int
+	Wins   int
+	Losses int
+	Ties   int
+
+	LegacyPlayed   int
+	VerifiedPlayed int
+	HasLegacy      bool
+	HasVerified    bool
+
+	CupWins   int
+	CupLosses int
+
+	firstVerifiedYear int
+}
+
+// PointsPercent scores a tie as half a win and rounds to a whole percent, the
+// convention the legacy site used and the archive still displays.
+func (c CareerRow) PointsPercent() int {
+	if c.Played == 0 {
+		return 0
+	}
+	pointsTimesTwo := 2*c.Wins + c.Ties
+	return (pointsTimesTwo*50 + c.Played/2) / c.Played
+}
+
+// Qualified reports whether the player has played enough matches for a rate to
+// mean anything. An unqualified player still appears, but is not ranked above
+// the field on the strength of two matches.
+func (c CareerRow) Qualified() bool { return c.Played >= QualifyingMatches }
+
+// Sources describes which halves of the record book a player appears in.
+func (c CareerRow) Sources() string {
+	switch {
+	case c.HasLegacy && c.HasVerified:
+		return "Archive + verified"
+	case c.HasVerified:
+		return "Verified"
+	default:
+		return "Archive"
+	}
+}
+
+// QualifyingMatches is the minimum career matches required before a win rate is
+// treated as ranked. Two-match players otherwise sit permanently at the top.
+const QualifyingMatches = 6
+
+// Image resolves a portrait by slug convention. A player who first appears in
+// the verified record has no legacy row to carry an image path, so the file is
+// looked up as players/<slug>.jpg and falls back to the blank profile rather
+// than rendering a broken image.
+func (c CareerRow) Image() string {
+	if _, err := fs.Stat(publicassets.Files, "players/"+c.Slug+".jpg"); err == nil {
+		return "/assets/players/" + c.Slug + ".jpg"
+	}
+	return "/assets/players/empty_profile.jpeg"
+}
+
+// DebutYear reports the first year this player appears in the verified record.
+// It is only meaningful for players with no legacy history.
+func (c CareerRow) DebutYear() int { return c.firstVerifiedYear }
 
 // New builds an independent handler for all public routes and assets.
 func New() (*Handler, error) {
@@ -207,9 +281,26 @@ func (h *Handler) players(w http.ResponseWriter, r *http.Request) {
 		sortBy = "name"
 	}
 
-	data := h.baseData("Players", "Legacy player profiles and aggregate Cabot Cup records.", "players")
+	verified, err := h.verifiedCompetition(r.Context())
+	if err != nil {
+		h.internalError(w)
+		return
+	}
+
+	data := h.baseData("Players", "Player profiles and Cabot Cup records, from the legacy archive and the verified match record.", "players")
 	data.Players = players
 	data.Sort = sortBy
+	// Players whose first cup came after the legacy import have no aggregate row,
+	// so they would otherwise appear in the match history and nowhere else.
+	career, _, _ := buildCareer(h.snapshot, verified)
+	for _, row := range career {
+		if row.HasVerified && !row.HasLegacy {
+			data.Debutants = append(data.Debutants, row)
+		}
+	}
+	sort.SliceStable(data.Debutants, func(i, j int) bool {
+		return data.Debutants[i].Name < data.Debutants[j].Name
+	})
 	h.render(w, "players", data)
 }
 
@@ -231,14 +322,106 @@ func (h *Handler) stats(w http.ResponseWriter, r *http.Request) {
 	data.VerifiedSeasons = verified.Seasons
 	data.VerifiedCareer = verified.Career
 	data.Players = players
+	data.Career, data.CareerFrom, data.CareerTo = buildCareer(h.snapshot, verified)
+	data.QualifyingLimit = QualifyingMatches
 	for _, player := range players {
 		data.CupAppearances += player.CupsPlayed()
 		data.MatchEntries += player.MatchesPlayed()
 	}
-	if len(players) > 0 {
-		data.Leader = &players[0]
+	// The headline leader must have played enough golf to deserve it. players is
+	// already sorted by rate, so the first qualified player is the leader.
+	for i := range players {
+		if players[i].MatchesPlayed() >= QualifyingMatches {
+			data.Leader = &players[i]
+			break
+		}
 	}
 	h.render(w, "stats", data)
+}
+
+// buildCareer merges the legacy aggregate with verified match records into one
+// career table. The legacy snapshot stops at legacy.CutoffYear and verified
+// seasons begin after it, so the two never describe the same match. If a
+// verified season ever falls on or before the cutoff the totals would count that
+// cup twice, so the combined view is withheld rather than shown wrong.
+func buildCareer(snapshot legacy.Snapshot, verified competitionpg.PublicCompetitionSnapshot) ([]CareerRow, int, int) {
+	for _, season := range verified.Seasons {
+		if season.Year <= legacy.CutoffYear {
+			return nil, 0, 0
+		}
+	}
+
+	players := snapshot.Players
+	rows := make([]CareerRow, 0, len(players)+len(verified.Career))
+	index := make(map[string]int, len(players))
+	for _, player := range players {
+		index[player.Slug] = len(rows)
+		rows = append(rows, CareerRow{
+			Name: player.Name, Slug: player.Slug,
+			Played: player.MatchesPlayed(), Wins: player.MatchWins(),
+			Losses: player.MatchLosses(), Ties: player.MatchTies(),
+			LegacyPlayed: player.MatchesPlayed(), HasLegacy: true,
+			CupWins: player.TeamWins, CupLosses: player.TeamLosses,
+		})
+	}
+
+	for _, stat := range verified.Career {
+		position, known := index[stat.PlayerSlug]
+		if !known {
+			index[stat.PlayerSlug] = len(rows)
+			rows = append(rows, CareerRow{Name: stat.PlayerName, Slug: stat.PlayerSlug})
+			position = len(rows) - 1
+		}
+		row := &rows[position]
+		row.Played += stat.Played
+		row.Wins += stat.Wins
+		row.Losses += stat.Losses
+		row.Ties += stat.Ties
+		row.VerifiedPlayed += stat.Played
+		row.HasVerified = true
+	}
+
+	// Career totals are aggregated across seasons, so a debut year has to come
+	// from the per-season rows.
+	for _, season := range verified.Seasons {
+		for _, stat := range season.Players {
+			position, known := index[stat.PlayerSlug]
+			if !known {
+				continue
+			}
+			if year := rows[position].firstVerifiedYear; year == 0 || season.Year < year {
+				rows[position].firstVerifiedYear = season.Year
+			}
+		}
+	}
+
+	// Qualified players rank first: a 100% record from two matches should not
+	// out-rank a decade of golf.
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].Qualified() != rows[j].Qualified() {
+			return rows[i].Qualified()
+		}
+		if rows[i].PointsPercent() != rows[j].PointsPercent() {
+			return rows[i].PointsPercent() > rows[j].PointsPercent()
+		}
+		if rows[i].Played != rows[j].Played {
+			return rows[i].Played > rows[j].Played
+		}
+		return rows[i].Name < rows[j].Name
+	})
+
+	from, to := 0, legacy.CutoffYear
+	for _, event := range snapshot.Events {
+		if from == 0 || event.Year < from {
+			from = event.Year
+		}
+	}
+	for _, season := range verified.Seasons {
+		if season.Year > to {
+			to = season.Year
+		}
+	}
+	return rows, from, to
 }
 
 func (h *Handler) verifiedCompetition(ctx context.Context) (competitionpg.PublicCompetitionSnapshot, error) {

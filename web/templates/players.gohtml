@@ -3,7 +3,7 @@
   <div>
     <p class="eyebrow dark">{{.TotalPlayers}} recorded golfers</p>
     <h1>Players</h1>
-    <p>Aggregate singles, doubles, and cup records from the former public site.</p>
+    <p>Aggregate singles, doubles, and cup records from the former public site, followed by the golfers who debuted after it closed.</p>
   </div>
   <form class="sort-form" action="/players" method="get">
     <label for="player-sort">Sort players</label>
@@ -46,4 +46,39 @@
   </article>
   {{end}}
 </section>
+
+{{if .Debutants}}
+<section class="section-shell debutants" aria-labelledby="debutants">
+  <div class="leaderboard-heading">
+    <div>
+      <p class="eyebrow dark">New to the record book</p>
+      <h2 id="debutants">First cup after the archive</h2>
+    </div>
+    <p>These golfers debuted after the legacy import closed, so their record comes entirely from verified matches rather than the aggregate snapshot.</p>
+  </div>
+  <div class="player-grid">
+    {{range .Debutants}}
+    <article class="player-card" id="{{.Slug}}">
+      <div class="player-heading">
+        <img src="{{.Image}}" alt="Portrait of {{.Name}}" loading="lazy" width="112" height="112">
+        <div>
+          <h2>{{.Name}}</h2>
+          <p><strong>{{.PointsPercent}}%</strong> match points won</p>
+          <span>{{if .DebutYear}}Debut {{.DebutYear}} &middot; {{end}}{{.Played}} {{if eq .Played 1}}match{{else}}matches{{end}}</span>
+        </div>
+      </div>
+      <div class="record-table-wrap">
+        <table class="record-table">
+          <caption class="visually-hidden">{{.Name}} verified match record</caption>
+          <thead><tr><th scope="col">Source</th><th scope="col">W</th><th scope="col">L</th><th scope="col">T</th></tr></thead>
+          <tbody>
+            <tr class="record-total"><th scope="row">Verified</th><td>{{.Wins}}</td><td>{{.Losses}}</td><td>{{.Ties}}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+    {{end}}
+  </div>
+</section>
+{{end}}
 {{end}}

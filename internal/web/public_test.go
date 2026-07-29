@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/dgunzy/go-book/internal/competitionpg"
+	"github.com/dgunzy/go-book/internal/legacy"
 )
 
 type fakeCompetitionReader struct {
@@ -43,8 +44,8 @@ func TestPublicPages(t *testing.T) {
 		{path: "/history/2025", want: []string{"<h1>2025 Cabot Cup</h1>", "Archive in progress", "No match results have been inferred", "Match results &amp; statistics", "Awaiting verified scorecards"}},
 		{path: "/history/2026", want: []string{"<h1>2026 Cabot Cup</h1>", "Bears", "Flamingos", "26 - 10", "The Links at Crowbush Cove", "Dundarave Golf Course", "Brudenell River Golf Course", "/history/2026/photos", "See all 38 photos"}},
 		{path: "/history/2026/photos", want: []string{"<h1>2026 photos</h1>", "All 38 photographs", "/2026/thumb/20260728-Z52_1275.jpg", "The Cabot Cup", "Brudenell River Golf Course", "/2026/original/20260728-Z52_1275.jpg", "Download original"}},
-		{path: "/players", want: []string{"<h1>Players</h1>", "Portrait of Alex", "Portrait of Wally", "aggregate Cabot Cup records"}},
-		{path: "/stats", want: []string{"<h1>Statistics</h1>", "Player-match entries", "Wally &middot; 100%", ">1</td>"}},
+		{path: "/players", want: []string{"<h1>Players</h1>", "Portrait of Alex", "Portrait of Wally", "cup records from the former public site"}},
+		{path: "/stats", want: []string{"<h1>Statistics</h1>", "Player-match entries", ">1</td>"}},
 	}
 
 	for _, test := range tests {
@@ -117,8 +118,8 @@ func TestVerifiedCompetitionHistoryAndCareerStats(t *testing.T) {
 		want []string
 	}{
 		{path: "/history", want: []string{"Verified match history", "2026", "1 verified match"}},
-		{path: "/history/2026", want: []string{"Authoritative competition record", "Dan Guns", "3 &amp; 2", "Admin verified", "Cup standings"}},
-		{path: "/stats", want: []string{"Verified career statistics", "Dan Guns", "Season records:", "/history/2026"}},
+		{path: "/history/2026", want: []string{"Authoritative competition record", "Dan Guns", "3 &amp; 2", "Admin verified", "Match record", "not the cup score"}},
+		{path: "/stats", want: []string{"Verified match record", "Dan Guns", "Season records:", "/history/2026", "Every cup, one table"}},
 	} {
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, test.path, nil))
@@ -212,5 +213,151 @@ func TestAssetsAreEmbeddedAndProtected(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestBuildCareerCombinesArchiveWithVerifiedMatches(t *testing.T) {
+	snapshot, err := legacy.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified := competitionpg.PublicCompetitionSnapshot{
+		Seasons: []competitionpg.PublicSeasonRow{{Year: 2026}},
+		Career: []competitionpg.PublicPlayerStatRow{
+			{PlayerName: "Alex", PlayerSlug: "alex", Played: 3, Wins: 2, Losses: 1},
+			{PlayerName: "Bradford", PlayerSlug: "bradford", Played: 3, Wins: 3},
+		},
+	}
+	rows, from, to := buildCareer(snapshot, verified)
+	if len(rows) == 0 {
+		t.Fatal("buildCareer returned no rows")
+	}
+	if from != 2019 || to != 2026 {
+		t.Fatalf("career range = %d-%d, want 2019-2026", from, to)
+	}
+
+	byName := make(map[string]CareerRow, len(rows))
+	for _, row := range rows {
+		if _, duplicate := byName[row.Name]; duplicate {
+			t.Fatalf("career lists %q twice", row.Name)
+		}
+		byName[row.Name] = row
+	}
+
+	// Alex is in both halves: the archive's 18 matches plus 2026's 3.
+	alex := byName["Alex"]
+	if alex.Played != 21 || alex.Wins != 13 || alex.Losses != 6 || alex.Ties != 2 {
+		t.Fatalf("Alex combined = %+v, want 21 played / 13-6-2", alex)
+	}
+	if !alex.HasLegacy || !alex.HasVerified || alex.Sources() != "Archive + verified" {
+		t.Fatalf("Alex sources = %q", alex.Sources())
+	}
+
+	// Bradford played his first cup in 2026 and has no archive row at all.
+	bradford := byName["Bradford"]
+	if bradford.Played != 3 || bradford.HasLegacy || bradford.Sources() != "Verified" {
+		t.Fatalf("Bradford = %+v, want 3 played, verified only", bradford)
+	}
+	if bradford.Qualified() {
+		t.Fatal("a three-match player must not be ranked")
+	}
+
+	// Qualified players sort ahead of everyone short of the threshold.
+	lastQualified := -1
+	for i, row := range rows {
+		if row.Qualified() {
+			lastQualified = i
+		} else if lastQualified > i {
+			t.Fatal("an unqualified player sorted above a qualified one")
+		}
+	}
+	if !rows[0].Qualified() {
+		t.Fatalf("leader %q is not qualified", rows[0].Name)
+	}
+}
+
+func TestBuildCareerRefusesToDoubleCountAnImportedYear(t *testing.T) {
+	snapshot, err := legacy.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 2024 is inside the legacy aggregate, so adding verified 2024 matches to it
+	// would count that cup twice. The combined view must be withheld instead.
+	verified := competitionpg.PublicCompetitionSnapshot{
+		Seasons: []competitionpg.PublicSeasonRow{{Year: 2026}, {Year: legacy.CutoffYear}},
+		Career:  []competitionpg.PublicPlayerStatRow{{PlayerName: "Alex", PlayerSlug: "alex", Played: 3, Wins: 3}},
+	}
+	if rows, _, _ := buildCareer(snapshot, verified); rows != nil {
+		t.Fatalf("buildCareer combined an imported year: %d rows", len(rows))
+	}
+}
+
+func TestStatsHeadlineLeaderMustBeQualified(t *testing.T) {
+	handler := newTestHandler(t)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/stats", nil))
+	body := rec.Body.String()
+	// Wally tops the archive on rate with two matches played. The headline must
+	// name a player with a real sample instead.
+	if strings.Contains(body, "Wally &middot; 100%") {
+		t.Error("headline leader is a two-match player")
+	}
+	if !strings.Contains(body, "Walker &middot; 79%") {
+		t.Error("headline leader is not the top qualified player")
+	}
+}
+
+func TestDebutantPortraitsResolveBySlug(t *testing.T) {
+	for _, test := range []struct{ slug, want string }{
+		{"bradford", "/assets/players/bradford.jpg"},
+		{"jb", "/assets/players/jb.jpg"},
+		{"albert", "/assets/players/albert.jpg"},
+		{"colin-d", "/assets/players/colin-d.jpg"},
+		{"nobody-has-this-portrait", "/assets/players/empty_profile.jpeg"},
+	} {
+		if got := (CareerRow{Slug: test.slug}).Image(); got != test.want {
+			t.Errorf("Image(%q) = %q, want %q", test.slug, got, test.want)
+		}
+	}
+}
+
+func TestPlayersPageShowsVerifiedOnlyDebutants(t *testing.T) {
+	snapshot := competitionpg.PublicCompetitionSnapshot{
+		Seasons: []competitionpg.PublicSeasonRow{{
+			EventID: "e", Name: "Cabot Cup", Year: 2026, VerifiedCount: 3,
+			Players: []competitionpg.PublicPlayerStatRow{
+				{PlayerName: "Bradford", PlayerSlug: "bradford", Played: 3, Wins: 3},
+				{PlayerName: "Alex", PlayerSlug: "alex", Played: 3, Wins: 2, Losses: 1},
+			},
+		}},
+		Career: []competitionpg.PublicPlayerStatRow{
+			{PlayerName: "Bradford", PlayerSlug: "bradford", Played: 3, Wins: 3},
+			{PlayerName: "Alex", PlayerSlug: "alex", Played: 3, Wins: 2, Losses: 1},
+		},
+	}
+	handler, err := NewWithCompetition(fakeCompetitionReader{snapshot: snapshot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/players", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	for _, want := range []string{
+		"First cup after the archive",
+		`id="bradford"`,
+		"/assets/players/bradford.jpg",
+		"Portrait of Bradford",
+		"Debut 2026",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("players page missing %q", want)
+		}
+	}
+	// Alex already has a legacy profile card and must not be duplicated below it.
+	if strings.Count(body, `id="alex"`) != 1 {
+		t.Errorf("Alex appears %d times, want 1", strings.Count(body, `id="alex"`))
 	}
 }

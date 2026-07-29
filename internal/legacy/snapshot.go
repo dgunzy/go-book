@@ -98,6 +98,10 @@ type Round struct {
 	Format string
 	Result string
 	Points string
+	// AtStake is the total cup points available that day. The cup deliberately
+	// escalates it session by session, and without it a reader sees only the
+	// per-match value and cannot tell the last day decides the week.
+	AtStake string
 }
 
 type Event struct {
@@ -349,9 +353,9 @@ func event2026() Event {
 		Venue:   "Prince Edward Island",
 		Summary: "The cup moved to Prince Edward Island for three courses in three days. The Bears swept the opening best-ball session at Crowbush to lead 8 - 0, held the Flamingos to a 2 - 2 split at Dundarave, and then took the singles at Brudenell River to finish 26 - 10 — the largest winning margin the team era has recorded.",
 		Rounds: []Round{
-			{Day: "Sunday 26 July", Venue: "The Links at Crowbush Cove", Format: "Best ball, 2 points a match", Result: "Bears sweep", Points: "Bears 8 - 0"},
-			{Day: "Monday 27 July", Venue: "Dundarave Golf Course", Format: "Best ball, 3 points a match", Result: "Session split 2 - 2", Points: "Bears 6 - 6"},
-			{Day: "Tuesday 28 July", Venue: "Brudenell River Golf Course", Format: "Singles, 2 points a match", Result: "Bears take the singles", Points: "Bears 12 - 4"},
+			{Day: "Sunday 26 July", Venue: "The Links at Crowbush Cove", Format: "Best ball, 2 points a match", AtStake: "8 points on the table", Result: "Bears win all four", Points: "Bears 8 - 0"},
+			{Day: "Monday 27 July", Venue: "Dundarave Golf Course", Format: "Best ball, 3 points a match", AtStake: "12 points on the table", Result: "Session split 2 - 2", Points: "Bears 6 - 6"},
+			{Day: "Tuesday 28 July", Venue: "Brudenell River Golf Course", Format: "Singles, 2 points a match", AtStake: "16 points on the table", Result: "Bears take the singles 6 - 2", Points: "Bears 12 - 4"},
 		},
 		// The first entry is the page hero. The second leads the featured grid at
 		// full width, where a 16:8 crop would cut a group photograph in half, so

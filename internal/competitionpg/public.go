@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -57,6 +58,35 @@ func (m PublicMatchRow) WinnerLabel() string {
 	}
 }
 
+// FormatLabel renders the stored format enum in the words the cup actually uses.
+// Without it the raw identifier reaches the page, so a match reads "fourball"
+// while the write-up beside it calls the same session best ball.
+func (m PublicMatchRow) FormatLabel() string {
+	switch m.Format {
+	case "fourball":
+		return "Best ball"
+	case "foursomes":
+		return "Alternate shot"
+	case "singles":
+		return "Singles"
+	case "":
+		return ""
+	default:
+		return strings.ToUpper(m.Format[:1]) + strings.ReplaceAll(m.Format[1:], "_", " ")
+	}
+}
+
+// DisplayScore normalises the spacing of a hole-and-hole margin so scores keyed
+// as "3&2" and "3 & 2" read alike. It never reinterprets a score: only the
+// spacing around an ampersand changes.
+func (m PublicMatchRow) DisplayScore() string {
+	if !strings.Contains(m.Score, "&") {
+		return strings.TrimSpace(m.Score)
+	}
+	parts := strings.SplitN(m.Score, "&", 2)
+	return strings.TrimSpace(parts[0]) + " & " + strings.TrimSpace(parts[1])
+}
+
 func (m PublicMatchRow) VerificationLabel() string {
 	switch m.VerificationMethod {
 	case "opponent":
@@ -82,7 +112,10 @@ type PublicTeamStandingRow struct {
 }
 
 type PublicPlayerStatRow struct {
-	PlayerName    string
+	PlayerName string
+	// PlayerSlug is the players table's natural key. The legacy import writes
+	// the same slugs, so it is what joins a verified record to its legacy one.
+	PlayerSlug    string
 	Played        int
 	Wins          int
 	Losses        int
@@ -241,7 +274,7 @@ func (s Store) loadPublicTeams(ctx context.Context, snapshot *PublicCompetitionS
 
 func (s Store) loadPublicPlayerStats(ctx context.Context) ([]PublicPlayerStatRow, map[string][]PublicPlayerStatRow, error) {
 	rows, err := s.Pool.Query(ctx, `
-		SELECT sp.event_id::text, p.display_name,
+		SELECT sp.event_id::text, p.display_name, p.slug,
 		       sp.matches_played, sp.wins, sp.losses, sp.ties, sp.points_won::text,
 		       sp.singles_played, sp.singles_wins, sp.singles_losses, sp.singles_ties, sp.singles_points::text,
 		       sp.team_played, sp.team_wins, sp.team_losses, sp.team_ties, sp.team_points::text
@@ -267,13 +300,13 @@ func (s Store) loadPublicPlayerStats(ctx context.Context) ([]PublicPlayerStatRow
 	}
 
 	rows, err = s.Pool.Query(ctx, `
-		SELECT ''::text, p.display_name,
+		SELECT ''::text, p.display_name, p.slug,
 		       sum(sp.matches_played)::integer, sum(sp.wins)::integer, sum(sp.losses)::integer, sum(sp.ties)::integer, sum(sp.points_won)::numeric(10,2)::text,
 		       sum(sp.singles_played)::integer, sum(sp.singles_wins)::integer, sum(sp.singles_losses)::integer, sum(sp.singles_ties)::integer, sum(sp.singles_points)::numeric(10,2)::text,
 		       sum(sp.team_played)::integer, sum(sp.team_wins)::integer, sum(sp.team_losses)::integer, sum(sp.team_ties)::integer, sum(sp.team_points)::numeric(10,2)::text
 		FROM player_stat_projections sp
 		JOIN players p ON p.id = sp.player_id
-		GROUP BY p.id, p.display_name
+		GROUP BY p.id, p.display_name, p.slug
 		ORDER BY sum(sp.points_won) DESC, sum(sp.wins) DESC, p.display_name`)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list public career player statistics: %w", err)
@@ -294,7 +327,7 @@ func (s Store) loadPublicPlayerStats(ctx context.Context) ([]PublicPlayerStatRow
 type publicPlayerScanner interface{ Scan(...any) error }
 
 func scanPublicPlayer(row publicPlayerScanner, eventID *string, player *PublicPlayerStatRow) error {
-	return row.Scan(eventID, &player.PlayerName,
+	return row.Scan(eventID, &player.PlayerName, &player.PlayerSlug,
 		&player.Played, &player.Wins, &player.Losses, &player.Ties, &player.Points,
 		&player.SinglesPlayed, &player.SinglesWins, &player.SinglesLosses, &player.SinglesTies, &player.SinglesPoints,
 		&player.TeamPlayed, &player.TeamWins, &player.TeamLosses, &player.TeamTies, &player.TeamPoints)

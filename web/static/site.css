@@ -375,6 +375,19 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .wide-table thead th { color: var(--ink-soft); font-size: .68rem; text-transform: uppercase; }
 .wide-table tbody tr:hover { background: var(--white); }
 .wide-table tbody th a { text-underline-offset: .25rem; }
+/* Group headings span five columns each; right-aligning them like a data cell
+   parks the label at the far edge of the group it is supposed to sit over. */
+.wide-table thead th[colspan] { border-bottom: 0; letter-spacing: .06em; text-align: center; }
+.wide-table thead th[colspan] + th[colspan] { border-left: 1px solid var(--line); }
+.wide-table-wrap:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.career-table tbody th a { font-weight: 700; }
+.career-table small { color: var(--ink-soft); font-size: .68rem; letter-spacing: .04em; text-transform: uppercase; }
+.career-unranked td, .career-unranked th { color: var(--ink-soft); }
+.career-unranked .rank { opacity: .5; }
+.table-hint { color: var(--ink-soft); font-size: .82rem; margin-top: .9rem; }
+.verified-note { color: var(--ink-soft); font-size: .9rem; margin: -.4rem 0 1.1rem; max-width: 640px; }
+.round-stake { color: var(--coral); font-size: .82rem; font-weight: 700; letter-spacing: .02em; }
 .rank { color: var(--coral); font-family: Georgia, "Times New Roman", serif; }
 
 .not-found { min-height: 65vh; padding-bottom: 7rem; padding-top: 7rem; }
