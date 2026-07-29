@@ -313,7 +313,16 @@ func TestDebutantPortraitsResolveBySlug(t *testing.T) {
 		{"jb", "/assets/players/jb.jpg"},
 		{"albert", "/assets/players/albert.jpg"},
 		{"colin-d", "/assets/players/colin-d.jpg"},
+		// The admin roster appends a uniqueness suffix, which production slugs
+		// carry and the portrait filenames do not.
+		{"bradford-f243f7ac", "/assets/players/bradford.jpg"},
+		{"jb-f04ebdd2", "/assets/players/jb.jpg"},
+		{"albert-6feb555a", "/assets/players/albert.jpg"},
+		{"colin-d-29782e13", "/assets/players/colin-d.jpg"},
+		// A legacy slug must never be truncated looking for a suffix.
+		{"sammy-sosa", "/assets/players/empty_profile.jpeg"},
 		{"nobody-has-this-portrait", "/assets/players/empty_profile.jpeg"},
+		{"", "/assets/players/empty_profile.jpeg"},
 	} {
 		if got := (CareerRow{Slug: test.slug}).Image(); got != test.want {
 			t.Errorf("Image(%q) = %q, want %q", test.slug, got, test.want)

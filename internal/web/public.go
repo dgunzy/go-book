@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"io/fs"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 
@@ -109,13 +110,24 @@ func (c CareerRow) Sources() string {
 // treated as ranked. Two-match players otherwise sit permanently at the top.
 const QualifyingMatches = 6
 
+// adminSlugSuffix matches the uniqueness suffix the admin roster appends when it
+// creates a player, so "bradford-f243f7ac" can find the portrait filed under
+// "bradford". Legacy imported slugs carry no suffix and are unaffected.
+var adminSlugSuffix = regexp.MustCompile(`-[0-9a-f]{8}$`)
+
 // Image resolves a portrait by slug convention. A player who first appears in
 // the verified record has no legacy row to carry an image path, so the file is
-// looked up as players/<slug>.jpg and falls back to the blank profile rather
-// than rendering a broken image.
+// looked up as players/<slug>.jpg. The full slug wins when a file matches it
+// exactly; otherwise the admin suffix is stripped and retried. A player with no
+// portrait at all gets the blank profile rather than a broken image.
 func (c CareerRow) Image() string {
-	if _, err := fs.Stat(publicassets.Files, "players/"+c.Slug+".jpg"); err == nil {
-		return "/assets/players/" + c.Slug + ".jpg"
+	for _, slug := range []string{c.Slug, adminSlugSuffix.ReplaceAllString(c.Slug, "")} {
+		if slug == "" {
+			continue
+		}
+		if _, err := fs.Stat(publicassets.Files, "players/"+slug+".jpg"); err == nil {
+			return "/assets/players/" + slug + ".jpg"
+		}
 	}
 	return "/assets/players/empty_profile.jpeg"
 }
