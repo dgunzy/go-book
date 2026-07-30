@@ -26,10 +26,15 @@ var (
 	ErrParlayTooFewLegs        = errors.New("a parlay needs at least two legs")
 	ErrParlayTooManyLegs       = errors.New("a parlay has too many legs")
 	ErrParlayMarketNotEligible = errors.New("only match markets can be parlayed")
-	ErrParlayDuplicateMarket   = errors.New("a parlay cannot have two legs from the same match")
-	ErrParlayTooShort          = errors.New("these legs combine to shorter than even money, which the book does not write as a parlay")
-	ErrIncompleteOutcome       = errors.New("settlement outcome does not cover every selection exactly once")
-	ErrWagerMarketMismatch     = errors.New("wager does not belong to the market being settled")
+
+	// ErrSideFull means the book has taken all it will take on this side. It is
+	// deliberately distinct from ErrStakeAboveLimit: the member may be well
+	// under their own limit, and telling them they are over it would be wrong.
+	ErrSideFull              = errors.New("this side is full")
+	ErrParlayDuplicateMarket = errors.New("a parlay cannot have two legs from the same match")
+	ErrParlayTooShort        = errors.New("these legs combine to shorter than even money, which the book does not write as a parlay")
+	ErrIncompleteOutcome     = errors.New("settlement outcome does not cover every selection exactly once")
+	ErrWagerMarketMismatch   = errors.New("wager does not belong to the market being settled")
 )
 
 // TransitionError reports a rejected operation without losing the

@@ -35,10 +35,11 @@
 
 <section class="help-section" aria-labelledby="help-limits">
   <h2 id="help-limits">Limits: keeping a fun line fun</h2>
-  <p>Three limits sit on every wager.</p>
+  <p>Four limits sit on every wager. All of them count pending wagers as well as accepted ones, so money waiting for approval cannot be used to walk past a limit and then breach it the moment it is approved.</p>
   <ul>
     <li><strong>Per market, per member.</strong> On the create form, <em>Most one member may have on it</em> caps a novelty line — say $50. It counts everything that member already has riding on that market, so spreading it over several bets does not get around it, and it counts both sides. Each member gets their own allowance. Leave it blank for no limit.</li>
     <li><strong>Per side, per member.</strong> The same cap, but on one outcome only. Use it when the two sides deserve different treatment: $50 on the +750 longshot while the −1200 favourite stays open. Set it per selection on the create form, or later from <a href="/admin/markets">Markets</a> — the market has to be draft or open. Blank or <code>0</code> clears it. A side limit and a market limit both apply when both are set, so the tighter one bites first.</li>
+    <li><strong>Per side, everybody together.</strong> The two limits above bound one member each. Ten members inside a $50 personal limit is still $500 on that side, which is the exposure the book actually carries. <strong>Set book cap</strong> on <a href="/admin/markets">Markets</a> caps what every member combined may have on one outcome. When it is full a member is told the book has taken all it will take on that outcome — not that they are over their own limit, which they may be nowhere near.</li>
     <li><strong>Maximum payout, book-wide.</strong> No single wager may win more than <strong>$5,000</strong>. This is about what the book would owe rather than what the member puts up: at +2500, a $200 bet wins $5,000, and $250 would be over. It applies to every wager, including one an admin places for a member.</li>
   </ul>
   <p>A member sees both stake limits on the board before they bet, and all three explain themselves if a wager is refused. The payout ceiling is an operator setting; ask if it needs to move.</p>
@@ -156,6 +157,13 @@
   <h2 id="help-archive-2025">Completing the 2025 public archive</h2>
   <p>The public <a href="/history/2025">2025 Cabot Cup page</a> is intentionally blank and marked <strong>Archive in progress</strong>. Betting records and aggregate player totals are not treated as match scorecards, so the page does not guess a winner, teams, score, or individual results.</p>
   <p>When authoritative material is available, enter the teams, rosters, players, matches, and verified results through <a href="/admin/matches">Matches</a>; those confirmed records will populate the placeholder's match and statistics section automatically. Prepare the tournament write-up and selected photographs separately. The placeholder has reserved sections for all three.</p>
+</section>
+
+<section class="help-section" aria-labelledby="help-no-action">
+  <h2 id="help-no-action">Closing out a market nobody bet</h2>
+  <p>A closed market with no wagers on it shows a <strong>No bets — close it out</strong> control on <a href="/admin/markets">Markets</a>. Use it instead of working out a winner: nothing was ever at risk, so there is nothing to grade and nothing to refund.</p>
+  <p>It writes no settlement and moves no money, only an audit entry with your reason. That keeps it distinct from a <strong>void</strong>, which unwinds real stakes, and the market ends in its own state rather than pretending money changed hands.</p>
+  <p>The control does not appear if anybody has money on the market, including wagers still awaiting approval — those have to be graded or voided properly. It also never appears on a match market: those always grade from their verified result, even with no bets on them.</p>
 </section>
 
 <section class="help-section" aria-labelledby="help-photos">

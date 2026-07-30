@@ -135,8 +135,8 @@ jobs:
               (SELECT count(*) FROM media_player_links) || '|' ||
               (SELECT count(*) FROM legacy_import_records)
           ")"
-          if [ "$reconciliation" != "17|23|6|23|22|23|81" ]; then
-            echo "reconciliation counts: $reconciliation (want 17|23|6|23|22|23|81)" >&2
+          if [ "$reconciliation" != "19|23|6|23|22|23|81" ]; then
+            echo "reconciliation counts: $reconciliation (want 19|23|6|23|22|23|81)" >&2
             exit 1
           fi
           # After a financial promotion the down migration must REFUSE to roll

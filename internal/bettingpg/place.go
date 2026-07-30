@@ -72,6 +72,8 @@ func (s Store) PlaceWager(ctx context.Context, req PlaceWagerRequest) (betting.W
 		ExistingStakeCents:          limits.MarketExisting,
 		SelectionMaxStakeCents:      limits.SelectionMax,
 		ExistingSelectionStakeCents: limits.SelectionExisting,
+		TotalStakeCapCents:          limits.TotalCap,
+		ExistingTotalStakeCents:     limits.TotalExisting,
 		MaxPayoutCents:              s.maxPayout(),
 		FundingAccountType:          req.FundingAccountType,
 		Stake:                       stake,
@@ -133,6 +135,10 @@ type stakeLimits struct {
 	MarketExisting    int64
 	SelectionMax      int64
 	SelectionExisting int64
+	// TotalCap bounds every member together on this side, and TotalExisting is
+	// what the whole book already has on it.
+	TotalCap      int64
+	TotalExisting int64
 }
 
 // loadStakeLimits reads both caps and, for whichever are set, how much this
@@ -140,12 +146,19 @@ type stakeLimits struct {
 // approval is money they are trying to have on.
 func loadStakeLimits(ctx context.Context, tx pgx.Tx, marketID, selectionID, userID string) (stakeLimits, error) {
 	var limits stakeLimits
-	var marketMax, selectionMax *int64
+	var marketMax, selectionMax, totalCap *int64
+	// FOR UPDATE OF s locks this side for the rest of the transaction. The
+	// total cap is a sum over every member's wagers, so without the lock two
+	// placements arriving together would both read the same total, both find
+	// room, and both commit — putting the book over the cap it was promised.
+	// Taking the lock before the sum is what makes the cap real rather than
+	// advisory.
 	if err := tx.QueryRow(ctx, `
-		SELECT m.max_stake_cents, s.max_stake_cents
+		SELECT m.max_stake_cents, s.max_stake_cents, s.total_stake_cap_cents
 		FROM markets m
 		JOIN selections s ON s.market_id = m.id AND s.id = $2::uuid
-		WHERE m.id = $1::uuid`, marketID, selectionID).Scan(&marketMax, &selectionMax); err != nil {
+		WHERE m.id = $1::uuid
+		FOR UPDATE OF s`, marketID, selectionID).Scan(&marketMax, &selectionMax, &totalCap); err != nil {
 		return stakeLimits{}, fmt.Errorf("load stake limits: %w", err)
 	}
 	if marketMax != nil {
@@ -164,6 +177,18 @@ func loadStakeLimits(ctx context.Context, tx pgx.Tx, marketID, selectionID, user
 			WHERE selection_id = $1::uuid AND user_id = $2::uuid AND state IN ('pending', 'accepted')`,
 			selectionID, userID).Scan(&limits.SelectionExisting); err != nil {
 			return stakeLimits{}, fmt.Errorf("load member stake on selection: %w", err)
+		}
+	}
+	if totalCap != nil {
+		limits.TotalCap = *totalCap
+		// Every member, not just this one. Pending counts for the same reason
+		// it counts against a member's own limit: it is money trying to get on,
+		// and approving it later must not be what breaches the cap.
+		if err := tx.QueryRow(ctx, `
+			SELECT coalesce(sum(stake_cents), 0) FROM wagers
+			WHERE selection_id = $1::uuid AND state IN ('pending', 'accepted')`,
+			selectionID).Scan(&limits.TotalExisting); err != nil {
+			return stakeLimits{}, fmt.Errorf("load book stake on selection: %w", err)
 		}
 	}
 	return limits, nil

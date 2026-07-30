@@ -49,6 +49,13 @@ type PlaceWagerCommand struct {
 	// on the short one. Zero means no cap on the side.
 	SelectionMaxStakeCents      int64
 	ExistingSelectionStakeCents int64
+	// TotalStakeCapCents caps what every member together may have on this side,
+	// and ExistingTotalStakeCents is what the book already holds on it. The
+	// per-member caps above bound one person; without this, ten people at the
+	// per-member limit is ten times the liability the book agreed to. Zero
+	// means no cap.
+	TotalStakeCapCents      int64
+	ExistingTotalStakeCents int64
 	// MaxPayoutCents is the book-wide ceiling on what a single wager may
 	// return in profit. It exists so a longshot price cannot turn a small
 	// stake into a payout the book cannot cover. Zero means no ceiling.
@@ -122,6 +129,13 @@ func PlaceWager(command PlaceWagerCommand) (Wager, error) {
 	if command.SelectionMaxStakeCents > 0 &&
 		command.ExistingSelectionStakeCents+command.Stake.Cents > command.SelectionMaxStakeCents {
 		return Wager{}, ErrStakeAboveLimit
+	}
+	// The book's own ceiling on this side. This is not the member's limit and
+	// must not be reported as one: they may be nowhere near their own cap and
+	// still be turned away because the side is full.
+	if command.TotalStakeCapCents > 0 &&
+		command.ExistingTotalStakeCents+command.Stake.Cents > command.TotalStakeCapCents {
+		return Wager{}, ErrSideFull
 	}
 	if strings.TrimSpace(command.IdempotencyKey) == "" {
 		return Wager{}, invalidf("wager placement requires an idempotency key")

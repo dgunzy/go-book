@@ -73,6 +73,8 @@ type MarketStore interface {
 	SetMarketCloseTime(ctx context.Context, marketID string, closesAt time.Time, actorUserID, reason string) error
 	SetStakeLimit(ctx context.Context, marketID, selectionID string, cents int64, actorUserID, reason string) error
 	VoidMarket(context.Context, bettingpg.VoidMarketRequest) (bettingpg.SettleReport, error)
+	CloseMarketWithoutAction(ctx context.Context, marketID, actorUserID, reason string) error
+	SetTotalSideCap(ctx context.Context, marketID, selectionID string, cents int64, actorUserID, reason string) error
 	StrandedWagers(ctx context.Context, marketID string) ([]bettingpg.StrandedWagerRow, error)
 	RegradeStrandedWagers(ctx context.Context, marketID, actorUserID, reason string) (bettingpg.SettleReport, error)
 }
@@ -180,6 +182,8 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("POST /admin/markets/{id}/selections/{selectionID}/line", h.adminSetLine)
 	h.mux.HandleFunc("POST /admin/markets/{id}/close-time", h.adminSetCloseTime)
 	h.mux.HandleFunc("POST /admin/markets/{id}/limit", h.adminSetStakeLimit)
+	h.mux.HandleFunc("POST /admin/markets/{id}/side-cap", h.adminSetTotalSideCap)
+	h.mux.HandleFunc("POST /admin/markets/{id}/no-action", h.adminCloseWithoutAction)
 	h.mux.HandleFunc("POST /admin/markets/{id}/restrict", h.adminRestrictMember)
 	h.mux.HandleFunc("POST /admin/markets/{id}/restrict/lift", h.adminLiftRestriction)
 	h.mux.HandleFunc("GET /admin/markets/{id}/settle", h.adminSettleForm)
@@ -1150,6 +1154,10 @@ func storeErrorStatus(err error) (int, string) {
 		return http.StatusForbidden, "This account is not able to bet on this market."
 	case errors.Is(err, betting.ErrStakeAboveLimit):
 		return http.StatusConflict, "That would go over this market's limit for one member. Check what is already on it."
+	// Deliberately not phrased as the member's limit: they may be nowhere near
+	// their own and still be turned away because the book is full on that side.
+	case errors.Is(err, betting.ErrSideFull):
+		return http.StatusConflict, "The book has taken all it will take on that outcome. Try the other side, or a smaller stake if some room is left."
 	case errors.Is(err, betting.ErrPayoutAboveLimit):
 		return http.StatusConflict, "That would win more than the book's maximum payout on a single wager. Lower the stake."
 	case errors.Is(err, betting.ErrInvalidTransition):

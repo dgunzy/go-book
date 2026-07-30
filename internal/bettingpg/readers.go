@@ -14,6 +14,9 @@ import (
 
 // MarketSelectionRow is one selection inside a market browse row.
 type MarketSelectionRow struct {
+	// TotalStakeCapCents caps what every member together may have on this
+	// side; zero means the book has set no ceiling on it.
+	TotalStakeCapCents int64
 	// MaxStakeCents caps what one member may have on this side; zero means
 	// only the market's own cap applies, if it has one.
 	MaxStakeCents       int64
@@ -44,8 +47,16 @@ type MarketRow struct {
 	MaxStakeCents int64
 	OpensAt       time.Time
 	ClosesAt      time.Time
-	Selections    []MarketSelectionRow
+	// LiveWagerCents counts wagers that are pending or accepted on this market.
+	// It is what decides whether a market can be closed out without grading,
+	// and it is read here so the admin list never offers that on a market
+	// somebody has money on.
+	LiveWagerCount int
+	Selections     []MarketSelectionRow
 }
+
+// HasWagers reports whether anybody has money on this market.
+func (m MarketRow) HasWagers() bool { return m.LiveWagerCount > 0 }
 
 // MatchMarketOption is an open competition match that does not yet have an
 // active match market. The IDs are retained for server-side settlement
@@ -223,9 +234,10 @@ type UserWagerRow struct {
 const marketRowsSQL = `
 SELECT m.id::text, m.market_type, coalesce(m.match_id::text, ''), m.title, m.state, m.currency::text,
        m.dynamic_pricing, coalesce(m.max_stake_cents, 0), m.opens_at, m.closes_at,
+       (SELECT count(*) FROM wagers w WHERE w.market_id = m.id AND w.state IN ('pending', 'accepted')),
        coalesce(s.id::text, ''), coalesce(s.selection_key, ''), coalesce(s.display_terms, ''),
        coalesce(s.offered_american_odds, 100), coalesce(s.opening_american_odds, 100),
-       coalesce(s.max_stake_cents, 0),
+       coalesce(s.max_stake_cents, 0), coalesce(s.total_stake_cap_cents, 0),
        coalesce(s.semantic_result_key, ''), coalesce(s.active, false)
 FROM markets m
 LEFT JOIN selections s ON s.market_id = m.id%s
@@ -336,12 +348,13 @@ func (s Store) listMarkets(ctx context.Context, query string, args ...any) ([]Ma
 		var maxStakeCents int64
 		var opensAt sql.NullTime
 		var closesAt time.Time
+		var liveWagers int
 		var selectionID, selectionKey, displayTerms, semanticKey string
 		var odds, openingOdds int32
-		var selectionMaxStake int64
+		var selectionMaxStake, selectionTotalCap int64
 		var active bool
 		if err := rows.Scan(&id, &marketType, &matchID, &title, &state, &currency,
-			&dynamicPricing, &maxStakeCents, &opensAt, &closesAt, &selectionID, &selectionKey, &displayTerms, &odds, &openingOdds, &selectionMaxStake, &semanticKey, &active); err != nil {
+			&dynamicPricing, &maxStakeCents, &opensAt, &closesAt, &liveWagers, &selectionID, &selectionKey, &displayTerms, &odds, &openingOdds, &selectionMaxStake, &selectionTotalCap, &semanticKey, &active); err != nil {
 			return nil, fmt.Errorf("scan market row: %w", err)
 		}
 		position, seen := index[id]
@@ -352,7 +365,8 @@ func (s Store) listMarkets(ctx context.Context, query string, args ...any) ([]Ma
 			}
 			market := MarketRow{
 				ID: id, Type: betting.MarketType(marketType), MatchID: matchID, Title: title,
-				State: betting.MarketState(state), Currency: parsedCurrency, DynamicPricing: dynamicPricing,
+				LiveWagerCount: liveWagers,
+				State:          betting.MarketState(state), Currency: parsedCurrency, DynamicPricing: dynamicPricing,
 				ClosesAt: closesAt.UTC(),
 			}
 			if opensAt.Valid {
@@ -375,6 +389,7 @@ func (s Store) listMarkets(ctx context.Context, query string, args ...any) ([]Ma
 		}
 		result[position].Selections = append(result[position].Selections, MarketSelectionRow{
 			ID: selectionID, Key: selectionKey, DisplayTerms: displayTerms, MaxStakeCents: selectionMaxStake,
+			TotalStakeCapCents:  selectionTotalCap,
 			OfferedAmericanOdds: parsedOdds, OpeningAmericanOdds: parsedOpeningOdds,
 			SemanticResultKey: semanticKey, Active: active,
 		})

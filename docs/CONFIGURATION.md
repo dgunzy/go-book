@@ -123,3 +123,19 @@ the `PUBLIC_BASE_URL` host). These are supplied from ExternalSecrets, never Git.
   threaded down and normally wins.
 - Admin-facing explanation: `web/templates/admin_help.gohtml` ("Current settings &
   defaults"), which renders the live values.
+
+## Per-side book cap
+
+`selections.total_stake_cap_cents` caps what **every member together** may have
+on one outcome. It is set per selection from the admin Markets page rather than
+by environment variable, because it belongs to a particular line rather than to
+the deployment.
+
+Null (blank in the UI) means no cap. It is deliberately separate from
+`selections.max_stake_cents`, which caps one member: the two bound different
+things, and a single control meaning either would eventually be set wrong.
+
+Pending wagers count toward it as well as accepted ones. Enforcement happens
+inside the placement transaction, behind `FOR UPDATE` on the selection row —
+without that lock two placements arriving together both read the same running
+total, both find room, and both commit past the cap.

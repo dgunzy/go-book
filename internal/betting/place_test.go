@@ -491,3 +491,54 @@ func TestPlaceWagerMarketOnlyLimitIsUnchanged(t *testing.T) {
 		t.Fatalf("wager one cent over the market cap error = %v, want ErrStakeAboveLimit", err)
 	}
 }
+
+func TestTotalSideCapIsSeparateFromTheMemberLimit(t *testing.T) {
+	base := placeCommand()
+	base.Stake = ledger.Money{Cents: 5000, Currency: ledger.CAD}
+
+	// The whole book is capped at $100 on this side and already holds $60.
+	// This member has nothing on and is nowhere near any personal limit.
+	command := base
+	command.TotalStakeCapCents = 10000
+	command.ExistingTotalStakeCents = 6000
+	command.SelectionMaxStakeCents = 50000
+	command.ExistingSelectionStakeCents = 0
+	if _, err := PlaceWager(command); !errors.Is(err, ErrSideFull) {
+		t.Fatalf("error = %v, want ErrSideFull", err)
+	}
+	// It must not be reported as the member being over their own limit.
+	if _, err := PlaceWager(command); errors.Is(err, ErrStakeAboveLimit) {
+		t.Error("a full side was reported as the member's stake limit")
+	}
+
+	// Exactly filling the cap is allowed; a cent more is not.
+	command.ExistingTotalStakeCents = 5000
+	if _, err := PlaceWager(command); err != nil {
+		t.Fatalf("filling the cap exactly was refused: %v", err)
+	}
+	command.Stake = ledger.Money{Cents: 5001, Currency: ledger.CAD}
+	if _, err := PlaceWager(command); !errors.Is(err, ErrSideFull) {
+		t.Fatalf("one cent over the cap was allowed: %v", err)
+	}
+
+	// Zero means no cap, however much is already on.
+	command = base
+	command.TotalStakeCapCents = 0
+	command.ExistingTotalStakeCents = 99999999
+	if _, err := PlaceWager(command); err != nil {
+		t.Fatalf("an uncapped side refused a wager: %v", err)
+	}
+}
+
+func TestMemberLimitAndSideCapBothApply(t *testing.T) {
+	command := placeCommand()
+	command.Stake = ledger.Money{Cents: 5000, Currency: ledger.CAD}
+	// Room on the side, but the member is at their own limit.
+	command.TotalStakeCapCents = 1000000
+	command.ExistingTotalStakeCents = 0
+	command.SelectionMaxStakeCents = 5000
+	command.ExistingSelectionStakeCents = 4000
+	if _, err := PlaceWager(command); !errors.Is(err, ErrStakeAboveLimit) {
+		t.Fatalf("error = %v, want ErrStakeAboveLimit", err)
+	}
+}

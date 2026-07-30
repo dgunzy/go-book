@@ -60,6 +60,10 @@ type fakeMarkets struct {
 	strandedErr   error
 	regradeReport bettingpg.SettleReport
 	regradeErr    error
+	noActionCalls []noActionCall
+	noActionErr   error
+	sideCapCalls  []sideCapCall
+	sideCapErr    error
 	regradeCalls  [][3]string
 	restrictErr   error
 	restricted    []bettingpg.RestrictRequest
@@ -162,6 +166,29 @@ func (f *fakeMarkets) SetStakeLimit(_ context.Context, marketID, selectionID str
 func (f *fakeMarkets) VoidMarket(_ context.Context, req bettingpg.VoidMarketRequest) (bettingpg.SettleReport, error) {
 	f.voidCalls = append(f.voidCalls, req)
 	return bettingpg.SettleReport{}, f.voidErr
+}
+
+type noActionCall struct {
+	MarketID string
+	Actor    string
+	Reason   string
+}
+
+type sideCapCall struct {
+	MarketID    string
+	SelectionID string
+	Cents       int64
+	Reason      string
+}
+
+func (f *fakeMarkets) CloseMarketWithoutAction(_ context.Context, marketID, actorUserID, reason string) error {
+	f.noActionCalls = append(f.noActionCalls, noActionCall{MarketID: marketID, Actor: actorUserID, Reason: reason})
+	return f.noActionErr
+}
+
+func (f *fakeMarkets) SetTotalSideCap(_ context.Context, marketID, selectionID string, cents int64, _, reason string) error {
+	f.sideCapCalls = append(f.sideCapCalls, sideCapCall{MarketID: marketID, SelectionID: selectionID, Cents: cents, Reason: reason})
+	return f.sideCapErr
 }
 
 func (f *fakeMarkets) StrandedWagers(_ context.Context, marketID string) ([]bettingpg.StrandedWagerRow, error) {
@@ -2436,5 +2463,124 @@ func TestAdminReduceWagerRejectsNonAdmin(t *testing.T) {
 
 	if len(wagers.reduceCalls) != 0 {
 		t.Fatalf("a member reduced a wager: %+v", wagers.reduceCalls)
+	}
+}
+
+func TestAdminCloseWithoutActionRequiresAReason(t *testing.T) {
+	markets := &fakeMarkets{all: []bettingpg.MarketRow{openMarketFixture()}}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	body := url.Values{"csrf_token": {testCSRF}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/no-action", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if len(markets.noActionCalls) != 0 {
+		t.Fatal("CloseMarketWithoutAction called without a reason")
+	}
+}
+
+func TestAdminCloseWithoutActionPassesReasonThrough(t *testing.T) {
+	markets := &fakeMarkets{all: []bettingpg.MarketRow{openMarketFixture()}}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	body := url.Values{"csrf_token": {testCSRF}, "reason": {"nobody bet it"}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/no-action", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", w.Code)
+	}
+	if len(markets.noActionCalls) != 1 || markets.noActionCalls[0].Reason != "nobody bet it" {
+		t.Fatalf("no-action calls = %+v", markets.noActionCalls)
+	}
+	if markets.noActionCalls[0].MarketID != testMarketID {
+		t.Fatalf("market = %q, want %q", markets.noActionCalls[0].MarketID, testMarketID)
+	}
+}
+
+// A market with money on it must never be closed out, and the member-facing
+// explanation must say so rather than reporting a generic conflict.
+func TestAdminCloseWithoutActionExplainsAMarketWithWagers(t *testing.T) {
+	markets := &fakeMarkets{
+		all:         []bettingpg.MarketRow{openMarketFixture()},
+		noActionErr: bettingpg.ErrMarketHasWagers,
+	}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	body := url.Values{"csrf_token": {testCSRF}, "reason": {"trying it on"}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/no-action", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "graded or voided") {
+		t.Fatalf("body does not explain why: %s", w.Body.String())
+	}
+}
+
+func TestAdminSetTotalSideCapParsesDollarsAndRequiresASelection(t *testing.T) {
+	markets := &fakeMarkets{all: []bettingpg.MarketRow{openMarketFixture()}}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	// No selection: the cap is per side, so there is nothing sensible to do.
+	body := url.Values{"csrf_token": {testCSRF}, "side_cap": {"250.00"}, "reason": {"cap it"}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/side-cap", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status without a selection = %d, want 400", w.Code)
+	}
+
+	body = url.Values{
+		"csrf_token": {testCSRF}, "selection_id": {testSelID},
+		"side_cap": {"250.00"}, "reason": {"cap it"},
+	}.Encode()
+	r = httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/side-cap", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", w.Code)
+	}
+	if len(markets.sideCapCalls) != 1 || markets.sideCapCalls[0].Cents != 25000 {
+		t.Fatalf("side cap calls = %+v", markets.sideCapCalls)
+	}
+	if markets.sideCapCalls[0].SelectionID != testSelID {
+		t.Fatalf("selection = %q", markets.sideCapCalls[0].SelectionID)
+	}
+}
+
+// Blank clears the cap rather than being rejected, matching how the per-member
+// limit control already behaves.
+func TestAdminSetTotalSideCapBlankClearsIt(t *testing.T) {
+	markets := &fakeMarkets{all: []bettingpg.MarketRow{openMarketFixture()}}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	body := url.Values{
+		"csrf_token": {testCSRF}, "selection_id": {testSelID},
+		"side_cap": {""}, "reason": {"open it back up"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/side-cap", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", w.Code)
+	}
+	if len(markets.sideCapCalls) != 1 || markets.sideCapCalls[0].Cents != 0 {
+		t.Fatalf("side cap calls = %+v", markets.sideCapCalls)
 	}
 }

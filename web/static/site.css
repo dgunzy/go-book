@@ -996,6 +996,13 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .table-filter-count { color: #6c7770; font-size: .74rem; }
 .private-table tbody tr[hidden] { display: none; }
 .betting-side-limit { color: #6c7770; display: inline-block; font-size: .66rem; font-weight: 700; }
+
+/* The book's ceiling on a side, distinct from the per-member limit beside it:
+   they bound different things and must not read as the same control. */
+.betting-side-cap { background: #f3ece1; border: 1px solid var(--gold, #d7a63d); border-radius: 3px; color: #6b5320; font-size: .68rem; font-weight: 700; letter-spacing: .03em; padding: .1rem .4rem; text-transform: uppercase; white-space: nowrap; }
+.betting-no-action summary { cursor: pointer; font-size: .78rem; font-weight: 700; }
+.betting-no-action[open] summary { margin-bottom: .4rem; }
+
 .betting-limit-form input[name="max_stake"] { width: 5rem; }
 .betting-limit-form input[name="reason"] { width: 6rem; }
 .outcome-limit input { font-size: .82rem; }

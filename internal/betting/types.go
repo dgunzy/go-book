@@ -50,11 +50,16 @@ const (
 	MarketSettled           MarketState = "settled"
 	MarketVoided            MarketState = "voided"
 	MarketCancelled         MarketState = "cancelled"
+	// MarketNoAction is a market that closed without a single wager on it.
+	// Nothing was ever at risk, so there is nothing to grade and nothing to
+	// refund. It is distinct from voided, which unwinds real stakes, and from
+	// cancelled, which means the market never properly ran.
+	MarketNoAction MarketState = "closed_no_action"
 )
 
 func (s MarketState) Validate() error {
 	switch s {
-	case MarketDraft, MarketOpen, MarketClosed, MarketSettlementPending, MarketSettled, MarketVoided, MarketCancelled:
+	case MarketDraft, MarketOpen, MarketClosed, MarketSettlementPending, MarketSettled, MarketVoided, MarketCancelled, MarketNoAction:
 		return nil
 	default:
 		return invalidf("market state %q is not supported", s)
@@ -64,8 +69,8 @@ func (s MarketState) Validate() error {
 var marketTransitions = map[MarketState]map[MarketState]bool{
 	MarketDraft:             {MarketOpen: true, MarketCancelled: true},
 	MarketOpen:              {MarketClosed: true, MarketCancelled: true},
-	MarketClosed:            {MarketVoided: true, MarketSettlementPending: true},
-	MarketSettlementPending: {MarketSettled: true, MarketVoided: true},
+	MarketClosed:            {MarketVoided: true, MarketSettlementPending: true, MarketNoAction: true},
+	MarketSettlementPending: {MarketSettled: true, MarketVoided: true, MarketNoAction: true},
 }
 
 func (s MarketState) CanTransitionTo(to MarketState) bool {

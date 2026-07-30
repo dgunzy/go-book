@@ -34,6 +34,7 @@
             <div class="betting-selection-line">
               <span class="betting-selection-chip">{{.DisplayTerms}} <span class="private-odds">{{odds .OfferedAmericanOdds}}</span>{{if .Moved}} <span class="betting-line-moved" title="Opened at {{odds .OpeningAmericanOdds}}">(from {{odds .OpeningAmericanOdds}})</span>{{end}}</span>
               {{if .MaxStakeCents}}<span class="betting-side-limit">max {{dollars .MaxStakeCents}} each</span>{{end}}
+              {{if .TotalStakeCapCents}}<span class="betting-side-cap">book cap {{dollars .TotalStakeCapCents}} total</span>{{end}}
               {{if or (eq $market.State "open") (eq $market.State "draft")}}
               <form method="post" action="/admin/markets/{{$market.ID}}/limit" class="betting-inline-form betting-limit-form" hx-post="/admin/markets/{{$market.ID}}/limit" hx-target="this" hx-swap="outerHTML">
                 <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
@@ -43,6 +44,15 @@
                 <label class="visually-hidden" for="limit-reason-{{.ID}}">Why the limit is changing</label>
                 <input id="limit-reason-{{.ID}}" name="reason" maxlength="500" placeholder="Why" required>
                 <button type="submit">Set max</button>
+              </form>
+              <form method="post" action="/admin/markets/{{$market.ID}}/side-cap" class="betting-inline-form betting-side-cap-form" hx-post="/admin/markets/{{$market.ID}}/side-cap" hx-target="this" hx-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <input type="hidden" name="selection_id" value="{{.ID}}">
+                <label class="visually-hidden" for="cap-{{.ID}}">Cap across all members on this outcome</label>
+                <input id="cap-{{.ID}}" name="side_cap" value="{{if .TotalStakeCapCents}}{{dollars .TotalStakeCapCents}}{{end}}" inputmode="decimal" size="6" placeholder="no cap">
+                <label class="visually-hidden" for="cap-reason-{{.ID}}">Why the book cap is changing</label>
+                <input id="cap-reason-{{.ID}}" name="reason" maxlength="500" placeholder="Why" required>
+                <button type="submit">Set book cap</button>
               </form>
               <form method="post" action="/admin/markets/{{$market.ID}}/selections/{{.ID}}/line" class="betting-inline-form betting-set-line-form" hx-post="/admin/markets/{{$market.ID}}/selections/{{.ID}}/line" hx-target="this" hx-swap="outerHTML">
                 <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
@@ -71,6 +81,19 @@
             {{end}}
             {{if or (eq .Market.State "open") (eq .Market.State "closed") (eq .Market.State "settlement_pending")}}
             <a class="betting-action-link" href="/admin/markets/{{.Market.ID}}/settle">Settle / void</a>
+            {{end}}
+            {{/* Nobody bet it, so there is nothing to grade. Match markets are
+                 excluded: they always resolve from their verified result. */}}
+            {{if and (ne .Market.Type "match") (not .HasWagers) (or (eq .Market.State "closed") (eq .Market.State "settlement_pending"))}}
+            <details class="betting-no-action">
+              <summary>No bets — close it out</summary>
+              <form method="post" action="/admin/markets/{{.Market.ID}}/no-action" class="betting-inline-form" hx-post="/admin/markets/{{.Market.ID}}/no-action" hx-target="this" hx-swap="outerHTML">
+                <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+                <label class="visually-hidden" for="noaction-reason-{{.Market.ID}}">Why it is being closed out</label>
+                <input id="noaction-reason-{{.Market.ID}}" name="reason" maxlength="500" placeholder="Why" required>
+                <button type="submit">Close with no action</button>
+              </form>
+            </details>
             {{end}}
             {{if or (eq .Market.State "open") (eq .Market.State "draft")}}
             <details class="betting-restrict">

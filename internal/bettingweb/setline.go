@@ -172,3 +172,102 @@ func (h *Handler) adminSetStakeLimit(w http.ResponseWriter, r *http.Request) {
 	h.completePost(w, r, redirectAdminMarkets,
 		"Limit on "+scope+" set to $"+formatCentsDollars(cents)+" per member.", detail)
 }
+
+// adminSetTotalSideCap changes the ceiling on what the whole book will take on
+// one side. It is a separate control from the per-member limit on purpose: the
+// two bound different things, and one input that quietly meant either would be
+// set wrong sooner or later.
+func (h *Handler) adminSetTotalSideCap(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	marketID := r.PathValue("id")
+	if !isUUID(marketID) {
+		h.failPost(w, r, session, http.StatusNotFound, "The requested market was not found.", redirectAdminMarkets)
+		return
+	}
+	selectionID := strings.TrimSpace(r.PostForm.Get("selection_id"))
+	if !isUUID(selectionID) {
+		h.failPost(w, r, session, http.StatusBadRequest,
+			"Choose which outcome the cap applies to.", redirectAdminMarkets)
+		return
+	}
+	var cents int64
+	if raw := strings.TrimSpace(r.PostForm.Get("side_cap")); raw != "" {
+		parsed, err := parseStakeCents(raw)
+		if err != nil {
+			h.failPost(w, r, session, http.StatusBadRequest,
+				"Enter the cap as a dollars-and-cents amount, or leave it blank to remove it.", redirectAdminMarkets)
+			return
+		}
+		cents = parsed
+	}
+	reason := strings.TrimSpace(r.PostForm.Get("reason"))
+	if reason == "" || len(reason) > maxReasonLen {
+		h.failPost(w, r, session, http.StatusBadRequest,
+			"Say why the cap is changing (up to 500 characters) — it goes on the audit trail.", redirectAdminMarkets)
+		return
+	}
+
+	if err := h.deps.Markets.SetTotalSideCap(r.Context(), marketID, selectionID, cents, session.UserID, reason); err != nil {
+		status, text := storeErrorStatus(err)
+		if errors.Is(err, bettingpg.ErrMarketNotPriceable) {
+			status, text = http.StatusConflict, "Only a draft or open market's caps can be changed."
+		}
+		h.failPost(w, r, session, status, text, redirectAdminMarkets)
+		return
+	}
+	detail := "Wagers already on it stand; the cap applies to new money, counting every member together."
+	if cents == 0 {
+		h.completePost(w, r, redirectAdminMarkets, "Book-wide cap removed from that outcome.", detail)
+		return
+	}
+	h.completePost(w, r, redirectAdminMarkets,
+		"That outcome will take at most $"+formatCentsDollars(cents)+" from all members combined.", detail)
+}
+
+// adminCloseWithoutAction retires a closed market that nobody bet. It writes no
+// settlement and moves no money, because none was ever at risk.
+func (h *Handler) adminCloseWithoutAction(w http.ResponseWriter, r *http.Request) {
+	session, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	if !h.checkedForm(w, r, session) {
+		return
+	}
+	marketID := r.PathValue("id")
+	if !isUUID(marketID) {
+		h.failPost(w, r, session, http.StatusNotFound, "The requested market was not found.", redirectAdminMarkets)
+		return
+	}
+	reason := strings.TrimSpace(r.PostForm.Get("reason"))
+	if reason == "" || len(reason) > maxReasonLen {
+		h.failPost(w, r, session, http.StatusBadRequest,
+			"Say why it is being closed out (up to 500 characters) — it goes on the audit trail.", redirectAdminMarkets)
+		return
+	}
+
+	if err := h.deps.Markets.CloseMarketWithoutAction(r.Context(), marketID, session.UserID, reason); err != nil {
+		status, text := storeErrorStatus(err)
+		switch {
+		case errors.Is(err, bettingpg.ErrMarketHasWagers):
+			status, text = http.StatusConflict,
+				"Somebody has money on this market, so it has to be graded or voided rather than closed out."
+		case errors.Is(err, bettingpg.ErrMatchMarketNeedsGrading):
+			status, text = http.StatusConflict,
+				"A match market always grades from its verified result, even with no bets on it."
+		case errors.Is(err, bettingpg.ErrMarketNotSettleable):
+			status, text = http.StatusConflict,
+				"Only a closed market awaiting settlement can be closed out without action."
+		}
+		h.failPost(w, r, session, status, text, redirectAdminMarkets)
+		return
+	}
+	h.completePost(w, r, redirectAdminMarkets, "Market closed with no action.",
+		"Nobody had money on it, so nothing was graded and nothing moved.")
+}
