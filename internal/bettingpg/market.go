@@ -364,6 +364,13 @@ func (s Store) settleWith(ctx context.Context, marketID, settlementType string, 
 	if _, err := tx.Exec(ctx, `UPDATE markets SET state = $2, updated_at = now() WHERE id = $1::uuid`, marketID, string(result.Market.State)); err != nil {
 		return SettleReport{}, fmt.Errorf("update market %s state: %w", marketID, err)
 	}
+	// Parlay legs resolve in the same transaction as the market that decides
+	// them. Doing it afterwards would leave a window where the book considers a
+	// market finished while a parlay still has an open leg on it, and a crash in
+	// that window would strand the stake in escrow with nothing to release it.
+	if err := resolveParlayLegsTx(ctx, tx, marketID, outcome, settlementType == "voided", s.parlayJuice()); err != nil {
+		return SettleReport{}, err
+	}
 	if err := eventspg.Publish(ctx, tx, result.MarketEvent, maxOutboxAttempts); err != nil {
 		return SettleReport{}, err
 	}

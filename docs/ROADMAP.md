@@ -79,7 +79,7 @@ locally, against a real PostgreSQL and a real browser, before the commit lands.
 
 ## 2. Named backlog items
 
-### 2.1 ◐ Finish parlays — matchups only
+### 2.1 ◐ Finish parlays — matchups only (backend done 2026-07-30, no UI yet)
 
 **State:** schema and pure domain logic exist; nothing else does.
 
@@ -102,15 +102,15 @@ also the correct risk call — match markets settle from verified results, so a
 parlay's legs resolve deterministically. Enforce it in the domain rather than
 the UI so it cannot be bypassed.
 
-| | Task |
-|---|---|
-| ▢ | Reject non-match legs in `PlaceParlay`, with a dedicated error |
-| ▢ | `bettingpg`: place, accept, reject, resolve-leg, settle — mirroring the wager store's transaction boundaries |
-| ▢ | Hook leg resolution into market settlement so settling a match resolves every open leg on it |
-| ▢ | Ledger: acceptance debit and settlement credit reusing the wager account refs |
+| | Task | Notes |
+|---|---|---|
+| ✔ | Reject non-match legs in `PlaceParlay`, with a dedicated error | Already in the domain; now covered by an integration test |
+| ✔ | `bettingpg`: place, accept, reject, resolve-leg, settle | `parlay.go`, `parlayload.go` |
+| ✔ | Hook leg resolution into market settlement | Runs inside the settlement transaction |
+| ✔ | Ledger: acceptance debit and settlement credit | Reuses the wager transaction types with `source_type = parlay` |
 | ▢ | Approval path — parlays are exactly where a small stake becomes a large liability, so they should respect the auto-approve threshold and probably sit below it |
-| ▢ | Web: build slip, place, list on `/book/wagers`, show on the admin wagers queue |
-| ▢ | Integration tests against real PostgreSQL, including a leg pushing out |
+| ▢ | **Web: build slip, place, list on `/book/wagers`, show on the admin wagers queue** — the only thing between this and members using it |
+| ✔ | Integration tests against real PostgreSQL, including a leg voiding out | Five scenarios |
 | ▢ | `/admin/help` + `CONFIGURATION.md` |
 
 **Risk:** this is the largest item on the list and the only one that moves money
