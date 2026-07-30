@@ -69,4 +69,52 @@
     </table>
   </div>
 </section>
+
+<section class="betting-parlay-queue" aria-labelledby="parlay-queue">
+  <div class="private-page-heading">
+    <div><p class="private-kicker">Mandatory review</p><h2 id="parlay-queue">Parlays awaiting a decision</h2></div>
+    <p>Every parlay is reviewed, whatever its stake: a small stake across several legs is where the book's liability runs away from it. Nothing has left the member's balance until you accept.</p>
+  </div>
+  {{if .AdminParlays}}
+  <div class="private-table-wrap">
+    <table class="private-table private-table-stack">
+      <thead>
+        <tr><th scope="col">Member</th><th scope="col">Legs</th><th scope="col">Combined</th><th scope="col">Stake</th><th scope="col">To return</th><th scope="col">Decision</th></tr>
+      </thead>
+      <tbody>
+        {{range .AdminParlays}}
+        <tr>
+          <th scope="row">{{.MemberName}}</th>
+          <td data-label="Legs">
+            <ol class="parlay-leg-list">
+              {{range .Legs}}<li><strong>{{.AcceptedTerms}}</strong><small>{{.MarketTitle}} &middot; {{odds .AcceptedOdds}}</small></li>{{end}}
+            </ol>
+          </td>
+          <td class="private-odds" data-label="Combined">{{odds .AcceptedOdds}}</td>
+          <td data-label="Stake">${{dollars .StakeCents}}</td>
+          <td data-label="To return"><strong>${{dollars (addCents .StakeCents .PotentialProfit)}}</strong></td>
+          <td class="is-stack-block" data-label="Decision">
+            <form method="post" action="/admin/parlays/{{.ID}}/accept" class="betting-inline-form"
+                  hx-post="/admin/parlays/{{.ID}}/accept" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <button type="submit">Accept</button>
+            </form>
+            <form method="post" action="/admin/parlays/{{.ID}}/reject" class="betting-inline-form"
+                  hx-post="/admin/parlays/{{.ID}}/reject" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <label class="visually-hidden" for="parlay-reject-{{.ID}}">Why it is being refused</label>
+              <input id="parlay-reject-{{.ID}}" name="reason" maxlength="500" placeholder="Reason" required>
+              <button type="submit">Reject</button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="betting-empty">No parlays are waiting.</p>
+  {{end}}
+</section>
+
 {{end}}

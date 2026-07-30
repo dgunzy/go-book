@@ -139,3 +139,17 @@ Pending wagers count toward it as well as accepted ones. Enforcement happens
 inside the placement transaction, behind `FOR UPDATE` on the selection row —
 without that lock two placements arriving together both read the same running
 total, both find room, and both commit past the cap.
+
+## Parlays
+
+Parlay pricing uses `betting.DefaultParlayJuiceBasisPoints` (350bp per leg
+beyond the first). It is a compiled constant rather than an environment
+variable: it is a pricing decision that belongs with the odds maths and is
+covered by tests, not something to tune per deployment.
+
+`betting.MinParlayLegs` (2) and `betting.MaxParlayLegs` (8) bound a slip.
+
+**Parlays are never auto-approved.** `AcceptParlay` requires a real user ID and
+refuses any system actor, so no configuration and no future caller can route a
+parlay through the auto-approve path that single wagers use. The auto-approve
+threshold documented above applies to single wagers only.

@@ -6,6 +6,34 @@
 
 {{if .FormError}}<p class="betting-form-error" role="alert">{{.FormError}}</p>{{end}}
 
+{{if .HasParlayableMarkets}}
+<aside class="parlay-builder" aria-labelledby="parlay-slip-heading">
+  <div class="parlay-builder-head">
+    <h2 id="parlay-slip-heading">Parlay slip</h2>
+    <p>Tick two or more match results. One losing leg loses the bet; a voided leg drops out and the rest reprice.</p>
+  </div>
+  <label class="parlay-stake-field" for="parlay-stake">
+    <span>Stake</span>
+    <input id="parlay-stake" name="parlay_stake" inputmode="decimal" autocomplete="off" placeholder="0.00"
+           hx-post="/book/parlays/quote" hx-trigger="keyup changed delay:400ms, change"
+           hx-target="#parlay-slip-body" hx-swap="innerHTML"
+           hx-include="[name='leg']:checked, [name='parlay_stake'], [name='csrf_token']">
+  </label>
+  {{/* Only this region swaps, so the stake field above keeps focus while it
+       is being typed into. */}}
+  <div id="parlay-slip-body">
+    <p class="parlay-empty">Pick at least two matches to build a parlay.</p>
+  </div>
+  <form method="post" action="/book/parlays" class="parlay-place-form"
+        hx-post="/book/parlays" hx-target="this" hx-swap="outerHTML"
+        hx-include="[name='leg']:checked, [name='parlay_stake']">
+    <input type="hidden" name="csrf_token" value="{{.Session.CSRFToken}}">
+    <input type="hidden" name="idempotency_key" value="{{.ParlayPlaceKey}}">
+    <button type="submit">Place parlay for review</button>
+  </form>
+</aside>
+{{end}}
+
 {{range .Markets}}
 <section class="betting-market-card" aria-label="{{.Market.Title}}">
   <div class="betting-market-head">
@@ -22,7 +50,20 @@
       <tbody>
         {{range .Selections}}
         <tr>
-          <th scope="row">{{.DisplayTerms}}</th>
+          <th scope="row">
+            {{.DisplayTerms}}
+            {{/* Only match results can be parlayed: a prop or future can be
+                 entangled with a match, and the book cannot price correlation. */}}
+            {{if .Parlayable}}
+            <label class="parlay-pick">
+              <input type="checkbox" name="leg" value="{{.MarketID}}:{{.ID}}"
+                     hx-post="/book/parlays/quote" hx-trigger="change"
+                     hx-target="#parlay-slip-body" hx-swap="innerHTML"
+                     hx-include="[name='leg']:checked, [name='parlay_stake'], [name='csrf_token']">
+              <span>Add to parlay</span>
+            </label>
+            {{end}}
+          </th>
           <td class="private-odds" data-label="Odds">{{odds .OfferedAmericanOdds}}{{if .MaxStakeCents}}<small class="betting-side-limit">max {{dollars .MaxStakeCents}}</small>{{end}}</td>
           <td class="is-stack-block" data-label="Place a wager">
             <form method="post" action="/book/wagers" class="betting-place-form" hx-post="/book/wagers" hx-target="this" hx-swap="outerHTML">

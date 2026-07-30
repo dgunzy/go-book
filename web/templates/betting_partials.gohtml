@@ -1,1 +1,16 @@
 {{define "betting_action_result"}}<div class="betting-action-result{{if .IsError}} betting-action-error{{end}}" role="status"><strong>{{.Message}}</strong>{{if .Detail}} <span>{{.Detail}}</span>{{end}}{{if not .IsError}} <a href="/book/wagers">View wagers</a>{{end}}</div>{{end}}
+{{define "parlay_slip"}}
+{{if .Priced}}
+<ol class="parlay-legs">
+  {{range .LegRows}}<li><strong>{{.Terms}}</strong><small>{{.MarketTitle}}</small><span class="private-odds">{{.OddsLabel}}</span></li>{{end}}
+</ol>
+<dl class="parlay-price">
+  <div><dt>Combined</dt><dd class="parlay-combined">{{.OddsLabel}}</dd></div>
+  <div><dt>Stake</dt><dd>${{.StakeDollars}}</dd></div>
+  <div><dt>To return</dt><dd><strong>${{.ReturnDollars}}</strong></dd></div>
+</dl>
+<p class="parlay-review-note">Every parlay is reviewed by an admin before the book takes it.</p>
+{{else}}
+<p class="parlay-empty">{{if .Notice}}{{.Notice}}{{else}}Pick at least two matches to build a parlay.{{end}}</p>
+{{end}}
+{{end}}

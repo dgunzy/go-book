@@ -1013,3 +1013,41 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .private-action-status:empty { display: none; }
 .private-action-status { position: sticky; top: 0; z-index: 20; padding: 0 1.5rem; }
 .private-action-status .betting-action-result { margin: .75rem 0; }
+
+/* --- Parlay slip ---------------------------------------------------------
+   The slip sits above the board and prices itself as legs go in, so a member
+   sees what a combination is worth before committing to it. */
+.parlay-builder { background: #fff; border: 1px solid #d8ddd8; border-left: 3px solid var(--coral); margin-bottom: 1.75rem; padding: 1.25rem 1.4rem; }
+.parlay-builder-head h2 { font-size: 1.5rem; margin-bottom: .3rem; }
+.parlay-builder-head p { color: #5d6862; font-size: .85rem; margin: 0 0 1rem; max-width: 60ch; }
+.parlay-stake-field { align-items: center; display: flex; gap: .6rem; margin-bottom: .9rem; }
+.parlay-stake-field span { font-size: .72rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.parlay-stake-field input { border: 1px solid #9ca79f; padding: .45rem .55rem; width: 7rem; }
+.parlay-empty { color: #5d6862; font-size: .88rem; margin: 0; }
+.parlay-legs { display: grid; gap: .4rem; list-style: none; margin: 0 0 .9rem; padding: 0; }
+.parlay-legs li { align-items: baseline; background: #f5f7f4; display: flex; flex-wrap: wrap; gap: .5rem; padding: .45rem .6rem; }
+.parlay-legs strong { font-size: .92rem; }
+.parlay-legs small { color: #6c7770; flex: 1; font-size: .74rem; }
+.parlay-price { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 0 0 .8rem; }
+.parlay-price div { display: grid; }
+.parlay-price dt { color: #6c7770; font-size: .68rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.parlay-price dd { font-size: 1.15rem; margin: .15rem 0 0; }
+.parlay-combined { color: var(--coral); font-weight: 800; }
+.parlay-review-note { color: #6c7770; font-size: .76rem; margin: 0 0 .9rem; }
+/* Placing a parlay is the primary action on this panel, so it gets the same
+   weight as the Place button on a single wager rather than a bare default. */
+.parlay-place-form button { background: var(--coral); border: 1px solid var(--coral); border-radius: 4px; color: var(--white); cursor: pointer; font: inherit; font-size: .8rem; font-weight: 800; padding: .5rem 1.1rem; }
+.parlay-place-form button:hover { background: #bd4932; border-color: #bd4932; }
+.parlay-pick { align-items: center; color: #5d6862; cursor: pointer; display: flex; font-size: .72rem; font-weight: 700; gap: .35rem; margin-top: .35rem; }
+.parlay-leg-list { display: grid; gap: .3rem; list-style: none; margin: 0; padding: 0; }
+.parlay-leg-list li { display: grid; }
+.parlay-leg-list small { color: #6c7770; font-size: .72rem; }
+.parlay-leg-loss strong { color: #a3352a; text-decoration: line-through; }
+.parlay-leg-win strong { color: #1c6b45; }
+.betting-parlay-queue, .betting-member-parlays { margin-top: 2.5rem; }
+.betting-empty { color: #5d6862; font-size: .9rem; }
+
+@media (max-width: 680px) {
+  .parlay-price { gap: 1rem; }
+  .parlay-builder { padding: 1rem; }
+}

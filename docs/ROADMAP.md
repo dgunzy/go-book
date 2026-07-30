@@ -79,7 +79,7 @@ locally, against a real PostgreSQL and a real browser, before the commit lands.
 
 ## 2. Named backlog items
 
-### 2.1 ◐ Finish parlays — matchups only (backend done 2026-07-30, no UI yet)
+### 2.1 ✔ Parlays — matchups only, shipped 2026-07-30
 
 **State:** schema and pure domain logic exist; nothing else does.
 
@@ -108,14 +108,15 @@ the UI so it cannot be bypassed.
 | ✔ | `bettingpg`: place, accept, reject, resolve-leg, settle | `parlay.go`, `parlayload.go` |
 | ✔ | Hook leg resolution into market settlement | Runs inside the settlement transaction |
 | ✔ | Ledger: acceptance debit and settlement credit | Reuses the wager transaction types with `source_type = parlay` |
-| ▢ | Approval path — parlays are exactly where a small stake becomes a large liability, so they should respect the auto-approve threshold and probably sit below it |
-| ▢ | **Web: build slip, place, list on `/book/wagers`, show on the admin wagers queue** — the only thing between this and members using it |
+| ✔ | Approval path | **Review is mandatory**: `AcceptParlay` refuses any actor that is not a real user, so no caller can route one through auto-approve |
+| ✔ | Web: live slip, place, member list, admin review queue |
 | ✔ | Integration tests against real PostgreSQL, including a leg voiding out | Five scenarios |
-| ▢ | `/admin/help` + `CONFIGURATION.md` |
+| ✔ | `/admin/help` + `CONFIGURATION.md` |
 
-**Risk:** this is the largest item on the list and the only one that moves money
-in a new way. Rehearse the whole flow on `test.cabotcup.ca` before it reaches
-production.
+Verified end to end against the real book running locally: the slip prices live
+as legs go in, placing stores a pending parlay with nothing debited, an admin
+accepts it and the stake moves into escrow, and the member's list shows it
+accepted with the withdraw control correctly gone.
 
 ### 2.2 ✔ Do not require grading on a market nobody bet — shipped 2026-07-30
 
@@ -226,9 +227,10 @@ suites gated behind six separate `*_TEST_DATABASE_URL` variables.
 
 **Now**
 
-1. Parlays end to end (§2.1) — the largest remaining item
-2. Extend `hx-` to the remaining ~40 full-post forms, screen by screen
+1. Extend `hx-` to the remaining ~40 full-post forms, screen by screen
+2. Per-screen partial re-render so an admin inline control comes back after use
 3. `CONFIGURATION.md` audit
+4. 2025 archive page, when source material exists
 
 **Note on the htmx swap semantics.** Success keeps the authored
 `hx-target="this" hx-swap="outerHTML"`, so a control is replaced by its own

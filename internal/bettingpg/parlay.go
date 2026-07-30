@@ -185,9 +185,18 @@ func (s Store) parlayJuice() int64 { return betting.DefaultParlayJuiceBasisPoint
 // mirrors AcceptWager: the parlay row is locked first so a repeat is idempotent,
 // and the funding account is locked so two acceptances cannot both see a balance
 // that covers the stake.
+//
+// A named admin is required. Parlays are never auto-approved: a small stake
+// across several legs is exactly where the book's liability runs away from it,
+// so every one is looked at by a person. Requiring a real user ID here means no
+// future caller can quietly route parlays through the auto-approve path, since
+// that path has no user ID to offer.
 func (s Store) AcceptParlay(ctx context.Context, parlayID, actorUserID string) (ParlayRow, error) {
 	if !isUUID(parlayID) {
 		return ParlayRow{}, fmt.Errorf("%w: parlay %s", betting.ErrNotFound, parlayID)
+	}
+	if !isUUID(actorUserID) {
+		return ParlayRow{}, fmt.Errorf("%w: a parlay must be accepted by a named admin", betting.ErrUnauthorized)
 	}
 	tx, err := s.begin(ctx)
 	if err != nil {
@@ -269,7 +278,7 @@ func (s Store) AcceptParlay(ctx context.Context, parlayID, actorUserID string) (
 		Type:           ledger.TransactionWagerAcceptance,
 		Currency:       stake.Currency,
 		IdempotencyKey: "parlay:" + parlayID + ":acceptance",
-		Actor:          actorOrSystem(actorUserID),
+		Actor:          actorUserID,
 		SourceType:     "parlay",
 		SourceID:       parlayID,
 		Postings: []ledger.Posting{
@@ -289,7 +298,7 @@ func (s Store) AcceptParlay(ctx context.Context, parlayID, actorUserID string) (
 		UPDATE parlays SET state = 'accepted', accepted_at = $2,
 			accepted_by = nullif($3, '')::uuid, acceptance_ledger_transaction_id = $4::uuid
 		WHERE id = $1::uuid`,
-		parlayID, acceptedAt, actorUserIDOrEmpty(actorUserID), transactionID); err != nil {
+		parlayID, acceptedAt, actorUserID, transactionID); err != nil {
 		return ParlayRow{}, fmt.Errorf("accept parlay: %w", err)
 	}
 
@@ -301,24 +310,6 @@ func (s Store) AcceptParlay(ctx context.Context, parlayID, actorUserID string) (
 		return ParlayRow{}, fmt.Errorf("commit parlay acceptance: %w", err)
 	}
 	return row, nil
-}
-
-// actorOrSystem names the ledger actor. The ledger requires one even when the
-// book approved automatically.
-func actorOrSystem(actor string) string {
-	if strings.TrimSpace(actor) == "" {
-		return AutoApproveActor
-	}
-	return actor
-}
-
-// actorUserIDOrEmpty drops a non-UUID actor such as the auto-approve marker so
-// accepted_by stays NULL rather than failing the cast.
-func actorUserIDOrEmpty(actor string) string {
-	if isUUID(actor) {
-		return actor
-	}
-	return ""
 }
 
 // RejectParlay refuses a pending parlay. Nothing has been debited, so there is
@@ -531,4 +522,117 @@ func settleParlayIfCompleteTx(ctx context.Context, tx pgx.Tx, parlayID string, j
 		return fmt.Errorf("mark parlay settled: %w", err)
 	}
 	return nil
+}
+
+// CancelParlay withdraws a member's own pending parlay. Nothing has been
+// debited while it waits for review, so there is nothing to give back.
+func (s Store) CancelParlay(ctx context.Context, parlayID, userID string) error {
+	if !isUUID(parlayID) {
+		return fmt.Errorf("%w: parlay %s", betting.ErrNotFound, parlayID)
+	}
+	if !isUUID(userID) {
+		return betting.ErrUnauthorized
+	}
+	tx, err := s.begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	state, owner, _, _, _, err := loadParlayForUpdate(ctx, tx, parlayID)
+	if err != nil {
+		return err
+	}
+	// A member may only withdraw their own bet, and only before the book has
+	// taken it: once accepted the stake is in escrow and it has to be graded.
+	if owner != userID {
+		return betting.ErrUnauthorized
+	}
+	if state != string(betting.WagerPending) {
+		return fmt.Errorf("%w: parlay is %s", betting.ErrInvalidTransition, state)
+	}
+	if _, err := tx.Exec(ctx, `
+		UPDATE parlays SET state = 'rejected', rejected_at = now(), rejected_by = $2::uuid,
+			rejection_reason = 'Withdrawn by the member before review'
+		WHERE id = $1::uuid`, parlayID, userID); err != nil {
+		return fmt.Errorf("cancel parlay: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit parlay cancellation: %w", err)
+	}
+	return nil
+}
+
+// QuoteParlay prices a prospective parlay without storing anything, so the slip
+// can show a live combined price as legs go in and out. It runs exactly the same
+// domain rules placement does, so a quote that prices cannot then be refused for
+// a reason the member was never shown.
+func (s Store) QuoteParlay(ctx context.Context, req PlaceParlayRequest) (ParlayRow, error) {
+	if len(req.Legs) < betting.MinParlayLegs {
+		return ParlayRow{}, betting.ErrParlayTooFewLegs
+	}
+	tx, err := s.begin(ctx)
+	if err != nil {
+		return ParlayRow{}, err
+	}
+	// A quote reads and prices; it must never leave anything behind.
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	markets := make([]betting.Market, 0, len(req.Legs))
+	selections := make([]betting.Selection, 0, len(req.Legs))
+	restrictions := make([]betting.Restriction, 0)
+	for _, leg := range req.Legs {
+		if !isUUID(leg.MarketID) || !isUUID(leg.SelectionID) {
+			return ParlayRow{}, fmt.Errorf("%w: every leg needs a market and selection", betting.ErrInvalid)
+		}
+		market, err := loadMarket(ctx, tx, leg.MarketID)
+		if err != nil {
+			return ParlayRow{}, err
+		}
+		selection, err := loadSelection(ctx, tx, leg.MarketID, leg.SelectionID)
+		if err != nil {
+			return ParlayRow{}, err
+		}
+		legRestrictions, err := loadRestrictions(ctx, tx, leg.MarketID)
+		if err != nil {
+			return ParlayRow{}, err
+		}
+		markets = append(markets, market)
+		selections = append(selections, selection)
+		restrictions = append(restrictions, legRestrictions...)
+	}
+
+	stake, err := ledger.NewMoney(req.StakeCents, req.Currency)
+	if err != nil {
+		return ParlayRow{}, fmt.Errorf("build parlay stake: %w", err)
+	}
+	quoteID, err := betting.NewEventID()
+	if err != nil {
+		return ParlayRow{}, err
+	}
+	parlay, err := betting.PlaceParlay(betting.PlaceParlayCommand{
+		ParlayID: quoteID, UserID: betting.ID(req.UserID),
+		Markets: markets, Selections: selections, Restrictions: restrictions,
+		JuiceBasisPoints: s.parlayJuice(), MaxPayoutCents: s.maxPayout(),
+		FundingAccountType: req.FundingAccountType, Stake: stake,
+		IdempotencyKey: "quote:" + string(quoteID), Now: time.Now(),
+	})
+	if err != nil {
+		return ParlayRow{}, err
+	}
+
+	row := ParlayRow{
+		UserID: req.UserID, FundingAccountType: parlay.FundingAccountType,
+		StakeCents: parlay.Stake.Cents, Currency: parlay.Stake.Currency,
+		AcceptedOdds: parlay.AcceptedOdds, PotentialProfit: parlay.PotentialProfit.Cents,
+		State: betting.WagerPending,
+	}
+	for _, leg := range parlay.Legs {
+		row.Legs = append(row.Legs, ParlayLegRow{
+			MarketID: string(leg.MarketID), SelectionID: string(leg.SelectionID),
+			MarketTitle: leg.MarketTitle, AcceptedTerms: leg.AcceptedTerms,
+			AcceptedOdds: leg.AcceptedOdds,
+		})
+	}
+	return row, nil
 }

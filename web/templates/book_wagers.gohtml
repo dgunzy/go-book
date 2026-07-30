@@ -51,4 +51,52 @@
     </table>
   </div>
 </section>
+
+<section class="betting-member-parlays" aria-labelledby="my-parlays">
+  <div class="private-page-heading">
+    <div><p class="private-kicker">Parlays</p><h2 id="my-parlays">Your parlays</h2></div>
+    <p>One stake across several matches. Every leg has to land; a voided leg drops out and the rest reprice. Every parlay is reviewed by an admin before the book takes it.</p>
+  </div>
+  {{if .MemberParlays}}
+  <div class="private-table-wrap">
+    <table class="private-table private-table-stack">
+      <thead>
+        <tr><th scope="col">Legs</th><th scope="col">Combined</th><th scope="col">Stake</th><th scope="col">To return</th><th scope="col">Status</th></tr>
+      </thead>
+      <tbody>
+        {{range .MemberParlays}}
+        <tr>
+          <td data-label="Legs">
+            <ol class="parlay-leg-list">
+              {{range .Legs}}
+              <li class="{{if .Resolved}}parlay-leg-{{.Result}}{{end}}">
+                <strong>{{.AcceptedTerms}}</strong>
+                <small>{{.MarketTitle}} &middot; {{odds .AcceptedOdds}}{{if .Resolved}} &middot; {{.Result}}{{end}}</small>
+              </li>
+              {{end}}
+            </ol>
+          </td>
+          <td class="private-odds" data-label="Combined">{{odds .AcceptedOdds}}</td>
+          <td data-label="Stake">${{dollars .StakeCents}}</td>
+          <td data-label="To return"><strong>${{dollars (addCents .StakeCents .PotentialProfit)}}</strong></td>
+          <td class="is-stack-block" data-label="Status">
+            <span class="private-status">{{.State}}</span>
+            {{if eq .State "pending"}}
+            <form method="post" action="/book/parlays/{{.ID}}/cancel" class="betting-inline-form"
+                  hx-post="/book/parlays/{{.ID}}/cancel" hx-target="this" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{$.Session.CSRFToken}}">
+              <button type="submit">Withdraw</button>
+            </form>
+            {{end}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}
+  <p class="betting-empty">You have no parlays. Build one from the <a href="/book/markets">markets board</a>.</p>
+  {{end}}
+</section>
+
 {{end}}

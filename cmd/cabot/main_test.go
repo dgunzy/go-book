@@ -266,6 +266,15 @@ func TestBettingRoutesWinOverThePrivateBookSubtree(t *testing.T) {
 		{http.MethodGet, "/admin/wagers", http.StatusNoContent},
 		{http.MethodGet, "/admin/wagers/record", http.StatusNoContent},
 		{http.MethodPost, "/admin/wagers/11111111-1111-1111-1111-111111111111/accept", http.StatusNoContent},
+		// Parlay routes live in bettingweb but are reachable only if they are
+		// also on this mount list; a route registered in one and missing from
+		// the other 404s in the real application while every handler test
+		// still passes.
+		{http.MethodPost, "/book/parlays", http.StatusNoContent},
+		{http.MethodPost, "/book/parlays/quote", http.StatusNoContent},
+		{http.MethodPost, "/book/parlays/11111111-1111-1111-1111-111111111111/cancel", http.StatusNoContent},
+		{http.MethodPost, "/admin/parlays/11111111-1111-1111-1111-111111111111/accept", http.StatusNoContent},
+		{http.MethodPost, "/admin/parlays/11111111-1111-1111-1111-111111111111/reject", http.StatusNoContent},
 		{http.MethodGet, "/admin/help", http.StatusNoContent},
 		{http.MethodGet, "/admin/settle-up", http.StatusNoContent},
 		{http.MethodPost, "/admin/settle-up", http.StatusNoContent},

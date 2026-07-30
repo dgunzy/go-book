@@ -376,3 +376,153 @@ func selectionsFor(t *testing.T, ctx context.Context, pool *pgxpool.Pool, market
 	}
 	return ids
 }
+
+// TestParlayCannotBeAutoApproved is the rule the owner asked for: every parlay
+// is looked at by a person. A small stake across several legs is where the
+// book's liability runs away from it, so there must be no path that accepts one
+// without a named admin — including the auto-approve marker singles use.
+func TestParlayCannotBeAutoApproved(t *testing.T) {
+	pool := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	store := Store{DB: pool}
+
+	f := buildFixture(t, ctx, pool, 100_000)
+	market2, sel2A, _ := secondMatchMarket(t, ctx, pool, f)
+
+	parlayID := mustNewUUID(t, ctx, store)
+	cleanupParlay(t, pool, parlayID)
+	if _, err := store.PlaceParlay(ctx, PlaceParlayRequest{
+		ParlayID: parlayID, UserID: f.UserA,
+		Legs: []ParlayLegRequest{
+			{MarketID: f.MarketID, SelectionID: f.SelectionAID},
+			{MarketID: market2, SelectionID: sel2A},
+		},
+		FundingAccountType: betting.FundingUserCash, StakeCents: 100, Currency: ledger.CAD,
+		IdempotencyKey: "parlay-noauto:" + parlayID,
+	}); err != nil {
+		t.Fatalf("PlaceParlay() error = %v", err)
+	}
+
+	for _, actor := range []string{"", AutoApproveActor, "system:anything"} {
+		if _, err := store.AcceptParlay(ctx, parlayID, actor); !errors.Is(err, betting.ErrUnauthorized) {
+			t.Fatalf("AcceptParlay(actor=%q) error = %v, want ErrUnauthorized", actor, err)
+		}
+	}
+	if state := parlayState(t, ctx, pool, parlayID); state != string(betting.WagerPending) {
+		t.Fatalf("parlay state = %q, want it left pending", state)
+	}
+	// A named admin still works.
+	if _, err := store.AcceptParlay(ctx, parlayID, f.UserB); err != nil {
+		t.Fatalf("AcceptParlay(admin) error = %v", err)
+	}
+	var acceptedBy *string
+	if err := pool.QueryRow(ctx, `SELECT accepted_by::text FROM parlays WHERE id = $1::uuid`, parlayID).Scan(&acceptedBy); err != nil {
+		t.Fatal(err)
+	}
+	if acceptedBy == nil || *acceptedBy != f.UserB {
+		t.Fatal("the accepting admin was not recorded on the parlay")
+	}
+}
+
+// TestQuoteParlayPricesWithoutStoringAnything backs the live slip: the member
+// sees a real price as legs go in, and asking for one must not leave a parlay,
+// a leg, or a ledger entry behind.
+func TestQuoteParlayPricesWithoutStoringAnything(t *testing.T) {
+	pool := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	store := Store{DB: pool}
+
+	f := buildFixture(t, ctx, pool, 100_000)
+	market2, sel2A, _ := secondMatchMarket(t, ctx, pool, f)
+
+	var parlaysBefore, legsBefore int
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM parlays), (SELECT count(*) FROM parlay_legs)`).
+		Scan(&parlaysBefore, &legsBefore); err != nil {
+		t.Fatal(err)
+	}
+
+	quote, err := store.QuoteParlay(ctx, PlaceParlayRequest{
+		UserID: f.UserA,
+		Legs: []ParlayLegRequest{
+			{MarketID: f.MarketID, SelectionID: f.SelectionAID},
+			{MarketID: market2, SelectionID: sel2A},
+		},
+		FundingAccountType: betting.FundingUserCash, StakeCents: 2_500, Currency: ledger.CAD,
+	})
+	if err != nil {
+		t.Fatalf("QuoteParlay() error = %v", err)
+	}
+	if len(quote.Legs) != 2 || quote.AcceptedOdds < 100 || quote.PotentialProfit <= 0 {
+		t.Fatalf("quote = %+v", quote)
+	}
+
+	var parlaysAfter, legsAfter int
+	if err := pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM parlays), (SELECT count(*) FROM parlay_legs)`).
+		Scan(&parlaysAfter, &legsAfter); err != nil {
+		t.Fatal(err)
+	}
+	if parlaysAfter != parlaysBefore || legsAfter != legsBefore {
+		t.Fatalf("a quote wrote rows: parlays %d->%d legs %d->%d", parlaysBefore, parlaysAfter, legsBefore, legsAfter)
+	}
+
+	// One leg is not a parlay, and the slip must say so rather than pricing it.
+	if _, err := store.QuoteParlay(ctx, PlaceParlayRequest{
+		UserID:             f.UserA,
+		Legs:               []ParlayLegRequest{{MarketID: f.MarketID, SelectionID: f.SelectionAID}},
+		FundingAccountType: betting.FundingUserCash, StakeCents: 2_500, Currency: ledger.CAD,
+	}); !errors.Is(err, betting.ErrParlayTooFewLegs) {
+		t.Fatalf("single-leg quote error = %v, want ErrParlayTooFewLegs", err)
+	}
+}
+
+// TestCancelParlayIsOwnerOnlyAndPendingOnly keeps one member from withdrawing
+// another's bet, and keeps anybody from pulling a stake back out of escrow.
+func TestCancelParlayIsOwnerOnlyAndPendingOnly(t *testing.T) {
+	pool := testPool(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	store := Store{DB: pool}
+
+	f := buildFixture(t, ctx, pool, 100_000)
+	market2, sel2A, _ := secondMatchMarket(t, ctx, pool, f)
+
+	place := func(tag string) string {
+		id := mustNewUUID(t, ctx, store)
+		cleanupParlay(t, pool, id)
+		if _, err := store.PlaceParlay(ctx, PlaceParlayRequest{
+			ParlayID: id, UserID: f.UserA,
+			Legs: []ParlayLegRequest{
+				{MarketID: f.MarketID, SelectionID: f.SelectionAID},
+				{MarketID: market2, SelectionID: sel2A},
+			},
+			FundingAccountType: betting.FundingUserCash, StakeCents: 500, Currency: ledger.CAD,
+			IdempotencyKey: tag + ":" + id,
+		}); err != nil {
+			t.Fatalf("PlaceParlay() error = %v", err)
+		}
+		return id
+	}
+
+	other := place("cancel-other")
+	if err := store.CancelParlay(ctx, other, f.UserB); !errors.Is(err, betting.ErrUnauthorized) {
+		t.Fatalf("another member cancelled it: %v", err)
+	}
+
+	own := place("cancel-own")
+	if err := store.CancelParlay(ctx, own, f.UserA); err != nil {
+		t.Fatalf("CancelParlay() error = %v", err)
+	}
+	if state := parlayState(t, ctx, pool, own); state != "rejected" {
+		t.Fatalf("state = %q, want rejected", state)
+	}
+
+	accepted := place("cancel-accepted")
+	if _, err := store.AcceptParlay(ctx, accepted, f.UserB); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CancelParlay(ctx, accepted, f.UserA); !errors.Is(err, betting.ErrInvalidTransition) {
+		t.Fatalf("an accepted parlay was cancelled: %v", err)
+	}
+}

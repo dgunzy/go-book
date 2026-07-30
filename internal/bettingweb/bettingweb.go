@@ -79,6 +79,19 @@ type MarketStore interface {
 	RegradeStrandedWagers(ctx context.Context, marketID, actorUserID, reason string) (bettingpg.SettleReport, error)
 }
 
+// ParlayStore is the parlay surface of bettingpg.Store this handler needs.
+// Accepting is admin-only by construction: the store refuses any actor that is
+// not a real user, so no handler here can auto-approve one.
+type ParlayStore interface {
+	QuoteParlay(context.Context, bettingpg.PlaceParlayRequest) (bettingpg.ParlayRow, error)
+	PlaceParlay(context.Context, bettingpg.PlaceParlayRequest) (bettingpg.ParlayRow, error)
+	AcceptParlay(ctx context.Context, parlayID, actorUserID string) (bettingpg.ParlayRow, error)
+	RejectParlay(ctx context.Context, parlayID, actorUserID, reason string) error
+	CancelParlay(ctx context.Context, parlayID, userID string) error
+	ListParlaysForUser(ctx context.Context, userID string) ([]bettingpg.ParlayRow, error)
+	ListPendingParlays(context.Context) ([]bettingpg.ParlayRow, error)
+}
+
 // WagerStore is the wager surface of bettingpg.Store this handler needs.
 type WagerStore interface {
 	PlaceWager(context.Context, bettingpg.PlaceWagerRequest) (betting.Wager, error)
@@ -107,6 +120,7 @@ type Dependencies struct {
 	Sessions SessionReader
 	Markets  MarketStore
 	Wagers   WagerStore
+	Parlays  ParlayStore
 	// Members and Ledger back the admin's view of one member's account.
 	Members MemberStore
 	Ledger  LedgerReader
@@ -189,6 +203,11 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /admin/markets/{id}/settle", h.adminSettleForm)
 	h.mux.HandleFunc("POST /admin/markets/{id}/settle", h.adminSettleMarket)
 	h.mux.HandleFunc("POST /admin/markets/{id}/regrade", h.adminRegradeMarket)
+	h.mux.HandleFunc("POST /book/parlays/quote", h.bookQuoteParlay)
+	h.mux.HandleFunc("POST /book/parlays", h.bookPlaceParlay)
+	h.mux.HandleFunc("POST /book/parlays/{id}/cancel", h.bookCancelParlay)
+	h.mux.HandleFunc("POST /admin/parlays/{id}/accept", h.adminAcceptParlay)
+	h.mux.HandleFunc("POST /admin/parlays/{id}/reject", h.adminRejectParlay)
 	h.mux.HandleFunc("GET /admin/wagers", h.adminWagers)
 	h.mux.HandleFunc("GET /admin/wagers/record", h.adminWagerRecord)
 	h.mux.HandleFunc("POST /admin/wagers/{id}/accept", h.adminAcceptWager)
@@ -225,6 +244,10 @@ type selectionView struct {
 	bettingpg.MarketSelectionRow
 	MarketID string
 	PlaceKey string
+	// Parlayable is true only for a match result. A prop or future can be
+	// entangled with a match — "most points" and "to win the cup" move together
+	// — and the book cannot price correlation, so only these get a slip pick.
+	Parlayable bool
 }
 
 type marketView struct {
@@ -386,28 +409,37 @@ func payoutRatio(odds ledger.AmericanOdds) (numerator, denominator int64) {
 }
 
 type pageData struct {
-	Title             string
-	Current           string
-	Session           privateweb.Session
-	Markets           []marketView
-	Market            marketView
-	MemberWagers      []memberWagerView
-	AdminWagers       []adminWagerView
-	Outstanding       []settleUpView
-	WagerRecord       []wagerRecordView
-	Settlements       []bettingpg.SettlementRow
-	Restrictions      []bettingpg.RestrictionRow
-	MemberBook        bettingpg.MemberBookRow
-	LedgerRows        []privateweb.LedgerRow
-	Members           []bettingpg.MemberOption
-	FormError         string
-	Notice            string
-	BackLink          string
-	Form              url.Values
-	NewMarketID       string
-	SelectionSlots    []int
-	MaxSelections     int
-	MarketableMatches []bettingpg.MatchMarketOption
+	Title        string
+	Current      string
+	Session      privateweb.Session
+	Markets      []marketView
+	Market       marketView
+	MemberWagers []memberWagerView
+	AdminWagers  []adminWagerView
+	// MemberParlays and AdminParlays back the parlay slip's counterparts: what
+	// a member has riding, and the admin queue. Every parlay is reviewed, so
+	// the admin list is never empty by policy the way single wagers can be.
+	MemberParlays []bettingpg.ParlayRow
+	AdminParlays  []bettingpg.ParlayRow
+	// HasParlayableMarkets is false when nothing on the board is a match, in
+	// which case the slip is hidden rather than shown with nothing to pick.
+	HasParlayableMarkets bool
+	ParlayPlaceKey       string
+	Outstanding          []settleUpView
+	WagerRecord          []wagerRecordView
+	Settlements          []bettingpg.SettlementRow
+	Restrictions         []bettingpg.RestrictionRow
+	MemberBook           bettingpg.MemberBookRow
+	LedgerRows           []privateweb.LedgerRow
+	Members              []bettingpg.MemberOption
+	FormError            string
+	Notice               string
+	BackLink             string
+	Form                 url.Values
+	NewMarketID          string
+	SelectionSlots       []int
+	MaxSelections        int
+	MarketableMatches    []bettingpg.MatchMarketOption
 	// Stranded lists wagers a settled market never graded, so the settle page
 	// can offer to finish them off.
 	Stranded []strandedWagerView
@@ -444,7 +476,20 @@ func (h *Handler) bookMarkets(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	h.render(w, "book_markets", pageData{Title: "Markets", Current: "markets", Session: session, Markets: views})
+	parlayKey, err := h.newID()
+	if err != nil {
+		h.internalError(w)
+		return
+	}
+	parlayable := false
+	for _, view := range views {
+		if view.Market.Type == betting.MarketMatch {
+			parlayable = true
+			break
+		}
+	}
+	h.render(w, "book_markets", pageData{Title: "Markets", Current: "markets", Session: session, Markets: views,
+		HasParlayableMarkets: parlayable, ParlayPlaceKey: "parlay:" + parlayKey})
 }
 
 func (h *Handler) bookWagers(w http.ResponseWriter, r *http.Request) {
@@ -457,8 +502,13 @@ func (h *Handler) bookWagers(w http.ResponseWriter, r *http.Request) {
 		h.internalError(w)
 		return
 	}
+	parlays, err := h.deps.Parlays.ListParlaysForUser(r.Context(), session.UserID)
+	if err != nil {
+		h.internalError(w)
+		return
+	}
 	h.render(w, "book_wagers", pageData{Title: "Wagers", Current: "wagers", Session: session,
-		MemberWagers: memberWagerViews(wagers)})
+		MemberWagers: memberWagerViews(wagers), MemberParlays: parlays})
 }
 
 // cancelWager withdraws the member's own pending wager. The wager ID comes
@@ -914,8 +964,13 @@ func (h *Handler) adminWagers(w http.ResponseWriter, r *http.Request) {
 		h.internalError(w)
 		return
 	}
+	parlays, err := h.deps.Parlays.ListPendingParlays(r.Context())
+	if err != nil {
+		h.internalError(w)
+		return
+	}
 	h.render(w, "admin_wagers", pageData{Title: "Pending wagers", Current: "admin-wagers", Session: session,
-		AdminWagers: adminWagerViews(wagers)})
+		AdminWagers: adminWagerViews(wagers), AdminParlays: parlays})
 }
 
 func (h *Handler) adminAcceptWager(w http.ResponseWriter, r *http.Request) {
@@ -1043,7 +1098,10 @@ func (h *Handler) openMarketViews(w http.ResponseWriter, ctx context.Context, us
 	for _, market := range markets {
 		view := marketView{Market: market}
 		for _, selection := range market.Selections {
-			item := selectionView{MarketSelectionRow: selection, MarketID: market.ID}
+			item := selectionView{
+				MarketSelectionRow: selection, MarketID: market.ID,
+				Parlayable: market.Type == betting.MarketMatch,
+			}
 			if withPlaceKeys {
 				key, err := h.newID()
 				if err != nil {
@@ -1430,8 +1488,11 @@ func parseTemplates() (map[string]*template.Template, error) {
 	functions := template.FuncMap{
 		"money":   formatMoney,
 		"dollars": formatCentsDollars,
-		"odds":    formatOdds,
-		"when":    formatTime,
+		// addCents keeps "stake plus profit" arithmetic out of the templates
+		// while still letting them show what a bet returns.
+		"addCents": func(a, b int64) int64 { return a + b },
+		"odds":     formatOdds,
+		"when":     formatTime,
 	}
 	pages := map[string]string{
 		"book_markets":        "templates/book_markets.gohtml",

@@ -146,7 +146,7 @@ func runServer(ctx context.Context, logger *slog.Logger, lookup lookupFunc) erro
 		}
 		bettingStore := bettingpg.Store{DB: pool, MaxPayoutCents: applicationConfig.WagerMaxPayoutCents}
 		bettingHandler, err := bettingweb.New(bettingweb.Dependencies{
-			Sessions: authHandler.SessionReader(), Markets: bettingStore, Wagers: bettingStore,
+			Sessions: authHandler.SessionReader(), Markets: bettingStore, Wagers: bettingStore, Parlays: bettingStore,
 			Settlements:                  bettingStore,
 			Members:                      bettingStore,
 			Ledger:                       readers,
@@ -243,8 +243,10 @@ func mountBettingRoutes(mux *http.ServeMux, handler http.Handler) {
 	for _, path := range []string{
 		"/book/markets",
 		"/book/wagers", "/book/wagers/",
+		"/book/parlays", "/book/parlays/",
 		"/admin/markets", "/admin/markets/",
 		"/admin/wagers", "/admin/wagers/",
+		"/admin/parlays/",
 		"/admin/members/{id}/book", "/admin/members/{id}/wagers",
 		"/admin/settle-up", "/admin/settle-up/",
 		"/admin/help",

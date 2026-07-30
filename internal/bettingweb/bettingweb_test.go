@@ -20,6 +20,8 @@ const (
 	testCSRF     = "csrf-secret-token"
 	testUserID   = "11111111-1111-1111-1111-111111111111"
 	testMarketID = "22222222-2222-2222-2222-222222222222"
+	altMarketID  = "33333333-3333-3333-3333-333333333333"
+	altSelID     = "44444444-4444-4444-4444-444444444444"
 	testSelID    = "33333333-3333-3333-3333-333333333333"
 	testWagerID  = "44444444-4444-4444-4444-444444444444"
 	testIdem     = "55555555-5555-5555-5555-555555555555"
@@ -372,9 +374,80 @@ func (f *fakeLedger) LedgerRows(_ context.Context, userID string) ([]privateweb.
 	return f.rows, nil
 }
 
+// fakeParlays records what the handlers asked of the parlay store. Accepting is
+// admin-only in the real store, so the fake records the actor to prove the
+// handler passes a real one rather than an auto-approve marker.
+type fakeParlays struct {
+	quote       bettingpg.ParlayRow
+	quoteErr    error
+	placed      bettingpg.ParlayRow
+	placeErr    error
+	placeCalls  []bettingpg.PlaceParlayRequest
+	acceptCalls []struct{ id, actor string }
+	acceptErr   error
+	rejectCalls []struct{ id, actor, reason string }
+	rejectErr   error
+	cancelCalls []struct{ id, user string }
+	cancelErr   error
+	forUser     []bettingpg.ParlayRow
+	pending     []bettingpg.ParlayRow
+	pendingErr  error
+}
+
+func (f *fakeParlays) QuoteParlay(_ context.Context, _ bettingpg.PlaceParlayRequest) (bettingpg.ParlayRow, error) {
+	return f.quote, f.quoteErr
+}
+
+func (f *fakeParlays) PlaceParlay(_ context.Context, req bettingpg.PlaceParlayRequest) (bettingpg.ParlayRow, error) {
+	f.placeCalls = append(f.placeCalls, req)
+	return f.placed, f.placeErr
+}
+
+func (f *fakeParlays) AcceptParlay(_ context.Context, parlayID, actorUserID string) (bettingpg.ParlayRow, error) {
+	f.acceptCalls = append(f.acceptCalls, struct{ id, actor string }{parlayID, actorUserID})
+	return f.placed, f.acceptErr
+}
+
+func (f *fakeParlays) RejectParlay(_ context.Context, parlayID, actorUserID, reason string) error {
+	f.rejectCalls = append(f.rejectCalls, struct{ id, actor, reason string }{parlayID, actorUserID, reason})
+	return f.rejectErr
+}
+
+func (f *fakeParlays) CancelParlay(_ context.Context, parlayID, userID string) error {
+	f.cancelCalls = append(f.cancelCalls, struct{ id, user string }{parlayID, userID})
+	return f.cancelErr
+}
+
+func (f *fakeParlays) ListParlaysForUser(_ context.Context, _ string) ([]bettingpg.ParlayRow, error) {
+	return f.forUser, nil
+}
+
+func (f *fakeParlays) ListPendingParlays(_ context.Context) ([]bettingpg.ParlayRow, error) {
+	return f.pending, f.pendingErr
+}
+
 func newTestHandler(t *testing.T, session privateweb.Session, markets *fakeMarkets, wagers *fakeWagers) *Handler {
 	t.Helper()
 	return newTestHandlerWithSettlements(t, session, markets, wagers, &fakeSettlements{})
+}
+
+// newTestHandlerWithParlays wires a parlay store the test can inspect.
+func newTestHandlerWithParlays(t *testing.T, session privateweb.Session, markets *fakeMarkets,
+	wagers *fakeWagers, parlays *fakeParlays) *Handler {
+	t.Helper()
+	handler, err := New(Dependencies{
+		Sessions:    fakeSessions{session: session},
+		Markets:     markets,
+		Wagers:      wagers,
+		Parlays:     parlays,
+		Settlements: &fakeSettlements{},
+		Members:     &fakeMembers{},
+		Ledger:      &fakeLedger{},
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	return handler
 }
 
 func newTestHandlerWithSettlements(t *testing.T, session privateweb.Session, markets *fakeMarkets,
@@ -384,6 +457,7 @@ func newTestHandlerWithSettlements(t *testing.T, session privateweb.Session, mar
 		Sessions:    fakeSessions{session: session},
 		Markets:     markets,
 		Wagers:      wagers,
+		Parlays:     &fakeParlays{},
 		Settlements: settlements,
 		Members:     &fakeMembers{},
 		Ledger:      &fakeLedger{},
@@ -2654,5 +2728,162 @@ func TestPrivateLayoutLoadsHTMXAndItsStatusRegion(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("private layout is missing %q", want)
 		}
+	}
+}
+
+func TestParlayIsAlwaysSubmittedForReviewNeverAccepted(t *testing.T) {
+	parlays := &fakeParlays{placed: bettingpg.ParlayRow{
+		ID: testMarketID, AcceptedOdds: 264, StakeCents: 2000,
+		Legs: []bettingpg.ParlayLegRow{{AcceptedTerms: "A"}, {AcceptedTerms: "B"}},
+	}}
+	handler := newTestHandlerWithParlays(t, memberSession(), &fakeMarkets{}, &fakeWagers{}, parlays)
+
+	body := url.Values{
+		"csrf_token":   {testCSRF},
+		"leg":          {testMarketID + ":" + testSelID, altMarketID + ":" + altSelID},
+		"parlay_stake": {"20.00"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/book/parlays", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303; body %s", w.Code, w.Body.String())
+	}
+	if len(parlays.placeCalls) != 1 {
+		t.Fatalf("place calls = %d, want 1", len(parlays.placeCalls))
+	}
+	if got := parlays.placeCalls[0].StakeCents; got != 2000 {
+		t.Errorf("stake = %d cents, want 2000", got)
+	}
+	if got := len(parlays.placeCalls[0].Legs); got != 2 {
+		t.Errorf("legs = %d, want 2", got)
+	}
+	// The whole point of mandatory review: placing must never accept.
+	if len(parlays.acceptCalls) != 0 {
+		t.Fatal("placing a parlay accepted it — review is mandatory")
+	}
+}
+
+// Two legs on one match are correlated, which is how a book gets picked off.
+func TestParlayRefusesTwoLegsOnTheSameMatch(t *testing.T) {
+	parlays := &fakeParlays{}
+	handler := newTestHandlerWithParlays(t, memberSession(), &fakeMarkets{}, &fakeWagers{}, parlays)
+
+	body := url.Values{
+		"csrf_token":   {testCSRF},
+		"leg":          {testMarketID + ":" + testSelID, testMarketID + ":" + altSelID},
+		"parlay_stake": {"10.00"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/book/parlays", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if len(parlays.placeCalls) != 0 {
+		t.Fatal("a correlated parlay reached the store")
+	}
+	if !strings.Contains(w.Body.String(), "same match") {
+		t.Errorf("body does not explain the refusal: %s", w.Body.String())
+	}
+}
+
+func TestAdminAcceptParlayPassesTheRealAdmin(t *testing.T) {
+	parlays := &fakeParlays{placed: bettingpg.ParlayRow{ID: testMarketID, AcceptedOdds: 264}}
+	handler := newTestHandlerWithParlays(t, adminSession(), &fakeMarkets{}, &fakeWagers{}, parlays)
+
+	body := url.Values{"csrf_token": {testCSRF}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/parlays/"+testMarketID+"/accept", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303; body %s", w.Code, w.Body.String())
+	}
+	if len(parlays.acceptCalls) != 1 || parlays.acceptCalls[0].actor != adminSession().UserID {
+		t.Fatalf("accept calls = %+v, want the signed-in admin", parlays.acceptCalls)
+	}
+}
+
+// A member must not be able to accept their own parlay by posting the admin URL.
+func TestMemberCannotAcceptAParlay(t *testing.T) {
+	parlays := &fakeParlays{}
+	handler := newTestHandlerWithParlays(t, memberSession(), &fakeMarkets{}, &fakeWagers{}, parlays)
+
+	body := url.Values{"csrf_token": {testCSRF}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/parlays/"+testMarketID+"/accept", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code == http.StatusSeeOther {
+		t.Fatal("a member accepted a parlay")
+	}
+	if len(parlays.acceptCalls) != 0 {
+		t.Fatal("a member's request reached AcceptParlay")
+	}
+}
+
+func TestParlayQuoteRendersAPriceWithoutPlacing(t *testing.T) {
+	parlays := &fakeParlays{quote: bettingpg.ParlayRow{
+		AcceptedOdds: 264, StakeCents: 2000, PotentialProfit: 5280,
+		Legs: []bettingpg.ParlayLegRow{
+			{MarketTitle: "Match 1", AcceptedTerms: "Alex", AcceptedOdds: -110},
+			{MarketTitle: "Match 2", AcceptedTerms: "JB", AcceptedOdds: 100},
+		},
+	}}
+	handler := newTestHandlerWithParlays(t, memberSession(), &fakeMarkets{}, &fakeWagers{}, parlays)
+
+	body := url.Values{
+		"csrf_token":   {testCSRF},
+		"leg":          {testMarketID + ":" + testSelID, altMarketID + ":" + altSelID},
+		"parlay_stake": {"20.00"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/book/parlays/quote", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	rendered := w.Body.String()
+	// html/template escapes "+" to &#43;, so assert on the rendered form.
+	for _, want := range []string{"&#43;264", "72.80", "Alex", "JB", "reviewed by an admin"} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("quote is missing %q; got %s", want, rendered)
+		}
+	}
+	if len(parlays.placeCalls) != 0 {
+		t.Fatal("quoting placed a parlay")
+	}
+}
+
+// A half-built slip is the ordinary state, not an error: it must say what is
+// needed rather than showing a price or an alarming message.
+func TestParlayQuoteWithOneLegAsksForAnother(t *testing.T) {
+	parlays := &fakeParlays{}
+	handler := newTestHandlerWithParlays(t, memberSession(), &fakeMarkets{}, &fakeWagers{}, parlays)
+
+	body := url.Values{
+		"csrf_token":   {testCSRF},
+		"leg":          {testMarketID + ":" + testSelID},
+		"parlay_stake": {"20.00"},
+	}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/book/parlays/quote", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "at least two") {
+		t.Errorf("body = %s", w.Body.String())
 	}
 }
