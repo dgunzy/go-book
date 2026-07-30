@@ -117,7 +117,7 @@ the UI so it cannot be bypassed.
 in a new way. Rehearse the whole flow on `test.cabotcup.ca` before it reaches
 production.
 
-### 2.2 ▢ Do not require grading on a market nobody bet
+### 2.2 ✔ Do not require grading on a market nobody bet — shipped 2026-07-30
 
 **Confirmed:** `settle.go:19-33` — `MarketOutcome.validate` requires an entry for
 **every selection**, wagers or not, and `admin_market_settle.gohtml:56` marks the
@@ -137,7 +137,7 @@ were. A separate state keeps reconciliation and the audit trail honest.
 - Surface it in the admin queue as a one-click "no bets — close it out" rather
   than a hidden alternative to grading.
 
-### 2.3 ▢ Total cap across all bettors on a side
+### 2.3 ✔ Total cap across all bettors on a side — shipped 2026-07-30
 
 **Confirmed gap.** Both existing caps are strictly per-member:
 
@@ -179,9 +179,9 @@ originals. What remains:
 | | Item | Notes |
 |---|---|---|
 | ▢ | **2025 cup page** | Blocked on source material — teams, result, photos. The placeholder is honest but it is the only gap in an otherwise complete 2019–2026 archive |
-| ▢ | **Open Graph / Twitter cards** | **Zero** social tags in `layout.gohtml`. A site whose main artifact is photography currently shares as a blank rectangle. Highest value-per-hour item on this list |
-| ▢ | `robots.txt` + `sitemap.xml` | Both 404 today |
-| ▢ | Canonical URLs | Absent; harmless now, matters once shared widely |
+| ✔ | **Open Graph / Twitter cards** | **Zero** social tags in `layout.gohtml`. A site whose main artifact is photography currently shares as a blank rectangle. Highest value-per-hour item on this list |
+| ✔ | `robots.txt` + `sitemap.xml` | Shipped 2026-07-30; the sitemap builds from the archive and a test walks every URL it lists |
+| ✔ | Canonical URLs | Shipped 2026-07-30; the query string is dropped so /players?sort=cups is not a second page |
 | ▢ | Portraits for pre-2026 players missing them | Several legacy players still use `empty_profile.jpeg` |
 | ▢ | Wide-table scroll affordance on mobile | Tables scroll correctly inside `.wide-table-wrap` but nothing signals it |
 | ▢ | Per-player pages (`/players/{slug}`) | Cards are anchors only; a real page would give the career table somewhere to link and give each golfer a shareable URL |
@@ -218,17 +218,17 @@ suites gated behind six separate `*_TEST_DATABASE_URL` variables.
 
 ## 6. Suggested sequence
 
-**Now — cheap, reversible, high value**
+**Done 2026-07-30**
 
-1. Bundle and load HTMX (§1) — fixes the clunkiness directly
-2. Open Graph tags, `robots.txt`, `sitemap.xml` (§3)
-3. Zero-bet close-out (§2.2)
+- Open Graph tags, `robots.txt`, `sitemap.xml`, canonical URLs (§3)
+- Zero-bet close-out (§2.2) — new `closed_no_action` state, migration 000018
+- Total cap per side (§2.3) — migration 000019, enforced under `FOR UPDATE`
 
-**Next — needs care, moves money**
+**Now**
 
-4. Total cap per side (§2.3), enforced under the placement lock
-5. Extend HTMX to the remaining forms once the first seven are proven
-6. `CONFIGURATION.md` audit
+1. Bundle and load HTMX (§1) — still the thing felt day to day
+2. Parlays end to end (§2.1) — the largest remaining item
+3. `CONFIGURATION.md` audit
 
 **Later — largest, do when there is room to rehearse**
 
