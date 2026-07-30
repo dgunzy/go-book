@@ -1124,6 +1124,15 @@ func (h *Handler) failPost(w http.ResponseWriter, r *http.Request, session priva
 
 func (h *Handler) fragment(w http.ResponseWriter, status int, data fragmentData) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// A form carries hx-target="this" hx-swap="outerHTML", which is right for a
+	// success: the control is replaced by its own result. It is wrong for a
+	// failure, because it would delete the form the member needs to correct and
+	// resubmit. Errors are therefore retargeted to the shared status region in
+	// the private layout, leaving the form untouched.
+	if data.IsError {
+		w.Header().Set("HX-Retarget", "#action-status")
+		w.Header().Set("HX-Reswap", "innerHTML")
+	}
 	w.WriteHeader(status)
 	_ = h.templates["message"].ExecuteTemplate(w, "betting_action_result", data)
 }

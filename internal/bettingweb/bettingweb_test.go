@@ -2584,3 +2584,75 @@ func TestAdminSetTotalSideCapBlankClearsIt(t *testing.T) {
 		t.Fatalf("side cap calls = %+v", markets.sideCapCalls)
 	}
 }
+
+// TestHTMXErrorsAreRetargetedAwayFromTheForm guards the detail that makes
+// enabling htmx safe. Every action form carries hx-target="this"
+// hx-swap="outerHTML", which is right on success — the control is replaced by
+// its own result. On a failure it would delete the form the member needs to
+// correct and resubmit, so error fragments must redirect the swap to the shared
+// status region instead.
+func TestHTMXErrorsAreRetargetedAwayFromTheForm(t *testing.T) {
+	markets := &fakeMarkets{all: []bettingpg.MarketRow{openMarketFixture()}}
+	handler := newTestHandler(t, adminSession(), markets, &fakeWagers{})
+
+	// A failing action: no reason supplied.
+	body := url.Values{"csrf_token": {testCSRF}}.Encode()
+	r := httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/no-action", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("HX-Request", "true")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if got := w.Header().Get("HX-Retarget"); got != "#action-status" {
+		t.Errorf("HX-Retarget = %q, want #action-status — an error would replace the form", got)
+	}
+	if got := w.Header().Get("HX-Reswap"); got != "innerHTML" {
+		t.Errorf("HX-Reswap = %q, want innerHTML", got)
+	}
+
+	// A successful action keeps the authored swap so the control reports its
+	// own result in place.
+	body = url.Values{"csrf_token": {testCSRF}, "reason": {"nobody bet it"}}.Encode()
+	r = httptest.NewRequest(http.MethodPost, "/admin/markets/"+testMarketID+"/no-action", strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	r.Header.Set("HX-Request", "true")
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if got := w.Header().Get("HX-Retarget"); got != "" {
+		t.Errorf("HX-Retarget = %q on success, want none", got)
+	}
+}
+
+// TestPrivateLayoutLoadsHTMXAndItsStatusRegion is the guard that the library is
+// actually shipped. Sixteen hx- attributes sat in the templates for months
+// while no page loaded htmx, so every one of them silently fell back to a full
+// page POST and the partial path never ran.
+func TestPrivateLayoutLoadsHTMXAndItsStatusRegion(t *testing.T) {
+	handler := newTestHandler(t, adminSession(), &fakeMarkets{}, &fakeWagers{})
+	r := httptest.NewRequest(http.MethodGet, "/admin/markets", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	body := w.Body.String()
+	for _, want := range []string{
+		`src="/assets/htmx.min.js`,
+		`id="action-status"`,
+		// Without this the CSP's style-src 'self' silently drops htmx's
+		// injected indicator styles.
+		`"includeIndicatorStyles":false`,
+		// Without this htmx refuses to swap the 4xx error fragments the
+		// handlers return, and a rejected action looks like nothing happened.
+		`{"code":"[45].*","swap":true,"error":true}`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("private layout is missing %q", want)
+		}
+	}
+}

@@ -1006,3 +1006,10 @@ figcaption { font-size: .76rem; margin-top: .65rem; opacity: .76; }
 .betting-limit-form input[name="max_stake"] { width: 5rem; }
 .betting-limit-form input[name="reason"] { width: 6rem; }
 .outcome-limit input { font-size: .82rem; }
+
+/* Where a failed action reports itself. Empty until htmx swaps a message in,
+   so it must not take up space or announce itself when there is nothing to
+   say. Sticky so a failure is visible wherever the page is scrolled. */
+.private-action-status:empty { display: none; }
+.private-action-status { position: sticky; top: 0; z-index: 20; padding: 0 1.5rem; }
+.private-action-status .betting-action-result { margin: .75rem 0; }

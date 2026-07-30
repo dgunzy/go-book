@@ -5,7 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
   <title>{{.Title}} | Cabot Cup</title>
-  <link rel="stylesheet" href="/assets/site.css?v=20260726-standings-svg">
+  <link rel="stylesheet" href="/assets/site.css?v=20260730-htmx">
+  {{/* includeIndicatorStyles is off because the CSP sets style-src 'self' and
+       htmx would otherwise inject a <style> element the browser discards.
+       responseHandling lets a 4xx swap: the handlers answer a failed action
+       with an explanatory fragment and a 4xx status, and htmx's default is to
+       swallow those entirely, which would leave a rejected wager looking like
+       nothing happened. */}}
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"responseHandling":[{"code":"204","swap":false},{"code":"[23].*","swap":true},{"code":"[45].*","swap":true,"error":true}]}'>
+  <script src="/assets/htmx.min.js?v=2.0.4" defer></script>
   <script src="/assets/site.js?v=20260726-filters" defer></script>
 </head>
 <body class="private-body">
@@ -48,6 +56,10 @@
           </form>{{end}}
         </div>
       </header>
+      {{/* Errors are retargeted here rather than into the form that failed:
+           the forms swap themselves out on success, so swapping an error into
+           one would remove the very control the member needs to try again. */}}
+      <div id="action-status" class="private-action-status" role="status" aria-live="polite"></div>
       <main id="private-main" class="private-main">
         {{template "private_content" .}}
       </main>

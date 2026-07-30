@@ -12,7 +12,7 @@ File references are `path:line` at the time of writing.
 
 ---
 
-## 1. The headline finding: HTMX was never actually loaded
+## 1. ✔ HTMX was never actually loaded — fixed 2026-07-30
 
 **This is the answer to "should we switch to JS instead of HTMX?" — the site is
 not using HTMX today.**
@@ -48,10 +48,10 @@ wrong basis for a rewrite.
 
 | | Task | Notes |
 |---|---|---|
-| ▢ | Vendor `htmx.min.js` into `web/static/` | ~50 KB, embedded like every other asset; no CDN (CSP forbids it) |
-| ▢ | Load it from `private_layout.gohtml` | Public pages need no JS; keep them script-free |
-| ▢ | Extend CSP for HTMX | It injects inline styles unless `htmx.config.includeIndicatorStyles=false`; prefer the config flag over widening CSP |
-| ▢ | Verify each of the 7 templates round-trips as a partial | The forms keep `action=`, so no-JS degrades gracefully — keep it that way |
+| ✔ | Vendor `htmx.min.js` into `web/static/` | ~50 KB, embedded like every other asset; no CDN (CSP forbids it) |
+| ✔ | Load it from `private_layout.gohtml` | Public pages need no JS; keep them script-free |
+| ✔ | Keep htmx inside the CSP | It injects inline styles unless `htmx.config.includeIndicatorStyles=false`; prefer the config flag over widening CSP |
+| ◐ | Verify each of the 7 templates round-trips as a partial | The forms keep `action=`, so no-JS degrades gracefully — keep it that way |
 | ▢ | Add `hx-` to the remaining ~40 full-post forms, screen by screen | Only after the first seven are proven |
 
 ### Two details that decide whether enabling it is safe
@@ -226,9 +226,16 @@ suites gated behind six separate `*_TEST_DATABASE_URL` variables.
 
 **Now**
 
-1. Bundle and load HTMX (§1) — still the thing felt day to day
-2. Parlays end to end (§2.1) — the largest remaining item
+1. Parlays end to end (§2.1) — the largest remaining item
+2. Extend `hx-` to the remaining ~40 full-post forms, screen by screen
 3. `CONFIGURATION.md` audit
+
+**Note on the htmx swap semantics.** Success keeps the authored
+`hx-target="this" hx-swap="outerHTML"`, so a control is replaced by its own
+result. That is right for placing a wager and slightly odd for an admin inline
+control, which disappears after use until the page is reloaded. Giving those
+screens a proper partial re-render is the follow-up; it is per-screen work and
+deliberately not bundled with turning the library on.
 
 **Later — largest, do when there is room to rehearse**
 
