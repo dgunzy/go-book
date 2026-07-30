@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -368,5 +369,90 @@ func TestPlayersPageShowsVerifiedOnlyDebutants(t *testing.T) {
 	// Alex already has a legacy profile card and must not be duplicated below it.
 	if strings.Count(body, `id="alex"`) != 1 {
 		t.Errorf("Alex appears %d times, want 1", strings.Count(body, `id="alex"`))
+	}
+}
+
+func TestRobotsAndSitemap(t *testing.T) {
+	handler := newTestHandler(t)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/robots.txt", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("robots status=%d", rec.Code)
+	}
+	if got := rec.Header().Get("Content-Type"); !strings.HasPrefix(got, "text/plain") {
+		t.Errorf("robots Content-Type = %q", got)
+	}
+	for _, want := range []string{"User-agent: *", "Disallow: /book/", "Disallow: /admin/", "Sitemap: https://cabotcup.ca/sitemap.xml"} {
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("robots.txt missing %q", want)
+		}
+	}
+
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/sitemap.xml", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sitemap status=%d", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.HasPrefix(body, "<?xml") {
+		t.Error("sitemap has no XML declaration")
+	}
+	for _, want := range []string{
+		"<loc>https://cabotcup.ca/</loc>",
+		"<loc>https://cabotcup.ca/history</loc>",
+		"<loc>https://cabotcup.ca/history/2026</loc>",
+		"<loc>https://cabotcup.ca/history/2026/photos</loc>",
+		"<loc>https://cabotcup.ca/stats</loc>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("sitemap missing %q", want)
+		}
+	}
+	// A year with no gallery must not advertise a photos page that 404s.
+	if strings.Contains(body, "/history/2025/photos") {
+		t.Error("sitemap lists a photos page for a year with no gallery")
+	}
+	// Every listed URL must actually serve.
+	for _, loc := range regexp.MustCompile(`<loc>([^<]+)</loc>`).FindAllStringSubmatch(body, -1) {
+		path := strings.TrimPrefix(loc[1], "https://cabotcup.ca")
+		check := httptest.NewRecorder()
+		handler.ServeHTTP(check, httptest.NewRequest(http.MethodGet, path, nil))
+		if check.Code != http.StatusOK {
+			t.Errorf("sitemap lists %s which returns %d", path, check.Code)
+		}
+	}
+}
+
+func TestSocialCardsAreAbsoluteAndPageSpecific(t *testing.T) {
+	handler := newTestHandler(t)
+	for _, test := range []struct{ path, wantCanonical, wantImage string }{
+		{"/", "https://cabotcup.ca/", "/2026/20260728-Z52_1274.jpg"},
+		{"/history/2026", "https://cabotcup.ca/history/2026", "/2026/20260728-Z52_1274.jpg"},
+		{"/history/2022", "https://cabotcup.ca/history/2022", "/2022_cup.JPG"},
+		{"/stats", "https://cabotcup.ca/stats", "/2026/20260728-Z52_1274.jpg"},
+	} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, test.path, nil))
+		body := rec.Body.String()
+		if !strings.Contains(body, `<link rel="canonical" href="`+test.wantCanonical+`">`) {
+			t.Errorf("%s has no canonical %q", test.path, test.wantCanonical)
+		}
+		if !strings.Contains(body, `<meta property="og:url" content="`+test.wantCanonical+`">`) {
+			t.Errorf("%s has no og:url", test.path)
+		}
+		if !strings.Contains(body, `<meta property="og:image" content="https://d18fc2989jrcic.cloudfront.net`+test.wantImage+`">`) {
+			t.Errorf("%s has no og:image %q", test.path, test.wantImage)
+		}
+		if !strings.Contains(body, `twitter:card" content="summary_large_image"`) {
+			t.Errorf("%s has no large twitter card", test.path)
+		}
+	}
+
+	// A query string must not create a second canonical URL for one page.
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/players?sort=cups", nil))
+	if !strings.Contains(rec.Body.String(), `<link rel="canonical" href="https://cabotcup.ca/players">`) {
+		t.Error("sorted players page does not canonicalise to /players")
 	}
 }

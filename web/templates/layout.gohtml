@@ -5,6 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="{{.Description}}">
   <title>{{if eq .Title "Cabot Cup"}}Cabot Cup{{else}}{{.Title}} | Cabot Cup{{end}}</title>
+  {{if .CanonicalURL}}<link rel="canonical" href="{{.CanonicalURL}}">{{end}}
+  <meta property="og:site_name" content="Cabot Cup">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{if eq .Title "Cabot Cup"}}Cabot Cup{{else}}{{.Title}} | Cabot Cup{{end}}">
+  <meta property="og:description" content="{{.Description}}">
+  {{if .CanonicalURL}}<meta property="og:url" content="{{.CanonicalURL}}">{{end}}
+  {{if .SocialImage}}<meta property="og:image" content="{{.SocialImage}}">
+  <meta name="twitter:card" content="summary_large_image">{{else}}
+  <meta name="twitter:card" content="summary">{{end}}
+  <meta name="twitter:title" content="{{if eq .Title "Cabot Cup"}}Cabot Cup{{else}}{{.Title}} | Cabot Cup{{end}}">
+  <meta name="twitter:description" content="{{.Description}}">
+  {{if .SocialImage}}<meta name="twitter:image" content="{{.SocialImage}}">{{end}}
   <link rel="icon" href="/assets/favicon.ico" sizes="any">
   <link rel="stylesheet" href="/assets/site.css">
 </head>

@@ -2,7 +2,9 @@
 package web
 
 import (
+	"bytes"
 	"context"
+	"encoding/xml"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -17,6 +19,15 @@ import (
 )
 
 const mediaHost = "https://d18fc2989jrcic.cloudfront.net"
+
+// canonicalHost is the origin used to build absolute URLs for canonical links
+// and social cards. Both require absolute URLs, and a relative one is silently
+// ignored by every crawler and chat client that reads them.
+const canonicalHost = "https://cabotcup.ca"
+
+// defaultSocialImage is the card image for pages with nothing more specific.
+// A year page overrides it with that cup's hero photograph.
+const defaultSocialImage = mediaHost + "/2026/20260728-Z52_1274.jpg"
 
 type Handler struct {
 	mux         *http.ServeMux
@@ -54,6 +65,11 @@ type pageData struct {
 	CareerTo        int
 	QualifyingLimit int
 	Debutants       []CareerRow
+
+	// CanonicalURL and SocialImage drive the canonical link and the Open Graph
+	// card. Both must be absolute.
+	CanonicalURL string
+	SocialImage  string
 }
 
 // CareerRow is one player's whole record: the legacy aggregate through the
@@ -180,6 +196,8 @@ func (h *Handler) routes() {
 
 	h.mux.Handle("GET /assets/players/", cacheAssets(http.StripPrefix("/assets/players/", http.FileServer(http.FS(playerFS)))))
 	h.mux.Handle("GET /assets/", cacheAssets(http.StripPrefix("/assets/", http.FileServer(http.FS(staticFS)))))
+	h.mux.HandleFunc("GET /robots.txt", h.robots)
+	h.mux.HandleFunc("GET /sitemap.xml", h.sitemap)
 	h.mux.HandleFunc("GET /history/{year}/photos", h.historyPhotos)
 	h.mux.HandleFunc("GET /history/{year}", h.historyDetail)
 	h.mux.HandleFunc("GET /history", h.history)
@@ -188,17 +206,61 @@ func (h *Handler) routes() {
 	h.mux.HandleFunc("GET /", h.home)
 }
 
+// robots points crawlers at the sitemap and keeps them out of the private book,
+// which is behind authentication anyway but should not be advertised.
+func (h *Handler) robots(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprintf(w, "User-agent: *\nAllow: /\nDisallow: /book/\nDisallow: /admin/\nDisallow: /auth/\n\nSitemap: %s/sitemap.xml\n", canonicalHost)
+}
+
+// sitemap lists the public pages, built from the archive itself so a new cup
+// year appears without anyone remembering to edit a list.
+func (h *Handler) sitemap(w http.ResponseWriter, r *http.Request) {
+	paths := []string{"/", "/history", "/players", "/stats"}
+	for _, event := range h.snapshot.Events {
+		paths = append(paths, fmt.Sprintf("/history/%d", event.Year))
+		if event.HasGallery() {
+			paths = append(paths, fmt.Sprintf("/history/%d/photos", event.Year))
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	fmt.Fprint(w, xml.Header)
+	fmt.Fprint(w, `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`)
+	for _, path := range paths {
+		location, err := xmlEscape(canonicalURL(path))
+		if err != nil {
+			h.internalError(w)
+			return
+		}
+		fmt.Fprintf(w, "<url><loc>%s</loc></url>", location)
+	}
+	fmt.Fprint(w, `</urlset>`)
+}
+
+func xmlEscape(value string) (string, error) {
+	var buffer bytes.Buffer
+	if err := xml.EscapeText(&buffer, []byte(value)); err != nil {
+		return "", err
+	}
+	return buffer.String(), nil
+}
+
 func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		h.notFound(w)
 		return
 	}
 	data := h.baseData("Cabot Cup", "History, player records, and photographs from the Cabot Cup.", "home")
+	data.CanonicalURL = canonicalURL("/")
 	h.render(w, "home", data)
 }
 
 func (h *Handler) history(w http.ResponseWriter, r *http.Request) {
 	data := h.baseData("Cup history", "Explore the Cabot Cup archive from 2019 through the 2025 placeholder.", "history")
+	data.CanonicalURL = canonicalURL("/history")
 	verified, err := h.verifiedCompetition(r.Context())
 	if err != nil {
 		h.internalError(w)
@@ -231,6 +293,10 @@ func (h *Handler) historyDetail(w http.ResponseWriter, r *http.Request) {
 			data := h.baseData(fmt.Sprintf("%d Cabot Cup", year), fmt.Sprintf("Story and photographs from the %d Cabot Cup.", year), "history")
 			data.Event = &h.snapshot.Events[i]
 			data.VerifiedSeason = verifiedSeason
+			data.CanonicalURL = canonicalURL(fmt.Sprintf("/history/%d", year))
+			if len(data.Event.Photos) > 0 {
+				data.SocialImage = data.Event.Photos[0].URL
+			}
 			h.render(w, "event", data)
 			return
 		}
@@ -239,6 +305,7 @@ func (h *Handler) historyDetail(w http.ResponseWriter, r *http.Request) {
 		data := h.baseData(fmt.Sprintf("%d Cabot Cup", year), fmt.Sprintf("Verified match history from the %d Cabot Cup.", year), "history")
 		data.VerifiedSeason = verifiedSeason
 		data.VerifiedSeasons = verified.Seasons
+		data.CanonicalURL = canonicalURL(fmt.Sprintf("/history/%d", year))
 		h.render(w, "verified_event", data)
 		return
 	}
@@ -265,6 +332,10 @@ func (h *Handler) historyPhotos(w http.ResponseWriter, r *http.Request) {
 			"history",
 		)
 		data.Event = &h.snapshot.Events[i]
+		data.CanonicalURL = canonicalURL(fmt.Sprintf("/history/%d/photos", year))
+		if len(data.Event.Photos) > 0 {
+			data.SocialImage = data.Event.Photos[0].URL
+		}
 		h.render(w, "photos", data)
 		return
 	}
@@ -300,6 +371,7 @@ func (h *Handler) players(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := h.baseData("Players", "Player profiles and Cabot Cup records, from the legacy archive and the verified match record.", "players")
+	data.CanonicalURL = canonicalURL("/players")
 	data.Players = players
 	data.Sort = sortBy
 	// Players whose first cup came after the legacy import have no aggregate row,
@@ -326,6 +398,7 @@ func (h *Handler) stats(w http.ResponseWriter, r *http.Request) {
 	})
 
 	data := h.baseData("Statistics", "Aggregate records from the legacy Cabot Cup dataset.", "stats")
+	data.CanonicalURL = canonicalURL("/stats")
 	verified, err := h.verifiedCompetition(r.Context())
 	if err != nil {
 		h.internalError(w)
@@ -443,9 +516,20 @@ func (h *Handler) verifiedCompetition(ctx context.Context) (competitionpg.Public
 	return h.competition.PublicCompetition(ctx)
 }
 
+// canonicalURL builds the absolute URL for a page. The query string is
+// deliberately dropped: /players?sort=cups is the same page as /players and
+// must not present itself as a second one.
+func canonicalURL(path string) string {
+	if path == "" {
+		return canonicalHost + "/"
+	}
+	return canonicalHost + path
+}
+
 func (h *Handler) baseData(title, description, current string) pageData {
 	return pageData{
 		Title: title, Description: description, Current: current,
+		SocialImage:   defaultSocialImage,
 		SnapshotLabel: h.snapshot.Label, SnapshotNote: h.snapshot.Note,
 		Players: h.snapshot.Players, Events: h.snapshot.Events,
 		TotalPlayers: len(h.snapshot.Players), TotalEvents: len(h.snapshot.Events),
